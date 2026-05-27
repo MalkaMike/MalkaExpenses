@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { serverClient } from "@/lib/supabase/server";
 import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
+import { researchMerchants } from "@/lib/ai/merchant-research";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -187,11 +188,18 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 5) AI categorization for unmatched rows ─────────────────────────────────
+  // Three-tier confidence system:
+  //   ≥ 0.85  → auto_accepted   (no badge shown)
+  //   0.65–0.84 → pending_review  (amber "IA incerta" badge)
+  //   < 0.65  → web search via Google grounding → re-evaluate → pending_review
+  //             (blue "Pesquisado" if found, red "IA não sabe" if still unknown)
+
   const aiQueue: CategorizeInput[] = freshRows.filter(
     (r) => !ruleMatched.has(r.id)
   );
 
   let categorizedCount = 0;
+  let researchedCount = 0;
   let aiErr: string | null = null;
 
   if (aiQueue.length > 0) {
@@ -202,11 +210,15 @@ export async function POST(req: NextRequest) {
       const slugToId = new Map<string, string>();
       for (const c of cats ?? []) slugToId.set(c.slug, c.id);
 
-      for (const r of results) {
+      // Split by confidence tier
+      const highConf  = results.filter((r) => r.confidence >= 0.85);
+      const midConf   = results.filter((r) => r.confidence >= 0.65 && r.confidence < 0.85);
+      const lowConf   = results.filter((r) => r.confidence < 0.65);
+
+      // Tier 1 + 2: apply directly
+      for (const r of [...highConf, ...midConf]) {
         const catId = slugToId.get(r.category_slug) ?? slugToId.get("outros");
         if (!catId) continue;
-        // Threshold: ≥0.85 auto-accept (was 0.90 — slightly looser since taxonomy is now richer)
-        const autoAccepted = r.confidence >= 0.85;
         const isTransfer =
           r.category_slug === "cartao_pagamento" || r.category_slug === "transferencias";
         await sb
@@ -215,11 +227,91 @@ export async function POST(req: NextRequest) {
             category_id: catId,
             confidence: r.confidence,
             ai_reasoning: r.reasoning,
-            status: autoAccepted ? "auto_accepted" : "pending_review",
+            status: r.confidence >= 0.85 ? "auto_accepted" : "pending_review",
             is_transfer: isTransfer
           })
           .eq("id", r.id);
         categorizedCount += 1;
+      }
+
+      // Tier 3: web search for low-confidence items
+      if (lowConf.length > 0) {
+        const lowItems = lowConf.map((r) => {
+          const original = aiQueue.find((q) => q.id === r.id);
+          return { id: r.id, description: original?.description ?? r.id, amount: original?.amount ?? 0 };
+        });
+
+        try {
+          const researched = await researchMerchants(lowItems);
+          researchedCount = researched.length;
+
+          for (const r of researched) {
+            const catId = slugToId.get(r.category_slug) ?? slugToId.get("outros");
+            if (!catId) continue;
+
+            // Even after web search, confidence may still be low → stays pending_review
+            const isTransfer =
+              r.category_slug === "cartao_pagamento" || r.category_slug === "transferencias";
+
+            // Determine status: if web search gave good confidence, auto-accept
+            const status = r.confidence >= 0.80 ? "auto_accepted" : "pending_review";
+
+            await sb
+              .from("transactions")
+              .update({
+                category_id: catId,
+                confidence: r.confidence,
+                ai_reasoning: r.reasoning, // prefixed with "Pesquisado:" by researchMerchants
+                status,
+                is_transfer: isTransfer
+              })
+              .eq("id", r.id);
+            categorizedCount += 1;
+
+            // Auto-create merchant_rule if web search confidently identified the merchant
+            if (r.confidence >= 0.75) {
+              const original = lowItems.find((i) => i.id === r.id);
+              if (original) {
+                // Use first 3 space-separated tokens as the pattern (avoids overfitting)
+                const tokens = original.description.split(/\s+/).slice(0, 3).join(" ").toLowerCase();
+                if (tokens.length >= 3) {
+                  await sb
+                    .from("merchant_rules")
+                    .upsert(
+                      {
+                        pattern: tokens,
+                        pattern_type: "starts_with",
+                        category_id: catId,
+                        confidence_default: r.confidence,
+                        hit_count: 1
+                      },
+                      { onConflict: "pattern" }
+                    )
+                    .then(() => {}); // fire-and-forget
+                }
+              }
+            }
+          }
+        } catch (researchErr: unknown) {
+          // Web search failure is non-fatal: apply original low-confidence AI result
+          console.error("[merchant-research]", researchErr);
+          for (const r of lowConf) {
+            const catId = slugToId.get(r.category_slug) ?? slugToId.get("outros");
+            if (!catId) continue;
+            await sb
+              .from("transactions")
+              .update({
+                category_id: catId,
+                confidence: r.confidence,
+                ai_reasoning: r.confidence < 0.4
+                  ? "IA não sabe — comerciante não identificado"
+                  : r.reasoning,
+                status: "pending_review"
+              })
+              .eq("id", r.id);
+            categorizedCount += 1;
+          }
+        }
       }
     } catch (e: unknown) {
       aiErr = e instanceof Error ? e.message : "categorization failed";
@@ -234,6 +326,7 @@ export async function POST(req: NextRequest) {
     duplicates: duplicateCount,
     ruleMatched: ruleAppliedCount,
     categorized: categorizedCount,
+    researched: researchedCount,
     total: rows.length,
     aiError: aiErr
   });

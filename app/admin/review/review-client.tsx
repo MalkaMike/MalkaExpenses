@@ -1,8 +1,8 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, X, ChevronDown, ChevronUp, Loader2, Wand2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Loader2, Wand2, Globe, HelpCircle, AlertCircle } from "lucide-react";
 import { CATEGORY_ORDER, CATEGORY_META, getCategoryMeta } from "@/lib/categories/meta";
 import { formatBRL, formatDate } from "@/lib/format";
 
@@ -21,6 +21,49 @@ export type ReviewRow = {
   isTransfer: boolean;
   categorySlug: string;
 };
+
+// ── Confidence badge ───────────────────────────────────────────────────────────
+// Three tiers surfaced in the review queue:
+//  ≥ 0.85   → auto_accepted (never reaches review queue)
+//  0.65–0.84 → amber "IA incerta"
+//  < 0.65   → blue "Pesquisado" (if web search ran) or red "IA não sabe"
+function ConfidenceBadge({
+  confidence,
+  reasoning
+}: {
+  confidence: number | null;
+  reasoning: string | null;
+}) {
+  if (confidence === null) return null;
+
+  const searched = reasoning?.startsWith("Pesquisado:");
+  const unknown  = reasoning?.startsWith("IA não sabe");
+
+  if (confidence >= 0.85) return null; // auto-accepted, shouldn't be in queue
+
+  if (searched) {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-accent/10 text-accent border border-accent/20">
+        <Globe size={9} /> Pesquisado
+      </span>
+    );
+  }
+
+  if (unknown || confidence < 0.4) {
+    return (
+      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-danger/10 text-danger border border-danger/20">
+        <HelpCircle size={9} /> IA não sabe
+      </span>
+    );
+  }
+
+  // 0.40–0.84: uncertain
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-warning/10 text-warning border border-warning/20">
+      <AlertCircle size={9} /> IA incerta
+    </span>
+  );
+}
 
 export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
   const router = useRouter();
@@ -261,10 +304,10 @@ export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
                       {formatBRL(r.amountReal)}
                     </p>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-muted">
-                    <span className="inline-flex items-center gap-1.5">
+                  <div className="flex items-center justify-between gap-2 text-xs text-muted">
+                    <span className="inline-flex items-center gap-1.5 min-w-0 flex-wrap">
                       <span
-                        className="px-2 py-0.5 rounded-full text-[10px] font-medium"
+                        className="px-2 py-0.5 rounded-full text-[10px] font-medium shrink-0"
                         style={{
                           backgroundColor: `${meta.color}1F`,
                           color: meta.color
@@ -272,20 +315,12 @@ export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
                       >
                         {meta.name}
                       </span>
-                      <span>·</span>
-                      <span>{r.accountName}</span>
-                      <span>·</span>
-                      <span>{formatDate(r.date)}</span>
+                      <span className="shrink-0">·</span>
+                      <span className="truncate">{r.accountName}</span>
+                      <span className="shrink-0">·</span>
+                      <span className="shrink-0">{formatDate(r.date)}</span>
                     </span>
-                    {conf !== null && (
-                      <span
-                        className={`tabular-nums ${
-                          conf < 60 ? "text-danger" : conf < 90 ? "text-fg" : "text-accent"
-                        }`}
-                      >
-                        {conf}%
-                      </span>
-                    )}
+                    <ConfidenceBadge confidence={r.confidence} reasoning={r.reasoning} />
                   </div>
                 </button>
                 <button
@@ -300,8 +335,15 @@ export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
               {isExpanded && (
                 <div className="mt-3 pl-7 space-y-3">
                   {r.reasoning && (
-                    <p className="text-xs text-muted italic leading-relaxed">
-                      🤖 {r.reasoning}
+                    <p className={`text-xs leading-relaxed ${
+                      r.reasoning.startsWith("Pesquisado:")
+                        ? "text-accent italic"
+                        : r.reasoning.startsWith("IA não sabe")
+                        ? "text-danger italic"
+                        : "text-muted italic"
+                    }`}>
+                      {r.reasoning.startsWith("Pesquisado:") ? "🌐" :
+                       r.reasoning.startsWith("IA não sabe") ? "❓" : "🤖"} {r.reasoning}
                     </p>
                   )}
                   <p className="text-[10px] text-muted font-mono">

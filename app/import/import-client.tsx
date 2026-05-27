@@ -43,7 +43,9 @@ type SingleStage = "idle" | "uploading" | "parsing" | "preview" | "importing" | 
 type DoneResult = {
   inserted: number;
   duplicates: number;
+  ruleMatched?: number;
   categorized: number;
+  researched?: number;
   total: number;
   aiError?: string | null;
 };
@@ -312,6 +314,7 @@ export function ImportClient({
                   inserted: confirmJson.inserted,
                   duplicates: confirmJson.duplicates,
                   categorized: confirmJson.categorized,
+                  researched: confirmJson.researched ?? 0,
                   total: confirmJson.total
                 }
               : f
@@ -519,6 +522,20 @@ export function ImportClient({
               label="Categorizados"
               value={done.inserted > 0 ? `${done.categorized}/${done.inserted}` : "—"}
             />
+            {(done.ruleMatched ?? 0) > 0 && (
+              <Stat
+                icon={<CheckCircle2 size={14} />}
+                label="Via regra"
+                value={String(done.ruleMatched)}
+              />
+            )}
+            {(done.researched ?? 0) > 0 && (
+              <Stat
+                icon={<Sparkles size={14} />}
+                label="Pesquisados"
+                value={String(done.researched)}
+              />
+            )}
           </div>
           {someDuplicates && (
             <div className="mb-4 p-3 rounded-xl bg-warning/10 border border-warning/30 text-warning text-xs text-left">
