@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { exitPrivateMode } from "@/lib/auth/mode";
+import { logoutAdmin } from "@/lib/auth/admin";
 
 export const runtime = "nodejs";
 
 export async function POST() {
-  await exitPrivateMode();
+  await logoutAdmin();
   return NextResponse.json({ ok: true });
 }

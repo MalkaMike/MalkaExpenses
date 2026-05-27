@@ -1,4 +1,4 @@
-import { getMode } from "@/lib/auth/mode";
+import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { formatBRL, monthLabel } from "@/lib/format";
@@ -8,12 +8,12 @@ export const dynamic = "force-dynamic";
 type MonthRow = { month: string; sharedTotal: number; realTotal: number | null };
 
 export default async function MonthsPage() {
-  const mode = await getMode();
+  const role = await getRole();
 
   let months: MonthRow[] = [];
   const monthMap = new Map<string, { shared: number; real: number }>();
 
-  if (mode === "shared") {
+  if (role === "public") {
     const sb = sharedClient();
     const { data } = await sb
       .from("shared_transactions_v")
@@ -21,7 +21,7 @@ export default async function MonthsPage() {
       .eq("is_transfer", false)
       .order("date", { ascending: false });
     for (const r of data ?? []) {
-      const m = r.date.slice(0, 7);
+      const m = (r.date as string).slice(0, 7);
       const cur = monthMap.get(m) ?? { shared: 0, real: 0 };
       cur.shared += Number(r.amount);
       monthMap.set(m, cur);
@@ -39,7 +39,7 @@ export default async function MonthsPage() {
       .eq("is_transfer", false)
       .order("date", { ascending: false });
     for (const r of data ?? []) {
-      const m = r.date.slice(0, 7);
+      const m = (r.date as string).slice(0, 7);
       const cur = monthMap.get(m) ?? { shared: 0, real: 0 };
       cur.shared += Number(r.shared_amount);
       cur.real += Number(r.real_amount);

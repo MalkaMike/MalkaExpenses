@@ -1,15 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 // ============================================================================
-// Middleware: gate /private/* and /api/private/* on the pf_mode cookie.
-// Returns 404 (NOT 401/403) when the cookie is absent or invalid — so wife,
-// poking at the URL bar, sees nothing more than "page not found".
+// Middleware: gate /admin/* and /api/admin/* on the pf_admin cookie.
+// Returns 404 (not 401/403) when cookie absent or invalid — looks like the
+// route doesn't exist. Wife typing /admin sees the login page only because
+// /admin itself is whitelisted below; everything deeper is gated.
 // ============================================================================
-// Runs on the edge runtime, so we use Web Crypto (not node:crypto).
-// Keep verifyToken in sync with the cookie format in lib/auth/mode.ts.
+// Runs on the edge runtime, so we use Web Crypto.
+// Keep verifyToken in sync with the cookie format in lib/auth/admin.ts.
 
-const COOKIE_NAME = "pf_mode";
-const TIMEOUT_MIN = Number(process.env.PRIVATE_MODE_TIMEOUT_MINUTES ?? "15");
+const COOKIE_NAME = "pf_admin";
+const TIMEOUT_MIN = Number(process.env.ADMIN_TIMEOUT_MINUTES ?? "60");
 
 const enc = new TextEncoder();
 let keyPromise: Promise<CryptoKey> | null = null;
@@ -61,21 +62,32 @@ async function verifyToken(token: string): Promise<boolean> {
   return elapsedMin <= TIMEOUT_MIN;
 }
 
-function isPrivatePath(pathname: string): boolean {
-  return pathname.startsWith("/private") || pathname.startsWith("/api/private");
+// Paths that must require an admin session. The /admin landing page is open
+// (so it can show the login form); everything below it is gated.
+function isGatedPath(pathname: string): boolean {
+  if (pathname === "/admin" || pathname === "/admin/") return false;
+  if (pathname.startsWith("/api/admin/login")) return false; // login endpoint
+  return pathname.startsWith("/admin/") || pathname.startsWith("/api/admin/");
 }
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (!isPrivatePath(pathname)) return NextResponse.next();
+  if (!isGatedPath(pathname)) return NextResponse.next();
 
   const token = req.cookies.get(COOKIE_NAME)?.value;
   if (!token || !(await verifyToken(token))) {
-    return new NextResponse("Not Found", { status: 404 });
+    // For API routes: 404. For pages: redirect to /admin (login form).
+    if (pathname.startsWith("/api/")) {
+      return new NextResponse("Not Found", { status: 404 });
+    }
+    const url = req.nextUrl.clone();
+    url.pathname = "/admin";
+    url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
   }
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/private/:path*", "/api/private/:path*"]
+  matcher: ["/admin/:path*", "/api/admin/:path*"]
 };

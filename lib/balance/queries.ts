@@ -1,7 +1,7 @@
 import "server-only";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
-import type { Mode } from "@/lib/auth/mode";
+import type { Role } from "@/lib/auth/admin";
 
 export type AccountWithBalances = {
   id: string;
@@ -9,16 +9,15 @@ export type AccountWithBalances = {
   bank: string;
   type: "checking" | "savings" | "credit_card";
   sharedBalance: number;
-  realBalance: number | null; // only populated when mode = "private"
+  realBalance: number | null; // only populated when role = "admin"
 };
 
-// Compute every account's shared and (in private mode) real balance.
+// Compute every account's shared and (in admin role) real balance.
 // Shared balance always comes through the shared_transactions_v view —
 // hidden rows (shared_amount=0) are excluded automatically.
-export async function getAccountsWithBalances(mode: Mode): Promise<AccountWithBalances[]> {
+export async function getAccountsWithBalances(role: Role): Promise<AccountWithBalances[]> {
   const sb = serverClient();
 
-  // Accounts metadata is not sensitive — fetch via service client either way
   const { data: accounts, error: accErr } = await sb
     .from("accounts")
     .select("id, name, bank, type, real_starting_balance, shared_starting_balance")
@@ -27,7 +26,6 @@ export async function getAccountsWithBalances(mode: Mode): Promise<AccountWithBa
   if (accErr) throw accErr;
   if (!accounts) return [];
 
-  // Sum shared_amount per account from the VIEW
   const shared = sharedClient();
   const { data: sharedRows, error: sErr } = await shared
     .from("shared_transactions_v")
@@ -39,9 +37,8 @@ export async function getAccountsWithBalances(mode: Mode): Promise<AccountWithBa
     sharedSum.set(r.account_id, (sharedSum.get(r.account_id) ?? 0) + Number(r.amount));
   }
 
-  // Real sums only fetched in private mode
-  let realSum = new Map<string, number>();
-  if (mode === "private") {
+  const realSum = new Map<string, number>();
+  if (role === "admin") {
     const { data: realRows, error: rErr } = await sb
       .from("transactions")
       .select("account_id, real_amount");
@@ -58,7 +55,7 @@ export async function getAccountsWithBalances(mode: Mode): Promise<AccountWithBa
     type: a.type,
     sharedBalance: Number(a.shared_starting_balance) + (sharedSum.get(a.id) ?? 0),
     realBalance:
-      mode === "private"
+      role === "admin"
         ? Number(a.real_starting_balance) + (realSum.get(a.id) ?? 0)
         : null
   }));

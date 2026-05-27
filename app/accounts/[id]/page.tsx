@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getMode } from "@/lib/auth/mode";
+import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { TransactionRow } from "@/components/transaction-row";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AccountDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const mode = await getMode();
+  const role = await getRole();
   const sb = serverClient();
 
   const { data: account } = await sb
@@ -31,9 +31,9 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
     categorySlug: string | null;
   }> = [];
   let sharedBalance = Number(account.shared_starting_balance);
-  let realBalance: number | null = mode === "private" ? Number(account.real_starting_balance) : null;
+  let realBalance: number | null = role === "admin" ? Number(account.real_starting_balance) : null;
 
-  if (mode === "shared") {
+  if (role === "public") {
     const sh = sharedClient();
     const { data } = await sh
       .from("shared_transactions_v")
@@ -88,26 +88,28 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
       <section className="mb-6 p-4 rounded-xl bg-card border border-border">
         <p className="text-xs uppercase tracking-wider text-muted">Saldo</p>
         <p className="text-3xl font-semibold tabular-nums">{formatBRL(sharedBalance)}</p>
-        {mode === "private" && realBalance !== null && realBalance !== sharedBalance && (
+        {role === "admin" && realBalance !== null && realBalance !== sharedBalance && (
           <p className="mt-1 text-xs text-muted tabular-nums">
             real {formatBRL(realBalance)} · Δ {formatBRL(realBalance - sharedBalance)}
           </p>
         )}
       </section>
 
-      <div className="mb-4">
-        <Link
-          href={`/import?account=${id}`}
-          className="inline-block text-sm px-4 py-2 rounded-lg bg-card border border-border"
-        >
-          Importar extrato
-        </Link>
-      </div>
+      {role === "admin" && (
+        <div className="mb-4">
+          <Link
+            href={`/admin/import?account=${id}`}
+            className="inline-block text-sm px-4 py-2 rounded-lg bg-card border border-border"
+          >
+            Importar extrato
+          </Link>
+        </div>
+      )}
 
       <div className="space-y-2">
         {rows.length === 0 && <p className="text-sm text-muted">Nenhum movimento.</p>}
         {rows.map((r) => (
-          <TransactionRow key={r.id} {...r} mode={mode} />
+          <TransactionRow key={r.id} {...r} role={role} />
         ))}
       </div>
     </div>

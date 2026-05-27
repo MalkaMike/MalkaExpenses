@@ -5,13 +5,20 @@ import bcrypt from "bcryptjs";
 import { env } from "@/lib/env";
 import { serverClient } from "@/lib/supabase/server";
 
-export type Mode = "shared" | "private";
-export const COOKIE_NAME = "pf_mode";
+// ============================================================================
+// Admin auth — single shared password for Mickael's admin surface (/admin/*).
+// Wife uses the main site freely (no auth). Mickael logs in to /admin to see
+// real_amount, edit shared_amount, hide transactions, add fake entries.
+// ============================================================================
+//
+// Cookie format:    pf_admin = v1.<lastActivityIso>.<sig>
+// Sig:              HMAC-SHA256(MODE_COOKIE_SECRET, "v1." + lastActivityIso)
+// Sliding window:   each authenticated request refreshes lastActivityIso
+// Idle timeout:     ADMIN_TIMEOUT_MINUTES (default 60)
+// ============================================================================
 
-// ----------------------------------------------------------------------------
-// Cookie token format:   v1.<lastActivityIso>.<sig>
-// Where sig = HMAC-SHA256(MODE_COOKIE_SECRET, "v1." + lastActivityIso)
-// ----------------------------------------------------------------------------
+export type Role = "public" | "admin";
+export const COOKIE_NAME = "pf_admin";
 
 function sign(payload: string): string {
   return createHmac("sha256", env.MODE_COOKIE_SECRET).update(payload).digest("hex");
@@ -39,58 +46,36 @@ function unpackToken(token: string): { lastActivity: Date } | null {
 }
 
 // ----------------------------------------------------------------------------
-// Read current mode from cookie. Returns "shared" unless cookie present,
+// Read current role from cookie. Returns "public" unless cookie present,
 // valid, and last_activity within timeout. Side-effect-free.
 // ----------------------------------------------------------------------------
-export async function getMode(): Promise<Mode> {
+export async function getRole(): Promise<Role> {
   const c = await cookies();
   const token = c.get(COOKIE_NAME)?.value;
-  if (!token) return "shared";
+  if (!token) return "public";
   const parsed = unpackToken(token);
-  if (!parsed) return "shared";
+  if (!parsed) return "public";
   const elapsedMin = (Date.now() - parsed.lastActivity.getTime()) / 60000;
-  if (elapsedMin > env.PRIVATE_MODE_TIMEOUT_MINUTES) return "shared";
-  return "private";
+  if (elapsedMin > env.ADMIN_TIMEOUT_MINUTES) return "public";
+  return "admin";
 }
 
 // ----------------------------------------------------------------------------
-// PIN validation. Looks up bcrypt hash in app_settings and compares.
-// Returns true on success and writes audit log entry.
+// Password validation against the env-var bcrypt hash.
 // ----------------------------------------------------------------------------
-export async function validatePin(pin: string): Promise<boolean> {
-  if (!/^\d{4,12}$/.test(pin)) return false;
-  const sb = serverClient();
-  const { data, error } = await sb
-    .from("app_settings")
-    .select("private_pin_hash")
-    .eq("id", 1)
-    .single();
-  if (error || !data?.private_pin_hash) return false;
-  return bcrypt.compare(pin, data.private_pin_hash);
-}
-
-export async function setPin(pin: string): Promise<void> {
-  if (!/^\d{4,12}$/.test(pin)) throw new Error("PIN must be 4-12 digits");
-  const hash = await bcrypt.hash(pin, 10);
-  const sb = serverClient();
-  const { error } = await sb.from("app_settings").update({ private_pin_hash: hash }).eq("id", 1);
-  if (error) throw error;
-}
-
-export async function isPinConfigured(): Promise<boolean> {
-  const sb = serverClient();
-  const { data } = await sb
-    .from("app_settings")
-    .select("private_pin_hash")
-    .eq("id", 1)
-    .single();
-  return Boolean(data?.private_pin_hash);
+export async function validatePassword(password: string): Promise<boolean> {
+  if (!password || password.length > 200) return false;
+  try {
+    return await bcrypt.compare(password, env.ADMIN_PASSWORD_HASH);
+  } catch {
+    return false;
+  }
 }
 
 // ----------------------------------------------------------------------------
-// Mode transitions — write cookie + audit
+// Login / logout — write cookie + audit
 // ----------------------------------------------------------------------------
-export async function enterPrivateMode(): Promise<void> {
+export async function loginAdmin(): Promise<void> {
   const c = await cookies();
   const token = packToken(new Date().toISOString());
   c.set(COOKIE_NAME, token, {
@@ -98,27 +83,27 @@ export async function enterPrivateMode(): Promise<void> {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: env.PRIVATE_MODE_TIMEOUT_MINUTES * 60
+    maxAge: env.ADMIN_TIMEOUT_MINUTES * 60
   });
-  await writeAudit("mode.enter_private");
+  await writeAudit("admin.login");
 }
 
-export async function exitPrivateMode(): Promise<void> {
+export async function logoutAdmin(): Promise<void> {
   const c = await cookies();
   c.delete(COOKIE_NAME);
-  await writeAudit("mode.exit_private");
+  await writeAudit("admin.logout");
 }
 
-// Refresh the sliding-window timestamp. Call from middleware on each /private/*
-// or /api/private/* request to keep the session alive.
-export async function refreshMode(): Promise<void> {
+// Refresh the sliding-window timestamp. Call from middleware on each /admin/*
+// or /api/admin/* request to keep the session alive.
+export async function refreshAdmin(): Promise<void> {
   const c = await cookies();
   const token = c.get(COOKIE_NAME)?.value;
   if (!token) return;
   const parsed = unpackToken(token);
   if (!parsed) return;
   const elapsedMin = (Date.now() - parsed.lastActivity.getTime()) / 60000;
-  if (elapsedMin > env.PRIVATE_MODE_TIMEOUT_MINUTES) {
+  if (elapsedMin > env.ADMIN_TIMEOUT_MINUTES) {
     c.delete(COOKIE_NAME);
     return;
   }
@@ -127,7 +112,7 @@ export async function refreshMode(): Promise<void> {
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: env.PRIVATE_MODE_TIMEOUT_MINUTES * 60
+    maxAge: env.ADMIN_TIMEOUT_MINUTES * 60
   });
 }
 
@@ -144,11 +129,11 @@ export async function writeAudit(
 ): Promise<void> {
   try {
     const h = await headers();
-    const mode = await getMode();
+    const role = await getRole();
     const sb = serverClient();
     await sb.from("audit_log").insert({
       actor: "mickael",
-      mode,
+      mode: role,
       action,
       transaction_id: data?.transactionId ?? null,
       old_value: data?.oldValue ?? null,
@@ -161,9 +146,9 @@ export async function writeAudit(
   }
 }
 
-// Enforce private mode or throw — used in /api/private route handlers
-export async function requirePrivate(): Promise<void> {
-  if ((await getMode()) !== "private") {
+// Enforce admin role in API route handlers
+export async function requireAdmin(): Promise<void> {
+  if ((await getRole()) !== "admin") {
     throw new Response("Not Found", { status: 404 });
   }
 }

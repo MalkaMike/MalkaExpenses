@@ -1,4 +1,4 @@
-import { getMode } from "@/lib/auth/mode";
+import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { TransactionRow } from "@/components/transaction-row";
@@ -15,7 +15,7 @@ type SharedRow = {
   is_transfer: boolean;
 };
 
-type PrivateRow = {
+type AdminRow = {
   id: string;
   account_id: string;
   date: string;
@@ -29,7 +29,7 @@ type PrivateRow = {
 };
 
 export default async function TransactionsPage() {
-  const mode = await getMode();
+  const role = await getRole();
 
   let rows: Array<{
     id: string;
@@ -42,7 +42,7 @@ export default async function TransactionsPage() {
     isTransfer: boolean;
   }> = [];
 
-  if (mode === "shared") {
+  if (role === "public") {
     const sb = sharedClient();
     const { data } = await sb
       .from("shared_transactions_v")
@@ -68,7 +68,7 @@ export default async function TransactionsPage() {
       )
       .order("date", { ascending: false })
       .limit(200);
-    rows = ((data ?? []) as PrivateRow[]).map((r) => ({
+    rows = ((data ?? []) as AdminRow[]).map((r) => ({
       id: r.id,
       date: r.date,
       description: r.description_clean ?? r.description_raw,
@@ -89,7 +89,7 @@ export default async function TransactionsPage() {
       <div className="space-y-2">
         {rows.length === 0 && <p className="text-sm text-muted">Nada por enquanto.</p>}
         {rows.map((r) => (
-          <TransactionRow key={r.id} {...r} mode={mode} />
+          <TransactionRow key={r.id} {...r} role={role} />
         ))}
       </div>
     </div>

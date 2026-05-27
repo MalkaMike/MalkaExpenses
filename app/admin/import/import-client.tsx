@@ -46,7 +46,7 @@ export function ImportClient({
       const fd = new FormData();
       fd.append("file", file);
       fd.append("accountId", accountId);
-      const r = await fetch("/api/import/upload", { method: "POST", body: fd });
+      const r = await fetch("/api/admin/import/upload", { method: "POST", body: fd });
       const json = await r.json();
       if (!r.ok) {
         setErr(json.error ?? "erro");
@@ -65,7 +65,7 @@ export function ImportClient({
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch("/api/import/confirm", {
+      const r = await fetch("/api/admin/import/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -92,7 +92,7 @@ export function ImportClient({
   if (accounts.length === 0) {
     return (
       <p className="text-sm text-muted">
-        Crie uma conta primeiro em <a href="/accounts/new" className="underline">Nova conta</a>.
+        Crie uma conta primeiro em <a href="/admin/accounts/new" className="underline">Nova conta</a>.
       </p>
     );
   }

@@ -1,20 +1,21 @@
 import { formatBRL, formatDate } from "@/lib/format";
-import type { Mode } from "@/lib/auth/mode";
+import type { Role } from "@/lib/auth/admin";
 
 export type TxRowProps = {
   id: string;
   date: string;
   description: string;
   amountShared: number;
-  amountReal?: number | null; // only in private mode
+  amountReal?: number | null; // only populated when role = admin
   categorySlug?: string | null;
   isFake?: boolean;
   isTransfer?: boolean;
-  mode: Mode;
+  role: Role;
 };
 
 export function TransactionRow(t: TxRowProps) {
-  const showRealColumn = t.mode === "private" && t.amountReal !== undefined && t.amountReal !== t.amountShared;
+  const showRealColumn =
+    t.role === "admin" && t.amountReal !== undefined && t.amountReal !== t.amountShared;
   const isIncome = t.amountShared > 0;
 
   return (
@@ -22,7 +23,7 @@ export function TransactionRow(t: TxRowProps) {
       <div className="flex-1 min-w-0">
         <p className="font-medium truncate">
           {t.description}
-          {t.mode === "private" && t.isFake && (
+          {t.role === "admin" && t.isFake && (
             <span className="ml-2 text-[10px] uppercase tracking-wider text-danger">fake</span>
           )}
           {t.isTransfer && (

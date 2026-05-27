@@ -1,7 +1,7 @@
 import "./globals.css";
 import type { Metadata, Viewport } from "next";
-import { getMode } from "@/lib/auth/mode";
-import { ModeBanner } from "@/components/mode-banner";
+import { getRole } from "@/lib/auth/admin";
+import { AdminBanner } from "@/components/admin-banner";
 
 export const metadata: Metadata = {
   title: "Casa",
@@ -17,11 +17,11 @@ export const viewport: Viewport = {
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const mode = await getMode();
+  const role = await getRole();
   return (
     <html lang="pt-BR">
-      <body data-mode={mode}>
-        <ModeBanner mode={mode} />
+      <body data-role={role}>
+        <AdminBanner role={role} />
         <main className="min-h-screen pb-24">{children}</main>
       </body>
     </html>
