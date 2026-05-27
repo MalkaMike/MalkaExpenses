@@ -10,6 +10,7 @@
   --border: 229 229 229;
   --accent: 5 150 105;
   --danger: 220 38 38;
+  --warning: 217 119 6;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -21,6 +22,7 @@
     --border: 38 38 38;
     --accent: 16 185 129;
     --danger: 248 113 113;
+    --warning: 251 191 36;
   }
 }
 

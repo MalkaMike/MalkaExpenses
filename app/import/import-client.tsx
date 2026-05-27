@@ -38,7 +38,13 @@ type Preview = {
 
 type Stage = "idle" | "uploading" | "parsing" | "preview" | "importing" | "done" | "error";
 
-type DoneResult = { inserted: number; categorized: number; total: number; aiError?: string | null };
+type DoneResult = {
+  inserted: number;
+  duplicates: number;
+  categorized: number;
+  total: number;
+  aiError?: string | null;
+};
 
 export function ImportClient({
   accounts,
@@ -194,33 +200,75 @@ export function ImportClient({
   // ============== UI per stage ==============
 
   if (stage === "done" && done) {
+    const allDuplicates = done.duplicates > 0 && done.inserted === 0;
+    const someDuplicates = done.duplicates > 0 && done.inserted > 0;
+
     return (
-      <div className="space-y-5">
-        <div className="rounded-2xl bg-accent/10 border border-accent/30 p-7 text-center">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-accent/20 text-accent mb-3 animate-[pop_0.3s_ease-out]">
+      <div className="space-y-4">
+        {/* Main result card */}
+        <div
+          className={`rounded-2xl border p-7 text-center ${
+            allDuplicates
+              ? "bg-warning/10 border-warning/40"
+              : "bg-accent/10 border-accent/30"
+          }`}
+        >
+          <div
+            className={`inline-flex items-center justify-center w-16 h-16 rounded-full mb-3 animate-[pop_0.3s_ease-out] ${
+              allDuplicates
+                ? "bg-warning/20 text-warning"
+                : "bg-accent/20 text-accent"
+            }`}
+          >
             <CheckCircle2 size={32} />
           </div>
-          <h2 className="text-2xl font-semibold mb-1">Importado!</h2>
-          <p className="text-sm text-muted mb-5">
-            {done.inserted} {done.inserted === 1 ? "movimento adicionado" : "movimentos adicionados"}
-          </p>
-          <div className="grid grid-cols-2 gap-3 mb-5">
+
+          {allDuplicates ? (
+            <>
+              <h2 className="text-xl font-semibold mb-1">Arquivo já importado</h2>
+              <p className="text-sm text-muted mb-5">
+                Todos os {done.total} {done.total === 1 ? "movimento" : "movimentos"}{" "}
+                deste arquivo já existem na base. Nenhum dado novo foi adicionado.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-2xl font-semibold mb-1">Importado!</h2>
+              <p className="text-sm text-muted mb-5">
+                {done.inserted}{" "}
+                {done.inserted === 1 ? "movimento adicionado" : "movimentos adicionados"}
+              </p>
+            </>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
             <Stat
               icon={<FileText size={14} />}
-              label="Total importado"
+              label="Novos"
               value={String(done.inserted)}
             />
             <Stat
               icon={<Sparkles size={14} />}
               label="Categorizados por IA"
-              value={`${done.categorized}/${done.total}`}
+              value={done.inserted > 0 ? `${done.categorized}/${done.inserted}` : "—"}
             />
           </div>
+
+          {/* Duplicate notice (partial) */}
+          {someDuplicates && (
+            <div className="mb-4 p-3 rounded-xl bg-warning/10 border border-warning/30 text-warning text-xs text-left">
+              ⚠ {done.duplicates}{" "}
+              {done.duplicates === 1 ? "movimento já existia" : "movimentos já existiam"} e{" "}
+              {done.duplicates === 1 ? "foi ignorado" : "foram ignorados"}.
+            </div>
+          )}
+
           {done.aiError && (
             <p className="text-xs text-danger mb-3">
               ⚠ Categorização parcial: {done.aiError}
             </p>
           )}
+
           <div className="flex flex-col sm:flex-row gap-2">
             <button
               onClick={() => router.push("/")}
@@ -236,6 +284,7 @@ export function ImportClient({
             </button>
           </div>
         </div>
+
         <style jsx>{`
           @keyframes pop {
             0% { transform: scale(0.5); opacity: 0; }

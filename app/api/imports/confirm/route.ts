@@ -21,12 +21,12 @@ const Body = z.object({
 });
 
 // Confirm a parsed batch:
-//   1. Dedup-upsert into transactions (status=pending_review)
-//   2. Look up which rows are still uncategorized
-//   3. Auto-categorize them via Vertex Gemini Flash (batches of 40)
+//   1. Check for duplicates (account_id + date + real_amount + description_raw)
+//   2. Insert only new rows — no ON CONFLICT needed (partial unique index is not
+//      usable by Postgres for ON CONFLICT; check-then-insert is more reliable)
+//   3. Categorize newly inserted rows via Vertex Gemini Flash (batches of 40)
 //   4. Apply category_id + confidence; status=auto_accepted if confidence>=0.9
-//   5. Mark cartao_pagamento/transferencias as is_transfer=true so they're
-//      excluded from category totals (already excluded from category sums in UI)
+//   5. Mark cartao_pagamento/transferencias as is_transfer=true
 export async function POST(req: NextRequest) {
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) {
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     .single();
   const source = (imp?.file_type as "ofx" | "csv" | "pdf") ?? "ofx";
 
-  // 1) Upsert
+  // Build the full row objects we want to insert
   const rows = transactions.map((t) => ({
     account_id: accountId,
     date: t.date,
@@ -54,48 +54,67 @@ export async function POST(req: NextRequest) {
     source_file_id: importId,
     status: "pending_review" as const,
     created_by: "import" as const,
-    external_id: t.externalId
+    external_id: t.externalId ?? null
   }));
 
-  const { error: upErr } = await sb
+  // 1) Dedup check — fetch rows for the same account/dates that already exist
+  const dates = Array.from(new Set(rows.map((r) => r.date)));
+
+  const { data: alreadyIn } = await sb
     .from("transactions")
-    .upsert(rows, {
-      onConflict: "account_id,date,real_amount,description_raw",
-      ignoreDuplicates: true
-    });
-  if (upErr) {
-    return NextResponse.json({ error: upErr.message }, { status: 500 });
+    .select("account_id, date, real_amount, description_raw")
+    .eq("account_id", accountId)
+    .in("date", dates);
+
+  const existingSet = new Set<string>();
+  for (const t of alreadyIn ?? []) {
+    existingSet.add(
+      `${t.account_id}|${t.date}|${Number(t.real_amount)}|${t.description_raw}`
+    );
   }
 
-  // 2) Re-fetch matching rows so we have their IDs and categorization status
-  const dates = Array.from(new Set(rows.map((r) => r.date)));
-  const { data: existingRows } = await sb
+  const newRows = rows.filter(
+    (r) =>
+      !existingSet.has(
+        `${r.account_id}|${r.date}|${Number(r.real_amount)}|${r.description_raw}`
+      )
+  );
+  const duplicateCount = rows.length - newRows.length;
+
+  // 2) Insert only genuinely new rows
+  if (newRows.length > 0) {
+    const { error: insErr } = await sb.from("transactions").insert(newRows);
+    if (insErr) {
+      return NextResponse.json({ error: insErr.message }, { status: 500 });
+    }
+  }
+
+  // 3) Re-fetch inserted rows to get their DB-assigned IDs for categorization
+  const { data: fetchedRows } = await sb
     .from("transactions")
     .select("id, date, description_raw, real_amount, category_id")
     .eq("account_id", accountId)
     .in("date", dates);
 
-  const matchByKey = new Map<
-    string,
-    { id: string; date: string; description_raw: string; real_amount: number; category_id: string | null }
-  >();
-  for (const r of existingRows ?? []) {
-    matchByKey.set(`${r.date}|${r.real_amount}|${r.description_raw}`, r);
-  }
+  // Only categorize rows we just inserted (no category yet)
+  const newKeySet = new Set(
+    newRows.map((r) => `${r.date}|${Number(r.real_amount)}|${r.description_raw}`)
+  );
 
   const toCategorize: CategorizeInput[] = [];
-  for (const r of rows) {
-    const m = matchByKey.get(`${r.date}|${Number(r.real_amount)}|${r.description_raw}`);
-    if (!m || m.category_id) continue;
+  for (const r of fetchedRows ?? []) {
+    if (r.category_id) continue; // already categorized (e.g. previous import)
+    const key = `${r.date}|${Number(r.real_amount)}|${r.description_raw}`;
+    if (!newKeySet.has(key)) continue; // not from this batch
     toCategorize.push({
-      id: m.id,
+      id: r.id,
       date: r.date,
       description: r.description_raw,
       amount: Number(r.real_amount)
     });
   }
 
-  // 3) Categorize via Vertex
+  // 4) Categorize via Vertex
   let categorizedCount = 0;
   let aiErr: string | null = null;
 
@@ -134,7 +153,8 @@ export async function POST(req: NextRequest) {
   await sb.from("statement_imports").update({ status: "imported" }).eq("id", importId);
 
   return NextResponse.json({
-    inserted: rows.length,
+    inserted: newRows.length,
+    duplicates: duplicateCount,
     categorized: categorizedCount,
     total: rows.length,
     aiError: aiErr
