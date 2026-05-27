@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Archive, Eye, FileCog, ChevronRight } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -27,13 +28,14 @@ export default async function AdminLanding({
   const totalReal = accounts.reduce((s, a) => s + (a.realBalance ?? 0), 0);
   const totalShared = accounts.reduce((s, a) => s + a.sharedBalance, 0);
 
-  // Quick stats: how many tx pending review, total tx, fake count
   const sb = serverClient();
-  const [{ count: total }, { count: pending }, { count: fakes }] = await Promise.all([
-    sb.from("transactions").select("*", { count: "exact", head: true }),
-    sb.from("transactions").select("*", { count: "exact", head: true }).eq("status", "pending_review"),
-    sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", true)
-  ]);
+  const [{ count: total }, { count: pending }, { count: fakes }, { count: imports }] =
+    await Promise.all([
+      sb.from("transactions").select("*", { count: "exact", head: true }),
+      sb.from("transactions").select("*", { count: "exact", head: true }).eq("status", "pending_review"),
+      sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", true),
+      sb.from("statement_imports").select("*", { count: "exact", head: true })
+    ]);
 
   return (
     <div className="px-4 pt-6 max-w-2xl mx-auto pb-32">
@@ -65,10 +67,27 @@ export default async function AdminLanding({
         <Stat label="Fake" value={fakes ?? 0} />
       </section>
 
-      <nav className="space-y-2">
-        <AdminLink href="/admin/accounts/new" title="Nova conta" />
-        <AdminLink href="/admin/import" title="Importar extrato" />
-        <AdminLink href="/" title="Ver site público (modo da esposa)" />
+      <h2 className="text-xs uppercase tracking-wider text-muted mb-3 px-1">Ferramentas</h2>
+      <nav className="space-y-2 mb-6">
+        <AdminLink
+          href="/admin/archive"
+          title="Arquivos importados"
+          subtitle={`${imports ?? 0} extratos preservados`}
+          Icon={Archive}
+        />
+        <AdminLink
+          href="/admin/review"
+          title="Revisão de categorias"
+          subtitle={`${pending ?? 0} pendentes de revisão`}
+          Icon={FileCog}
+          disabled
+        />
+        <AdminLink
+          href="/"
+          title="Voltar ao app"
+          subtitle="o que sua esposa vê"
+          Icon={Eye}
+        />
       </nav>
     </div>
   );
@@ -83,13 +102,45 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function AdminLink({ href, title }: { href: string; title: string }) {
+function AdminLink({
+  href,
+  title,
+  subtitle,
+  Icon,
+  disabled = false
+}: {
+  href: string;
+  title: string;
+  subtitle?: string;
+  Icon: typeof Archive;
+  disabled?: boolean;
+}) {
+  const content = (
+    <div className="flex items-center gap-3">
+      <div className="w-10 h-10 rounded-xl bg-bg/60 inline-flex items-center justify-center text-muted">
+        <Icon size={18} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium">{title}</p>
+        {subtitle && <p className="text-xs text-muted truncate">{subtitle}</p>}
+      </div>
+      <ChevronRight size={16} className="text-muted" />
+    </div>
+  );
+  if (disabled) {
+    return (
+      <div className="block p-4 rounded-xl bg-card border border-border opacity-50 cursor-not-allowed">
+        {content}
+        <p className="text-[10px] uppercase tracking-wider text-muted mt-2 ml-13">em breve</p>
+      </div>
+    );
+  }
   return (
     <Link
       href={href}
-      className="block p-4 rounded-xl bg-card border border-border active:scale-[0.99] transition"
+      className="block p-4 rounded-xl bg-card border border-border active:scale-[0.99] hover:border-accent/40 transition"
     >
-      <span className="font-medium">{title}</span>
+      {content}
     </Link>
   );
 }

@@ -28,7 +28,7 @@ export function NewAccountForm() {
       const realStartNum = Number(realStart.replace(",", ".")) || 0;
       const sharedStartNum =
         sharedStart === "" ? realStartNum : Number(sharedStart.replace(",", ".")) || 0;
-      const r = await fetch("/api/admin/accounts", {
+      const r = await fetch("/api/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -44,7 +44,7 @@ export function NewAccountForm() {
         setErr((await r.json()).error ?? "erro");
         return;
       }
-      router.replace("/admin");
+      router.replace("/");
     } finally {
       setBusy(false);
     }

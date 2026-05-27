@@ -143,14 +143,12 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
             real {formatBRL(realBalance)} · Δ {formatBRL(realBalance - sharedBalance)}
           </p>
         )}
-        {role === "admin" && (
-          <Link
-            href={`/admin/import?account=${id}`}
-            className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/30 text-xs hover:bg-accent/20"
-          >
-            <Upload size={12} /> importar extrato
-          </Link>
-        )}
+        <Link
+          href={`/import?account=${id}`}
+          className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/30 text-xs hover:bg-accent/20"
+        >
+          <Upload size={12} /> importar extrato
+        </Link>
       </section>
 
       {monthsBars.length >= 2 && (

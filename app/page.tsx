@@ -48,17 +48,15 @@ export default async function Home() {
           <span className="px-2.5 py-1 rounded-full bg-bg/60 border border-border">
             {dash.accountsCount} {dash.accountsCount === 1 ? "conta" : "contas"}
           </span>
-          {role === "admin" && (
+          <Link
+            href="/accounts/new"
+            className="px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/30 inline-flex items-center gap-1 hover:bg-accent/20"
+          >
+            <Plus size={12} /> nova conta
+          </Link>
+          {dash.accountsCount > 0 && (
             <Link
-              href="/admin/accounts/new"
-              className="px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/30 inline-flex items-center gap-1 hover:bg-accent/20"
-            >
-              <Plus size={12} /> nova conta
-            </Link>
-          )}
-          {role === "admin" && dash.accountsCount > 0 && (
-            <Link
-              href="/admin/import"
+              href="/import"
               className="px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/30 inline-flex items-center gap-1 hover:bg-accent/20"
             >
               <Upload size={12} /> importar
@@ -186,7 +184,7 @@ export default async function Home() {
         <div className="rounded-2xl bg-card border border-dashed border-border p-6 text-center mb-8">
           <p className="text-sm text-muted mb-3">Sem movimentos ainda.</p>
           <Link
-            href="/admin/import"
+            href="/import"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-fg text-bg text-sm font-medium"
           >
             <Upload size={14} /> Importar primeiro extrato
@@ -197,16 +195,7 @@ export default async function Home() {
   );
 }
 
-function EmptyOnboarding({ role }: { role: "public" | "household" | "admin" }) {
-  if (role !== "admin") {
-    return (
-      <div className="rounded-2xl bg-card border border-dashed border-border p-8 text-center mb-8">
-        <p className="text-sm text-muted">
-          Aguardando o admin adicionar contas para você ver.
-        </p>
-      </div>
-    );
-  }
+function EmptyOnboarding({ role: _role }: { role: "public" | "household" | "admin" }) {
   return (
     <div className="rounded-2xl bg-gradient-to-br from-accent/10 to-card border border-accent/30 p-6 mb-6">
       <h3 className="font-medium mb-1">Bem-vindo à Casa</h3>
@@ -215,13 +204,13 @@ function EmptyOnboarding({ role }: { role: "public" | "household" | "admin" }) {
       </p>
       <div className="flex flex-col sm:flex-row gap-2">
         <Link
-          href="/admin/accounts/new"
+          href="/accounts/new"
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-fg text-bg text-sm font-medium"
         >
           <Plus size={14} /> Criar primeira conta
         </Link>
         <Link
-          href="/admin/import"
+          href="/import"
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-card border border-border text-sm font-medium"
         >
           <Upload size={14} /> Importar extrato
