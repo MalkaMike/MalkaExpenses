@@ -2,10 +2,11 @@ import "./globals.css";
 import type { Metadata, Viewport } from "next";
 import { getRole } from "@/lib/auth/admin";
 import { AdminBanner } from "@/components/admin-banner";
+import { BottomNav } from "@/components/bottom-nav";
 
 export const metadata: Metadata = {
   title: "Casa",
-  description: "Household finances",
+  description: "Suas finanças, juntos",
   manifest: "/manifest.webmanifest"
 };
 
@@ -23,6 +24,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body data-role={role}>
         <AdminBanner role={role} />
         <main className="min-h-screen pb-24">{children}</main>
+        <BottomNav role={role} />
       </body>
     </html>
   );
