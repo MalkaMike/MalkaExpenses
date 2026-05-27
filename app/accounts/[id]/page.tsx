@@ -6,6 +6,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { TransactionRow } from "@/components/transaction-row";
 import { formatBRL, monthLabel } from "@/lib/format";
+import { AccountEditPanel } from "./account-edit-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -129,10 +130,27 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
         <Link href="/" className="inline-flex items-center text-sm text-muted hover:text-fg gap-1">
           <ChevronLeft size={14} /> voltar
         </Link>
-        <h1 className="text-2xl font-semibold mt-2">{account.name}</h1>
-        <p className="text-xs text-muted">
-          {BANK_LABEL[account.bank] ?? account.bank} · {TYPE_LABEL[account.type] ?? account.type}
-        </p>
+        <div className="flex items-center justify-between mt-2">
+          <div>
+            <h1 className="text-2xl font-semibold">{account.name}</h1>
+            <p className="text-xs text-muted">
+              {BANK_LABEL[account.bank] ?? account.bank} · {TYPE_LABEL[account.type] ?? account.type}
+            </p>
+          </div>
+          {role === "admin" && (
+            <AccountEditPanel
+              account={{
+                id: account.id,
+                name: account.name,
+                bank: account.bank,
+                type: account.type,
+                real_starting_balance: Number(account.real_starting_balance),
+                shared_starting_balance: Number(account.shared_starting_balance),
+                cc_issuer: account.cc_issuer ?? null
+              }}
+            />
+          )}
+        </div>
       </header>
 
       <section className="rounded-2xl bg-gradient-to-br from-card to-card/40 border border-border p-5 mb-5">
