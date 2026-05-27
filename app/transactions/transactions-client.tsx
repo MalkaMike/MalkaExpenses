@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { TransactionRow } from "@/components/transaction-row";
+import { TransactionEditModal, type EditableTx } from "@/components/transaction-edit-modal";
 import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories/meta";
 import type { Role } from "@/lib/auth/admin";
 
@@ -42,6 +43,7 @@ export function TransactionsClient({
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>("");
   const [accId, setAccId] = useState<string>("");
+  const [editing, setEditing] = useState<EditableTx | null>(null);
 
   const filtered = useMemo(() => {
     const qLower = q.trim().toLowerCase();
@@ -163,24 +165,42 @@ export function TransactionsClient({
             </h3>
             <div className="space-y-2">
               {list.map((r) => (
-                <TransactionRow
+                <button
                   key={r.id}
-                  id={r.id}
-                  date={r.date}
-                  description={r.description}
-                  amountShared={r.amountShared}
-                  amountReal={r.amountReal}
-                  categorySlug={r.categorySlug}
-                  isFake={r.isFake}
-                  isTransfer={r.isTransfer}
-                  role={role}
-                  showDate={false}
-                />
+                  onClick={() =>
+                    setEditing({
+                      id: r.id,
+                      date: r.date,
+                      description: r.description,
+                      amountShared: r.amountShared,
+                      amountReal: r.amountReal,
+                      categorySlug: r.categorySlug,
+                      isFake: r.isFake,
+                      isTransfer: r.isTransfer
+                    })
+                  }
+                  className="block w-full text-left"
+                >
+                  <TransactionRow
+                    id={r.id}
+                    date={r.date}
+                    description={r.description}
+                    amountShared={r.amountShared}
+                    amountReal={r.amountReal}
+                    categorySlug={r.categorySlug}
+                    isFake={r.isFake}
+                    isTransfer={r.isTransfer}
+                    role={role}
+                    showDate={false}
+                  />
+                </button>
               ))}
             </div>
           </div>
         ))}
       </div>
+
+      <TransactionEditModal tx={editing} role={role} onClose={() => setEditing(null)} />
     </>
   );
 }
