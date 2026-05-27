@@ -15,7 +15,7 @@ export default async function LoginPage({
     redirect(sp.next || "/");
   }
   return (
-    <div className="min-h-screen flex items-center justify-center px-6">
+    <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-[radial-gradient(ellipse_at_top,rgb(var(--accent)/0.08),transparent_60%)]">
       <LoginForm next={sp.next} />
     </div>
   );
