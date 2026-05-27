@@ -31,7 +31,7 @@ import {
   Stethoscope,
   Sparkles,
   BedDouble,
-  Map,
+  Map as MapIcon,
   Wrench,
   Users,
   Smartphone,
@@ -110,7 +110,7 @@ export const CATEGORY_META: Record<string, CategoryMeta> = {
 
   // ── Subcategories of VIAGENS ───────────────────────────────────────────────
   hoteis_pousadas:  { slug: "hoteis_pousadas",  name: "Hotéis & Pousadas",  Icon: BedDouble, color: "#0ea5e9", parentSlug: "viagens" },
-  passeios_turismo: { slug: "passeios_turismo", name: "Passeios & Turismo", Icon: Map,       color: "#38bdf8", parentSlug: "viagens" },
+  passeios_turismo: { slug: "passeios_turismo", name: "Passeios & Turismo", Icon: MapIcon,    color: "#38bdf8", parentSlug: "viagens" },
 
   // ── Subcategories of MORADIA ───────────────────────────────────────────────
   aluguel_condominio:  { slug: "aluguel_condominio",  name: "Aluguel & Condomínio", Icon: Home,  color: "#3b82f6", parentSlug: "moradia" },
@@ -205,3 +205,22 @@ export const SYSTEM_SLUGS = new Set([
   "receita",
   "outros"
 ]);
+
+// ── Shared aggregate utility ───────────────────────────────────────────────
+// Rolls subcategories up into their parent so charts/lists show one row per
+// top-level category (e.g. combustivel + uber_taxi → single "Transporte" row).
+export type CategoryTotalDatum = { slug: string; total: number };
+
+export function mergeCategoryTotalsToParents(
+  data: CategoryTotalDatum[]
+): CategoryTotalDatum[] {
+  const merged = new Map<string, number>();
+  for (const d of data) {
+    const meta = CATEGORY_META[d.slug];
+    const parentSlug = meta?.parentSlug ?? d.slug;
+    merged.set(parentSlug, (merged.get(parentSlug) ?? 0) + d.total);
+  }
+  return Array.from(merged.entries())
+    .map(([slug, total]) => ({ slug, total }))
+    .sort((a, b) => b.total - a.total);
+}

@@ -112,8 +112,14 @@ export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
   async function approveOne(id: string) {
     setBusy(true);
     try {
-      await patchOne(id, { description_clean: rows.find((r) => r.id === id)?.description });
-      // status auto-set to user_edited by API; this confirms the current category
+      const row = rows.find((r) => r.id === id);
+      if (!row) return;
+      // Always send category_id so the API creates/updates the merchant rule even on pure confirms
+      const cmap = await ensureCategoryMap();
+      const catId = cmap[row.categorySlug];
+      const body: Record<string, unknown> = { description_clean: row.description };
+      if (catId) body.category_id = catId;
+      await patchOne(id, body);
       toast.success("Categoria confirmada");
       setRows((rs) => rs.filter((r) => r.id !== id));
       setSelected((s) => {
@@ -155,11 +161,19 @@ export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
     let ok = 0;
     let fail = 0;
     try {
+      // Resolve category map once for all selected rows
+      const cmap = await ensureCategoryMap();
       for (const id of selected) {
         try {
-          await patchOne(id, {
-            description_clean: rows.find((r) => r.id === id)?.description
-          });
+          const row = rows.find((r) => r.id === id);
+          const body: Record<string, unknown> = {
+            description_clean: row?.description
+          };
+          // Include category_id so merchant rules are learned on bulk confirm
+          if (row?.categorySlug && cmap[row.categorySlug]) {
+            body.category_id = cmap[row.categorySlug];
+          }
+          await patchOne(id, body);
           ok++;
         } catch {
           fail++;

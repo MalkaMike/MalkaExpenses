@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 import { Search, X } from "lucide-react";
 import { TransactionRow } from "@/components/transaction-row";
 import { TransactionEditModal, type EditableTx } from "@/components/transaction-edit-modal";
-import { CATEGORY_META, CATEGORY_ORDER } from "@/lib/categories/meta";
+import { CATEGORY_META, getCategoryTree } from "@/lib/categories/meta";
 import type { Role } from "@/lib/auth/admin";
 
 type Row = {
@@ -34,21 +34,31 @@ function dayHeader(iso: string): string {
 export function TransactionsClient({
   rows,
   accounts,
-  role
+  role,
+  initialAccId = "",
+  initialCat = ""
 }: {
   rows: Row[];
   accounts: Array<{ id: string; name: string }>;
   role: Role;
+  initialAccId?: string;
+  initialCat?: string;
 }) {
   const [q, setQ] = useState("");
-  const [cat, setCat] = useState<string>("");
-  const [accId, setAccId] = useState<string>("");
+  const [cat, setCat] = useState<string>(initialCat);
+  const [accId, setAccId] = useState<string>(initialAccId);
   const [editing, setEditing] = useState<EditableTx | null>(null);
 
   const filtered = useMemo(() => {
     const qLower = q.trim().toLowerCase();
     return rows.filter((r) => {
-      if (cat && (r.categorySlug ?? "outros") !== cat) return false;
+      if (cat) {
+        const rowSlug = r.categorySlug ?? "outros";
+        const rowMeta = CATEGORY_META[rowSlug];
+        // Match exact slug OR the row's parent matches (e.g. filter="transporte" matches "combustivel")
+        const rowParent = rowMeta?.parentSlug ?? rowSlug;
+        if (rowSlug !== cat && rowParent !== cat) return false;
+      }
       if (accId && r.account_id !== accId) return false;
       if (qLower && !r.description.toLowerCase().includes(qLower)) return false;
       return true;
@@ -111,15 +121,7 @@ export function TransactionsClient({
             placeholder="Todas as contas"
             options={accounts.map((a) => ({ value: a.id, label: a.name }))}
           />
-          <FilterSelect
-            value={cat}
-            onChange={setCat}
-            placeholder="Todas as categorias"
-            options={CATEGORY_ORDER.map((slug) => ({
-              value: slug,
-              label: CATEGORY_META[slug].name
-            }))}
-          />
+          <GroupedCategorySelect value={cat} onChange={setCat} />
           {anyFilter && (
             <button
               onClick={() => {
@@ -230,6 +232,43 @@ function FilterSelect({
           {o.label}
         </option>
       ))}
+    </select>
+  );
+}
+
+// Grouped category picker: parents as optgroups, subcategories as options
+function GroupedCategorySelect({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className={`text-xs px-3 py-1.5 rounded-full bg-card border ${
+        value ? "border-accent text-accent" : "border-border text-muted"
+      } whitespace-nowrap outline-none`}
+    >
+      <option value="">Todas as categorias</option>
+      {getCategoryTree().map(({ parent, children }) =>
+        children.length > 0 ? (
+          <optgroup key={parent.slug} label={parent.name}>
+            <option value={parent.slug}>{parent.name} (todos)</option>
+            {children.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {"  "}{c.name}
+              </option>
+            ))}
+          </optgroup>
+        ) : (
+          <option key={parent.slug} value={parent.slug}>
+            {parent.name}
+          </option>
+        )
+      )}
     </select>
   );
 }

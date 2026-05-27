@@ -18,7 +18,15 @@ type Row = {
   isTransfer: boolean;
 };
 
-export default async function TransactionsPage() {
+export default async function TransactionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ account?: string; cat?: string }>;
+}) {
+  const sp = await searchParams;
+  const initialAccId = sp.account ?? "";
+  const initialCat = sp.cat ?? "";
+
   const role = await getRole();
   const sb = serverClient();
   const { data: accounts } = await sb
@@ -90,7 +98,13 @@ export default async function TransactionsPage() {
         <h1 className="text-2xl font-semibold">Movimentos</h1>
         <span className="text-xs text-muted">{rows.length}</span>
       </header>
-      <TransactionsClient rows={rows} accounts={accountsList} role={role} />
+      <TransactionsClient
+        rows={rows}
+        accounts={accountsList}
+        role={role}
+        initialAccId={initialAccId}
+        initialCat={initialCat}
+      />
     </div>
   );
 }

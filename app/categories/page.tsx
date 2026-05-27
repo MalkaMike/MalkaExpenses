@@ -6,7 +6,7 @@ import { getDashboardData } from "@/lib/dashboard/queries";
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { CategoryIcon } from "@/components/category-chip";
 import { CategoryTreeEditor, type DbCategory } from "@/components/category-tree-editor";
-import { getCategoryMeta } from "@/lib/categories/meta";
+import { getCategoryMeta, mergeCategoryTotalsToParents } from "@/lib/categories/meta";
 import { formatBRL, monthLabel } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,9 @@ export default async function CategoriesPage() {
       .order("sort_order")
   ]);
 
-  const total = dash.byCategoryThisMonth.reduce((s, c) => s + c.total, 0);
+  // Merge subcategories into parents for the breakdown list (matches the donut)
+  const mergedCategories = mergeCategoryTotalsToParents(dash.byCategoryThisMonth);
+  const total = mergedCategories.reduce((s, c) => s + c.total, 0);
   const now = new Date();
   const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 
@@ -39,12 +41,12 @@ export default async function CategoriesPage() {
       </section>
 
       <section className="space-y-2 mb-8">
-        {dash.byCategoryThisMonth.length === 0 && (
+        {mergedCategories.length === 0 && (
           <p className="text-sm text-muted text-center py-12">
             Sem despesas este mês.
           </p>
         )}
-        {dash.byCategoryThisMonth.map((c) => {
+        {mergedCategories.map((c) => {
           const meta = getCategoryMeta(c.slug);
           const pct = total > 0 ? (c.total / total) * 100 : 0;
           return (

@@ -1,28 +1,10 @@
 "use client";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
-import { getCategoryMeta, getCategoryParent, CATEGORY_META } from "@/lib/categories/meta";
+import { getCategoryMeta, mergeCategoryTotalsToParents } from "@/lib/categories/meta";
 import { formatBRL } from "@/lib/format";
 import { PieChart as PieIcon } from "lucide-react";
 
 type Datum = { slug: string; total: number };
-
-/**
- * Merge subcategories under their parent so the donut shows at most one slice
- * per parent (e.g. combustivel + uber_taxi + aereo → one "Transporte" slice).
- * Keeps top-level categories as-is.
- */
-function mergeToParents(data: Datum[]): Datum[] {
-  const merged = new Map<string, number>();
-  for (const d of data) {
-    const meta = CATEGORY_META[d.slug];
-    const parentSlug = meta?.parentSlug ?? d.slug; // use parent slug if subcategory
-    merged.set(parentSlug, (merged.get(parentSlug) ?? 0) + d.total);
-  }
-  // Convert back to array, sort by total desc
-  return Array.from(merged.entries())
-    .map(([slug, total]) => ({ slug, total }))
-    .sort((a, b) => b.total - a.total);
-}
 
 export function CategoryDonut({ data }: { data: Datum[] }) {
   const total = data.reduce((s, d) => s + d.total, 0);
@@ -36,7 +18,7 @@ export function CategoryDonut({ data }: { data: Datum[] }) {
     );
   }
 
-  const merged = mergeToParents(data);
+  const merged = mergeCategoryTotalsToParents(data);
   const top = merged.slice(0, 7);
   const restTotal = merged.slice(7).reduce((s, d) => s + d.total, 0);
   const chartData = restTotal > 0 ? [...top, { slug: "outros", total: restTotal }] : top;

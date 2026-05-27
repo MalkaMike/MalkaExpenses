@@ -12,6 +12,7 @@ import { CategoryDonut } from "@/components/charts/category-donut";
 import { MonthlyTrend } from "@/components/charts/monthly-trend";
 import { CategoryChip } from "@/components/category-chip";
 import { InsightsPanel } from "@/components/insights-panel";
+import { mergeCategoryTotalsToParents } from "@/lib/categories/meta";
 
 export const dynamic = "force-dynamic";
 
@@ -113,7 +114,7 @@ export default async function Home() {
             </header>
             <CategoryDonut data={dash.byCategoryThisMonth} />
             <ul className="mt-4 space-y-1.5">
-              {dash.byCategoryThisMonth.slice(0, 5).map((c) => (
+              {mergeCategoryTotalsToParents(dash.byCategoryThisMonth).slice(0, 5).map((c) => (
                 <li key={c.slug} className="flex items-center justify-between text-sm">
                   <CategoryChip slug={c.slug} size="sm" />
                   <span className="tabular-nums font-medium">{formatBRL(c.total)}</span>
