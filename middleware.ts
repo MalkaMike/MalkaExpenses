@@ -66,9 +66,9 @@ async function verifyToken(token: string, maxAgeMs: number): Promise<boolean> {
     return false;
   }
   if (!constantTimeEqual(expected, parts[2])) return false;
-  const d = new Date(parts[1]);
-  if (Number.isNaN(d.getTime())) return false;
-  return Date.now() - d.getTime() <= maxAgeMs;
+  const ms = Number(parts[1]);
+  if (!Number.isFinite(ms)) return false;
+  return Date.now() - ms <= maxAgeMs;
 }
 
 async function hasAdmin(req: NextRequest): Promise<boolean> {

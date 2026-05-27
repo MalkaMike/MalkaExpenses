@@ -25,8 +25,8 @@ function verify(payload: string, sig: string): boolean {
   return timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
 }
 function packToken(): string {
-  const iso = new Date().toISOString();
-  const payload = `v1.${iso}`;
+  const ms = Date.now();
+  const payload = `v1.${ms}`;
   return `${payload}.${sign(payload)}`;
 }
 function unpackToken(token: string): { issuedAt: Date } | null {
@@ -34,9 +34,9 @@ function unpackToken(token: string): { issuedAt: Date } | null {
   if (parts.length !== 3 || parts[0] !== "v1") return null;
   const payload = `${parts[0]}.${parts[1]}`;
   if (!verify(payload, parts[2])) return null;
-  const d = new Date(parts[1]);
-  if (Number.isNaN(d.getTime())) return null;
-  return { issuedAt: d };
+  const ms = Number(parts[1]);
+  if (!Number.isFinite(ms)) return null;
+  return { issuedAt: new Date(ms) };
 }
 
 export async function hasHouseholdCookie(): Promise<boolean> {

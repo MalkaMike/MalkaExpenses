@@ -31,8 +31,8 @@ function verify(payload: string, sig: string): boolean {
   return timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
 }
 
-function packToken(lastActivityIso: string): string {
-  const payload = `v1.${lastActivityIso}`;
+function packToken(lastActivityMs: number): string {
+  const payload = `v1.${lastActivityMs}`;
   return `${payload}.${sign(payload)}`;
 }
 
@@ -41,9 +41,9 @@ function unpackToken(token: string): { lastActivity: Date } | null {
   if (parts.length !== 3 || parts[0] !== "v1") return null;
   const payload = `${parts[0]}.${parts[1]}`;
   if (!verify(payload, parts[2])) return null;
-  const d = new Date(parts[1]);
-  if (Number.isNaN(d.getTime())) return null;
-  return { lastActivity: d };
+  const ms = Number(parts[1]);
+  if (!Number.isFinite(ms)) return null;
+  return { lastActivity: new Date(ms) };
 }
 
 // ----------------------------------------------------------------------------
@@ -85,7 +85,7 @@ export async function validatePassword(password: string): Promise<boolean> {
 // ----------------------------------------------------------------------------
 export async function loginAdmin(): Promise<void> {
   const c = await cookies();
-  const token = packToken(new Date().toISOString());
+  const token = packToken(Date.now());
   c.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -115,7 +115,7 @@ export async function refreshAdmin(): Promise<void> {
     c.delete(COOKIE_NAME);
     return;
   }
-  c.set(COOKIE_NAME, packToken(new Date().toISOString()), {
+  c.set(COOKIE_NAME, packToken(Date.now()), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
