@@ -80,7 +80,6 @@ export default async function AdminLanding({
           title="Revisão de categorias"
           subtitle={`${pending ?? 0} pendentes de revisão`}
           Icon={FileCog}
-          disabled
         />
         <AdminLink
           href="/"
