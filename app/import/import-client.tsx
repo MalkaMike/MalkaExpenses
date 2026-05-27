@@ -500,22 +500,25 @@ export function ImportClient({
           </div>
           {allDuplicates ? (
             <>
-              <h2 className="text-xl font-semibold mb-1">Arquivo já importado</h2>
+              <h2 className="text-xl font-semibold mb-1">Já importado</h2>
               <p className="text-sm text-muted mb-5">
-                Todos os {done.total} {done.total === 1 ? "movimento" : "movimentos"}{" "}
-                deste arquivo já existem. Nenhum dado novo foi adicionado.
+                {done.total === 1
+                  ? "Este movimento já existe — nada adicionado."
+                  : `Todos os ${done.total} movimentos já existem. Nada adicionado.`}
               </p>
             </>
           ) : (
             <>
               <h2 className="text-2xl font-semibold mb-1">Importado!</h2>
               <p className="text-sm text-muted mb-5">
-                {done.inserted}{" "}
-                {done.inserted === 1 ? "movimento adicionado" : "movimentos adicionados"}
+                {done.inserted === 1 ? "1 movimento adicionado" : `${done.inserted} movimentos adicionados`}
+                {done.categorized < done.inserted && (
+                  <span className="text-warning"> · alguns precisam de revisão</span>
+                )}
               </p>
             </>
           )}
-          <div className="grid grid-cols-2 gap-3 mb-4">
+          <div className="grid grid-cols-2 gap-3 mb-4 text-left">
             <Stat icon={<FileText size={14} />} label="Novos" value={String(done.inserted)} />
             <Stat
               icon={<Sparkles size={14} />}
@@ -538,21 +541,30 @@ export function ImportClient({
             )}
           </div>
           {someDuplicates && (
-            <div className="mb-4 p-3 rounded-xl bg-warning/10 border border-warning/30 text-warning text-xs text-left">
-              ⚠ {done.duplicates}{" "}
-              {done.duplicates === 1 ? "movimento já existia" : "movimentos já existiam"} e{" "}
-              {done.duplicates === 1 ? "foi ignorado" : "foram ignorados"}.
+            <div className="mb-4 p-4 rounded-xl bg-warning/10 border border-warning/30 text-warning text-sm text-left">
+              <strong>⚠ {done.duplicates} {done.duplicates === 1 ? "duplicata" : "duplicatas"} ignorada{done.duplicates === 1 ? "" : "s"}</strong>
+              {" "}— já existia{done.duplicates === 1 ? "" : "m"} na conta.
             </div>
           )}
           {done.aiError && (
-            <p className="text-xs text-danger mb-3">⚠ Categorização parcial: {done.aiError}</p>
+            <div className="mb-4 p-4 rounded-xl bg-danger/10 border border-danger/30 text-danger text-sm text-left">
+              ⚠ Categorização incompleta: {done.aiError}
+            </div>
           )}
           <div className="flex flex-col sm:flex-row gap-2">
+            {done.categorized < done.inserted && done.inserted > 0 && (
+              <button
+                onClick={() => router.push("/admin/review")}
+                className="flex-1 px-4 py-3 rounded-xl bg-warning/10 border border-warning/30 text-warning font-medium inline-flex items-center justify-center gap-2"
+              >
+                Rever categorias
+              </button>
+            )}
             <button
               onClick={() => router.push("/")}
               className="flex-1 px-4 py-3 rounded-xl bg-fg text-bg font-medium"
             >
-              Ver dashboard {redirectIn !== null && `(${redirectIn}s)`}
+              Dashboard {redirectIn !== null && `(${redirectIn}s)`}
             </button>
             <button
               onClick={reset}

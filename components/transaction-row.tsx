@@ -1,7 +1,7 @@
 import { formatBRL, formatDate } from "@/lib/format";
 import type { Role } from "@/lib/auth/admin";
 import { CategoryIcon } from "@/components/category-chip";
-import { getCategoryMeta } from "@/lib/categories/meta";
+import { getCategoryMeta, getCategoryDisplayName } from "@/lib/categories/meta";
 
 export type TxRowProps = {
   id: string;
@@ -21,13 +21,15 @@ export function TransactionRow(t: TxRowProps) {
     t.role === "admin" && t.amountReal !== undefined && t.amountReal !== t.amountShared;
   const isIncome = t.amountShared > 0;
   const meta = getCategoryMeta(t.categorySlug);
+  // Show "Parent › Sub" for subcategories so it's clear in the list
+  const categoryLabel = getCategoryDisplayName(t.categorySlug);
 
   return (
-    <div className="flex items-center gap-3 p-3 rounded-xl bg-card border border-border hover:border-accent/40 transition">
+    <div className="flex items-center gap-3 p-4 rounded-xl bg-card border border-border hover:border-accent/40 transition">
       <CategoryIcon slug={t.categorySlug} size={18} />
       <div className="flex-1 min-w-0">
         <p className="font-medium truncate leading-tight">
-          {t.description || "—"}
+          {t.description || <span className="text-muted italic font-normal">sem descrição</span>}
           {t.role === "admin" && t.isFake && (
             <span className="ml-2 text-[10px] uppercase tracking-wider text-danger">fake</span>
           )}
@@ -36,14 +38,14 @@ export function TransactionRow(t: TxRowProps) {
           )}
         </p>
         <p className="text-xs text-muted truncate mt-0.5">
-          {meta.name}
+          {categoryLabel}
           {t.showDate !== false && <span className="ml-2">· {formatDate(t.date)}</span>}
         </p>
       </div>
-      <div className="text-right">
+      <div className="text-right shrink-0">
         <p
           className={`font-semibold tabular-nums ${
-            isIncome ? "text-accent" : t.isTransfer ? "text-muted" : ""
+            isIncome ? "text-accent" : t.isTransfer ? "text-fg/50" : ""
           }`}
         >
           {isIncome ? "+" : ""}

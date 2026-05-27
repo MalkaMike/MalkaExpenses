@@ -69,8 +69,9 @@ export default async function ReviewPage() {
         </Link>
         <h1 className="text-2xl font-semibold mt-2">Revisão</h1>
         <p className="text-xs text-muted">
-          {out.length} movimentos para revisar (categoria com confiança &lt; 90%
-          ou pendentes)
+          {out.length === 0
+            ? "Tudo revisado — nada pendente."
+            : `${out.length} ${out.length === 1 ? "movimento precisa" : "movimentos precisam"} de verificação`}
         </p>
       </header>
 
