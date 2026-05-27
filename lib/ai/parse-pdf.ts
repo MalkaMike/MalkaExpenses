@@ -59,6 +59,11 @@ Regras críticas:
 - Para extrato de cartão de crédito: cada compra é negativa; pagamento da fatura é positivo (reduz o saldo devedor).
 - Para extrato bancário: PIX/TED recebido é positivo; PIX/TED enviado é negativo; tarifas e débitos automáticos são negativos.
 - Capture TODAS as transações da página, não pule nenhuma. Inclua tarifas, IOF, anuidade.
+- IGNORE estas linhas (não são transações):
+  - "SALDO DO DIA", "SALDO ANTERIOR", "SALDO FINAL", "SALDO INICIAL", "SALDO" sozinho
+  - Linhas de subtotal, totalizadores e cabeçalhos de seção
+  - "S A L D O" com espaços
+  - Quaisquer linhas que mostrem apenas o saldo do dia/mês sem ser movimentação
 - description: usar exatamente como aparece no extrato, sem traduzir.
 - bank_hint: itau, bradesco, santander, nubank, inter, btg, c6, outro
 - account_type_hint: "checking" | "savings" | "credit_card"
@@ -93,7 +98,10 @@ export async function parsePdfStatement(
       systemInstruction: SYSTEM,
       responseMimeType: "application/json",
       responseSchema: SCHEMA,
-      temperature: 0
+      temperature: 0,
+      // Disable "thinking" tokens — schema-enforced output makes them
+      // unnecessary and they triple latency. Critical for Vercel 60s limit.
+      thinkingConfig: { thinkingBudget: 0 }
     }
   });
 
