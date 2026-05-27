@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
+import { serverClient } from "@/lib/supabase/server";
 import { getDashboardData } from "@/lib/dashboard/queries";
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { CategoryIcon } from "@/components/category-chip";
+import { CategoryTreeEditor, type DbCategory } from "@/components/category-tree-editor";
 import { getCategoryMeta } from "@/lib/categories/meta";
 import { formatBRL, monthLabel } from "@/lib/format";
 
@@ -11,7 +13,16 @@ export const dynamic = "force-dynamic";
 
 export default async function CategoriesPage() {
   const role = await getRole();
-  const dash = await getDashboardData(role);
+  const sb = serverClient();
+
+  const [dash, { data: allCats }] = await Promise.all([
+    getDashboardData(role),
+    sb
+      .from("categories")
+      .select("id, slug, name, icon, color, parent_id")
+      .order("sort_order")
+  ]);
+
   const total = dash.byCategoryThisMonth.reduce((s, c) => s + c.total, 0);
   const now = new Date();
   const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -27,7 +38,7 @@ export default async function CategoriesPage() {
         <CategoryDonut data={dash.byCategoryThisMonth} />
       </section>
 
-      <section className="space-y-2">
+      <section className="space-y-2 mb-8">
         {dash.byCategoryThisMonth.length === 0 && (
           <p className="text-sm text-muted text-center py-12">
             Sem despesas este mês.
@@ -65,6 +76,11 @@ export default async function CategoriesPage() {
           );
         })}
       </section>
+
+      {/* Admin-only category tree editor */}
+      {role === "admin" && (
+        <CategoryTreeEditor categories={(allCats ?? []) as DbCategory[]} />
+      )}
     </div>
   );
 }

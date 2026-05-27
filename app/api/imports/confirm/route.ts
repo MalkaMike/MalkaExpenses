@@ -21,12 +21,12 @@ const Body = z.object({
 });
 
 // Confirm a parsed batch:
-//   1. Check for duplicates (account_id + date + real_amount + description_raw)
-//   2. Insert only new rows — no ON CONFLICT needed (partial unique index is not
-//      usable by Postgres for ON CONFLICT; check-then-insert is more reliable)
-//   3. Categorize newly inserted rows via Vertex Gemini Flash (batches of 40)
-//   4. Apply category_id + confidence; status=auto_accepted if confidence>=0.9
-//   5. Mark cartao_pagamento/transferencias as is_transfer=true
+//   1. Dedup check (account_id + date + real_amount + description_raw)
+//   2. Insert only new rows
+//   3. MERCHANT RULES pre-pass: match descriptions against learned rules → apply category directly
+//   4. Remaining uncategorized rows → Vertex Gemini Flash (batches of 40)
+//   5. Apply category_id + confidence; status=auto_accepted if confidence>=0.85 (or rule match)
+//   6. Mark cartao_pagamento/transferencias as is_transfer=true
 export async function POST(req: NextRequest) {
   const parsed = Body.safeParse(await req.json());
   if (!parsed.success) {
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
     external_id: t.externalId ?? null
   }));
 
-  // 1) Dedup check — fetch rows for the same account/dates that already exist
+  // ── 1) Dedup check ──────────────────────────────────────────────────────────
   const dates = Array.from(new Set(rows.map((r) => r.date)));
 
   const { data: alreadyIn } = await sb
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
   );
   const duplicateCount = rows.length - newRows.length;
 
-  // 2) Insert only genuinely new rows
+  // ── 2) Insert only genuinely new rows ───────────────────────────────────────
   if (newRows.length > 0) {
     const { error: insErr } = await sb.from("transactions").insert(newRows);
     if (insErr) {
@@ -89,24 +89,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 3) Re-fetch inserted rows to get their DB-assigned IDs for categorization
+  // ── 3) Re-fetch inserted rows to get DB-assigned IDs ────────────────────────
   const { data: fetchedRows } = await sb
     .from("transactions")
     .select("id, date, description_raw, real_amount, category_id")
     .eq("account_id", accountId)
     .in("date", dates);
 
-  // Only categorize rows we just inserted (no category yet)
+  // Only process rows we just inserted (no category yet)
   const newKeySet = new Set(
     newRows.map((r) => `${r.date}|${Number(r.real_amount)}|${r.description_raw}`)
   );
 
-  const toCategorize: CategorizeInput[] = [];
+  const freshRows: Array<{ id: string; date: string; description: string; amount: number }> = [];
   for (const r of fetchedRows ?? []) {
-    if (r.category_id) continue; // already categorized (e.g. previous import)
+    if (r.category_id) continue; // already categorized
     const key = `${r.date}|${Number(r.real_amount)}|${r.description_raw}`;
     if (!newKeySet.has(key)) continue; // not from this batch
-    toCategorize.push({
+    freshRows.push({
       id: r.id,
       date: r.date,
       description: r.description_raw,
@@ -114,13 +114,89 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 4) Categorize via Vertex
+  // ── 4) Merchant rules pre-pass ──────────────────────────────────────────────
+  // Fetch all rules ordered by hit_count DESC (most-used rules take priority)
+  const { data: rules } = await sb
+    .from("merchant_rules")
+    .select("pattern, pattern_type, category_id, confidence_default")
+    .order("hit_count", { ascending: false });
+
+  // Map tx id → matched category_id + confidence
+  const ruleMatched = new Map<string, { category_id: string; confidence: number }>();
+
+  for (const row of freshRows) {
+    const desc = row.description.toLowerCase();
+    for (const rule of rules ?? []) {
+      const pat = rule.pattern.toLowerCase();
+      let hit = false;
+      if (rule.pattern_type === "exact") {
+        hit = desc === pat;
+      } else if (rule.pattern_type === "starts_with") {
+        hit = desc.startsWith(pat);
+      } else {
+        // "contains" (default)
+        hit = desc.includes(pat);
+      }
+      if (hit) {
+        ruleMatched.set(row.id, {
+          category_id: rule.category_id,
+          confidence: Number(rule.confidence_default) || 0.95
+        });
+        break; // first match wins
+      }
+    }
+  }
+
+  // Apply rule-matched categories immediately (no AI needed)
+  let ruleAppliedCount = 0;
+  for (const [txId, m] of ruleMatched) {
+    const isTransfer = false; // merchant rules are for real merchants, not system categories
+    await sb
+      .from("transactions")
+      .update({
+        category_id: m.category_id,
+        confidence: m.confidence,
+        ai_reasoning: "Regra de fornecedor aplicada",
+        status: "auto_accepted",
+        is_transfer: isTransfer
+      })
+      .eq("id", txId);
+    ruleAppliedCount += 1;
+  }
+
+  // Bump hit_count on matched rules (fire-and-forget, non-blocking)
+  // We increment per-rule only once per rule, not per transaction
+  const usedPatterns = new Set<string>();
+  for (const row of freshRows) {
+    if (!ruleMatched.has(row.id)) continue;
+    const desc = row.description.toLowerCase();
+    for (const rule of rules ?? []) {
+      const pat = rule.pattern.toLowerCase();
+      let hit = false;
+      if (rule.pattern_type === "exact") hit = desc === pat;
+      else if (rule.pattern_type === "starts_with") hit = desc.startsWith(pat);
+      else hit = desc.includes(pat);
+      if (hit && !usedPatterns.has(rule.pattern)) {
+        usedPatterns.add(rule.pattern);
+        sb.from("merchant_rules")
+          .update({ hit_count: (rule as { hit_count?: number }).hit_count ?? 1 })
+          .eq("pattern", rule.pattern)
+          .then(() => {});
+      }
+    }
+  }
+
+  // ── 5) AI categorization for unmatched rows ─────────────────────────────────
+  const aiQueue: CategorizeInput[] = freshRows.filter(
+    (r) => !ruleMatched.has(r.id)
+  );
+
   let categorizedCount = 0;
   let aiErr: string | null = null;
 
-  if (toCategorize.length > 0) {
+  if (aiQueue.length > 0) {
     try {
-      const results = await categorizeAll(toCategorize);
+      const results = await categorizeAll(aiQueue);
 
       const { data: cats } = await sb.from("categories").select("id, slug");
       const slugToId = new Map<string, string>();
@@ -129,7 +205,8 @@ export async function POST(req: NextRequest) {
       for (const r of results) {
         const catId = slugToId.get(r.category_slug) ?? slugToId.get("outros");
         if (!catId) continue;
-        const autoAccepted = r.confidence >= 0.9;
+        // Threshold: ≥0.85 auto-accept (was 0.90 — slightly looser since taxonomy is now richer)
+        const autoAccepted = r.confidence >= 0.85;
         const isTransfer =
           r.category_slug === "cartao_pagamento" || r.category_slug === "transferencias";
         await sb
@@ -155,6 +232,7 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     inserted: newRows.length,
     duplicates: duplicateCount,
+    ruleMatched: ruleAppliedCount,
     categorized: categorizedCount,
     total: rows.length,
     aiError: aiErr

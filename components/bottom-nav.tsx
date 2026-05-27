@@ -3,16 +3,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, ListChecks, PieChart, Target, Settings } from "lucide-react";
 import type { Role } from "@/lib/auth/admin";
-
-const ITEMS = [
-  { href: "/", label: "Início", icon: Home },
-  { href: "/transactions", label: "Movimentos", icon: ListChecks },
-  { href: "/categories", label: "Categorias", icon: PieChart },
-  { href: "/budgets", label: "Orçamentos", icon: Target }
-];
+import { useLang } from "@/lib/i18n/context";
+import { t } from "@/lib/i18n/translations";
 
 export function BottomNav({ role }: { role: Role }) {
   const pathname = usePathname();
+  const { lang } = useLang();
+
+  const ITEMS = [
+    { href: "/",             label: t("nav.home",         lang), icon: Home },
+    { href: "/transactions", label: t("nav.transactions", lang), icon: ListChecks },
+    { href: "/categories",   label: t("nav.categories",   lang), icon: PieChart },
+    { href: "/budgets",      label: t("nav.budgets",      lang), icon: Target }
+  ];
 
   // Hide nav on auth screens
   if (pathname === "/login") return null;
