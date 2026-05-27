@@ -87,7 +87,9 @@ export async function categorizeBatch(
       systemInstruction: SYSTEM,
       responseMimeType: "application/json",
       responseSchema: SCHEMA,
-      temperature: 0
+      temperature: 0,
+      // Disable "thinking" for snappy structured output. Schema enforces format.
+      thinkingConfig: { thinkingBudget: 0 }
     }
   });
 
