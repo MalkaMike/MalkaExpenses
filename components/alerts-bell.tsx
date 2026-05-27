@@ -43,6 +43,7 @@ export function AlertsBell() {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<AlertData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [fetchErr, setFetchErr] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
   // Fetch on mount + every 60 seconds
@@ -51,9 +52,22 @@ export function AlertsBell() {
     const load = async () => {
       try {
         const r = await fetch("/api/health/alerts");
-        if (r.ok && mounted) setData(await r.json());
-      } catch {
-        // silently ignore — network errors shouldn't crash the UI
+        if (!mounted) return;
+        if (r.status === 401) {
+          // Lost auth — don't retry, just show nothing (user will see login redirect on next navigation)
+          setFetchErr("auth");
+          return;
+        }
+        if (r.ok) {
+          setData(await r.json());
+          setFetchErr(null);
+        } else {
+          console.error("[alerts-bell] unexpected status:", r.status);
+          setFetchErr("error");
+        }
+      } catch (e) {
+        console.error("[alerts-bell] network error:", e);
+        if (mounted) setFetchErr("error");
       } finally {
         if (mounted) setLoading(false);
       }
@@ -120,6 +134,15 @@ export function AlertsBell() {
             {/* Loading */}
             {loading && (
               <div className="py-6 text-center text-sm text-muted">A verificar…</div>
+            )}
+
+            {/* Error state */}
+            {!loading && fetchErr && (
+              <div className="py-6 text-center text-sm text-muted px-4">
+                {fetchErr === "auth"
+                  ? "Sessão expirada. Recarregue a página."
+                  : "Erro ao carregar alertas."}
+              </div>
             )}
 
             {/* Pending review */}

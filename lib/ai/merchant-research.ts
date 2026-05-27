@@ -99,7 +99,13 @@ Pesquise no Google pelo nome do comerciante e retorne o JSON.`;
       searched: true
     };
   } catch (e: unknown) {
-    console.error(`[merchant-research] error for "${description}":`, e);
+    const msg = e instanceof Error ? e.message : String(e);
+    // Distinguish between "grounding not enabled on project" vs generic network/API errors
+    if (msg.includes("not available") || msg.includes("not supported") || msg.includes("googleSearch")) {
+      console.error(`[merchant-research] Google Search grounding is not enabled on this Vertex project. Enable it at console.cloud.google.com → Vertex AI → Settings. Error: ${msg}`);
+    } else {
+      console.error(`[merchant-research] error for "${description}":`, msg);
+    }
     return {
       id,
       category_slug: "outros",

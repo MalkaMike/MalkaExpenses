@@ -3,7 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, ChevronDown, ChevronUp, Loader2, Wand2, Globe, HelpCircle, AlertCircle } from "lucide-react";
-import { CATEGORY_ORDER, CATEGORY_META, getCategoryMeta } from "@/lib/categories/meta";
+import { CATEGORY_META, getCategoryMeta, getCategoryTree, getCategoryParent } from "@/lib/categories/meta";
 import { formatBRL, formatDate } from "@/lib/format";
 
 export type ReviewRow = {
@@ -240,13 +240,20 @@ export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
               <select
                 value={bulkCategory}
                 onChange={(e) => setBulkCategory(e.target.value)}
-                className="text-xs px-2 py-1.5 rounded-full bg-card border border-border outline-none"
+                className="text-xs px-2 py-1.5 rounded-full bg-card border border-border outline-none max-w-[160px]"
               >
                 <option value="">categoria...</option>
-                {CATEGORY_ORDER.map((slug) => (
-                  <option key={slug} value={slug}>
-                    {CATEGORY_META[slug].name}
-                  </option>
+                {getCategoryTree().map(({ parent, children }) => (
+                  children.length > 0 ? (
+                    <optgroup key={parent.slug} label={parent.name}>
+                      <option value={parent.slug}>{parent.name} (geral)</option>
+                      {children.map((c) => (
+                        <option key={c.slug} value={c.slug}>{"  "}{c.name}</option>
+                      ))}
+                    </optgroup>
+                  ) : (
+                    <option key={parent.slug} value={parent.slug}>{parent.name}</option>
+                  )
                 ))}
               </select>
               <button
@@ -274,7 +281,7 @@ export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
           const meta = getCategoryMeta(r.categorySlug);
           const isExpanded = expanded === r.id;
           const isSel = selected.has(r.id);
-          const conf = r.confidence !== null ? Math.round(r.confidence * 100) : null;
+
           return (
             <li
               key={r.id}
@@ -357,22 +364,33 @@ export function ReviewClient({ rows: initial }: { rows: ReviewRow[] }) {
                     >
                       <Check size={11} /> confirmar
                     </button>
-                    {CATEGORY_ORDER.filter((s) => s !== r.categorySlug)
-                      .slice(0, 6)
-                      .map((slug) => {
-                        const m = CATEGORY_META[slug];
-                        return (
-                          <button
-                            key={slug}
-                            disabled={busy}
-                            onClick={() => recategorizeOne(r.id, slug)}
-                            className="text-xs px-2.5 py-1 rounded-full bg-card border border-border inline-flex items-center gap-1 disabled:opacity-50 hover:border-fg/40"
-                          >
-                            <m.Icon size={11} style={{ color: m.color }} />
-                            {m.name}
-                          </button>
-                        );
-                      })}
+                    {/* Quick-pick: siblings of current category first, then top-level parents */}
+                    {(() => {
+                      const parentSlug = getCategoryParent(r.categorySlug).slug;
+                      // Siblings = other subcategories of same parent (most relevant)
+                      const siblings = Object.values(CATEGORY_META).filter(
+                        (m) => m.parentSlug === parentSlug && m.slug !== r.categorySlug
+                      );
+                      // Fallback: top-level parents excluding current
+                      const topLevel = getCategoryTree()
+                        .map((n) => n.parent)
+                        .filter((p) => p.slug !== parentSlug && p.slug !== r.categorySlug);
+                      // Show up to 6: siblings first, then top-level fill
+                      const picks = [...siblings, ...topLevel].slice(0, 6);
+                      return picks.map((m) => (
+                        <button
+                          key={m.slug}
+                          disabled={busy}
+                          onClick={() => recategorizeOne(r.id, m.slug)}
+                          className="text-xs px-2.5 py-1 rounded-full bg-card border border-border inline-flex items-center gap-1 disabled:opacity-50 hover:border-fg/40"
+                        >
+                          <m.Icon size={11} style={{ color: m.color }} />
+                          {m.parentSlug
+                            ? `${CATEGORY_META[m.parentSlug]?.name ?? ""} › ${m.name}`
+                            : m.name}
+                        </button>
+                      ));
+                    })()}
                   </div>
                 </div>
               )}

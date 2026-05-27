@@ -594,6 +594,11 @@ export function ImportClient({
               </p>
             </div>
           </div>
+          {preview.count === 0 && (
+            <div className="rounded-xl bg-warning/10 border border-warning/30 text-warning text-sm px-3 py-2">
+              ⚠ Nenhuma transação foi extraída deste arquivo. Verifique se o PDF contém um extrato legível ou tente outro formato (OFX/QFX).
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-3 text-sm">
             {preview.bankHint && (
               <Stat icon={<FileText size={14} />} label="Banco" value={preview.bankHint} />
@@ -652,9 +657,14 @@ export function ImportClient({
           </button>
           <button
             onClick={confirm}
-            className="flex-[2] px-4 py-3 rounded-xl bg-accent text-bg font-medium inline-flex items-center justify-center gap-2"
+            disabled={preview.count === 0}
+            className="flex-[2] px-4 py-3 rounded-xl bg-accent text-bg font-medium inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={preview.count === 0 ? "Nenhuma transação encontrada no arquivo" : undefined}
           >
-            <Sparkles size={16} /> Importar e categorizar com IA
+            <Sparkles size={16} />
+            {preview.count === 0
+              ? "Nenhuma transação encontrada"
+              : "Importar e categorizar com IA"}
           </button>
         </div>
       </div>

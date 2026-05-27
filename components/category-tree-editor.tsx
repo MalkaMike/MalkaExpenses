@@ -298,7 +298,10 @@ function AddParentForm({ onDone }: { onDone: () => void }) {
 
 // ── Main tree editor ────────────────────────────────────────────────────────────
 export function CategoryTreeEditor({ categories }: { categories: DbCategory[] }) {
-  const tree = buildTree(categories);
+  // Separate system categories from user-managed ones
+  const userCats = categories.filter((c) => !SYSTEM_SLUGS.has(c.slug));
+  const systemCats = categories.filter((c) => SYSTEM_SLUGS.has(c.slug));
+  const tree = buildTree(userCats);
   const [expandedSlugs, setExpandedSlugs] = useState<Set<string>>(new Set());
   const [addingSubFor, setAddingSubFor] = useState<string | null>(null);
   const [addingParent, setAddingParent] = useState(false);
@@ -375,6 +378,20 @@ export function CategoryTreeEditor({ categories }: { categories: DbCategory[] })
 
       {addingParent && (
         <AddParentForm onDone={() => setAddingParent(false)} />
+      )}
+
+      {/* System categories — read-only, shown separately so they don't clutter */}
+      {systemCats.length > 0 && (
+        <div className="mt-4 pt-3 border-t border-border">
+          <p className="text-[10px] uppercase tracking-wider text-muted mb-2 px-2">
+            Categorias do sistema (protegidas)
+          </p>
+          <div className="space-y-0.5 opacity-60">
+            {systemCats.map((cat) => (
+              <CategoryRow key={cat.id} cat={cat} onChanged={() => {}} />
+            ))}
+          </div>
+        </div>
       )}
     </div>
   );

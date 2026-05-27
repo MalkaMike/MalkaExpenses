@@ -197,12 +197,28 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
         </section>
       )}
 
-      <h2 className="text-xs uppercase tracking-wider text-muted mb-3 px-1">Movimentos</h2>
+      <div className="flex items-center justify-between mb-3 px-1">
+        <h2 className="text-xs uppercase tracking-wider text-muted">Movimentos</h2>
+        {rows.length > 0 && (
+          <span className="text-[11px] text-muted tabular-nums">
+            {Math.min(rows.length, 100)} de {rows.length}
+            {rows.length === 300 ? "+" : ""}
+          </span>
+        )}
+      </div>
       <div className="space-y-2">
         {rows.length === 0 && <p className="text-sm text-muted text-center py-8">Nenhum movimento.</p>}
         {rows.slice(0, 100).map((r) => (
           <TransactionRow key={r.id} {...r} role={role} />
         ))}
+        {rows.length > 100 && (
+          <p className="text-center text-xs text-muted py-3 border border-dashed border-border rounded-xl">
+            {rows.length - 100} movimentos mais antigos não exibidos.{" "}
+            <a href={`/transactions?account=${id}`} className="text-accent underline">
+              Ver todos em Movimentos
+            </a>
+          </p>
+        )}
       </div>
     </div>
   );
