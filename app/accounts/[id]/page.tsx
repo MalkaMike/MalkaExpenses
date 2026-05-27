@@ -33,7 +33,7 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
   let sharedBalance = Number(account.shared_starting_balance);
   let realBalance: number | null = role === "admin" ? Number(account.real_starting_balance) : null;
 
-  if (role === "public") {
+  if (role !== "admin") {
     const sh = sharedClient();
     const { data } = await sh
       .from("shared_transactions_v")

@@ -13,7 +13,7 @@ export default async function MonthsPage() {
   let months: MonthRow[] = [];
   const monthMap = new Map<string, { shared: number; real: number }>();
 
-  if (role === "public") {
+  if (role !== "admin") {
     const sb = sharedClient();
     const { data } = await sb
       .from("shared_transactions_v")

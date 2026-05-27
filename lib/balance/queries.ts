@@ -38,6 +38,7 @@ export async function getAccountsWithBalances(role: Role): Promise<AccountWithBa
   }
 
   const realSum = new Map<string, number>();
+  // Only "admin" role sees real amounts; "household" and "public" see shared only
   if (role === "admin") {
     const { data: realRows, error: rErr } = await sb
       .from("transactions")

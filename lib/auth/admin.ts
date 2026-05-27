@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { env } from "@/lib/env";
 import { serverClient } from "@/lib/supabase/server";
+import { hasHouseholdCookie } from "./household";
 
 // ============================================================================
 // Admin auth — single shared password for Mickael's admin surface (/admin/*).
@@ -17,7 +18,7 @@ import { serverClient } from "@/lib/supabase/server";
 // Idle timeout:     ADMIN_TIMEOUT_MINUTES (default 60)
 // ============================================================================
 
-export type Role = "public" | "admin";
+export type Role = "public" | "household" | "admin";
 export const COOKIE_NAME = "pf_admin";
 
 function sign(payload: string): string {
@@ -46,18 +47,25 @@ function unpackToken(token: string): { lastActivity: Date } | null {
 }
 
 // ----------------------------------------------------------------------------
-// Read current role from cookie. Returns "public" unless cookie present,
-// valid, and last_activity within timeout. Side-effect-free.
+// Read current role. Returns:
+//   "admin"     — pf_admin cookie present + valid (full access; sees real_amount)
+//   "household" — pf_household cookie present + valid (main site only)
+//   "public"    — neither cookie (must log in via /login)
+// Side-effect-free.
 // ----------------------------------------------------------------------------
 export async function getRole(): Promise<Role> {
+  // Admin first (highest privilege)
   const c = await cookies();
   const token = c.get(COOKIE_NAME)?.value;
-  if (!token) return "public";
-  const parsed = unpackToken(token);
-  if (!parsed) return "public";
-  const elapsedMin = (Date.now() - parsed.lastActivity.getTime()) / 60000;
-  if (elapsedMin > env.ADMIN_TIMEOUT_MINUTES) return "public";
-  return "admin";
+  if (token) {
+    const parsed = unpackToken(token);
+    if (parsed) {
+      const elapsedMin = (Date.now() - parsed.lastActivity.getTime()) / 60000;
+      if (elapsedMin <= env.ADMIN_TIMEOUT_MINUTES) return "admin";
+    }
+  }
+  if (await hasHouseholdCookie()) return "household";
+  return "public";
 }
 
 // ----------------------------------------------------------------------------

@@ -1,16 +1,27 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 // ============================================================================
-// Middleware: gate /admin/* and /api/admin/* on the pf_admin cookie.
-// Returns 404 (not 401/403) when cookie absent or invalid — looks like the
-// route doesn't exist. Wife typing /admin sees the login page only because
-// /admin itself is whitelisted below; everything deeper is gated.
+// Middleware — two-tier auth gate (runs on the edge runtime; uses Web Crypto).
+//
+// Tiers:
+//   Anonymous          : only /login, /admin (login screens) + their auth APIs
+//   Household (pf_household)  : main site (everything except /admin/* surface)
+//   Admin (pf_admin)   : full access including /admin/*
+//
+// Behavior:
+//   - /api/admin/login, /api/household/login, /api/household/logout, /api/admin/logout : open
+//   - /login                    : open (renders household login)
+//   - /admin                    : open (renders admin login when not admin)
+//   - /admin/*, /api/admin/*    : require pf_admin cookie (redirect or 404)
+//   - everything else           : require pf_household OR pf_admin (redirect to /login)
+//
+// Keep verifyToken in sync with cookie format in lib/auth/admin.ts + household.ts.
 // ============================================================================
-// Runs on the edge runtime, so we use Web Crypto.
-// Keep verifyToken in sync with the cookie format in lib/auth/admin.ts.
 
-const COOKIE_NAME = "pf_admin";
-const TIMEOUT_MIN = Number(process.env.ADMIN_TIMEOUT_MINUTES ?? "60");
+const ADMIN_COOKIE = "pf_admin";
+const HOUSEHOLD_COOKIE = "pf_household";
+const ADMIN_TIMEOUT_MIN = Number(process.env.ADMIN_TIMEOUT_MINUTES ?? "60");
+const HOUSEHOLD_TIMEOUT_DAYS = 90;
 
 const enc = new TextEncoder();
 let keyPromise: Promise<CryptoKey> | null = null;
@@ -35,7 +46,6 @@ function toHex(buf: ArrayBuffer): string {
   for (let i = 0; i < b.length; i++) s += b[i].toString(16).padStart(2, "0");
   return s;
 }
-
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let r = 0;
@@ -43,7 +53,7 @@ function constantTimeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
-async function verifyToken(token: string): Promise<boolean> {
+async function verifyToken(token: string, maxAgeMs: number): Promise<boolean> {
   const parts = token.split(".");
   if (parts.length !== 3 || parts[0] !== "v1") return false;
   const payload = `${parts[0]}.${parts[1]}`;
@@ -58,25 +68,47 @@ async function verifyToken(token: string): Promise<boolean> {
   if (!constantTimeEqual(expected, parts[2])) return false;
   const d = new Date(parts[1]);
   if (Number.isNaN(d.getTime())) return false;
-  const elapsedMin = (Date.now() - d.getTime()) / 60000;
-  return elapsedMin <= TIMEOUT_MIN;
+  return Date.now() - d.getTime() <= maxAgeMs;
 }
 
-// Paths that must require an admin session. The /admin landing page is open
-// (so it can show the login form); everything below it is gated.
-function isGatedPath(pathname: string): boolean {
-  if (pathname === "/admin" || pathname === "/admin/") return false;
-  if (pathname.startsWith("/api/admin/login")) return false; // login endpoint
+async function hasAdmin(req: NextRequest): Promise<boolean> {
+  const t = req.cookies.get(ADMIN_COOKIE)?.value;
+  if (!t) return false;
+  return verifyToken(t, ADMIN_TIMEOUT_MIN * 60 * 1000);
+}
+async function hasHousehold(req: NextRequest): Promise<boolean> {
+  const t = req.cookies.get(HOUSEHOLD_COOKIE)?.value;
+  if (!t) return false;
+  return verifyToken(t, HOUSEHOLD_TIMEOUT_DAYS * 86400 * 1000);
+}
+
+// Always-open paths (auth flows + static). Match prefixes.
+function isAlwaysOpen(pathname: string): boolean {
+  return (
+    pathname === "/login" ||
+    pathname === "/admin" ||
+    pathname === "/admin/" ||
+    pathname.startsWith("/api/household/login") ||
+    pathname.startsWith("/api/household/logout") ||
+    pathname.startsWith("/api/admin/login") ||
+    pathname.startsWith("/api/admin/logout")
+  );
+}
+
+function isAdminGated(pathname: string): boolean {
   return pathname.startsWith("/admin/") || pathname.startsWith("/api/admin/");
 }
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  if (!isGatedPath(pathname)) return NextResponse.next();
 
-  const token = req.cookies.get(COOKIE_NAME)?.value;
-  if (!token || !(await verifyToken(token))) {
-    // For API routes: 404. For pages: redirect to /admin (login form).
+  if (isAlwaysOpen(pathname)) return NextResponse.next();
+
+  const admin = await hasAdmin(req);
+
+  // /admin/* and /api/admin/* require admin specifically
+  if (isAdminGated(pathname)) {
+    if (admin) return NextResponse.next();
     if (pathname.startsWith("/api/")) {
       return new NextResponse("Not Found", { status: 404 });
     }
@@ -85,9 +117,20 @@ export async function middleware(req: NextRequest) {
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
-  return NextResponse.next();
+
+  // Everything else: household OR admin
+  if (admin || (await hasHousehold(req))) return NextResponse.next();
+
+  if (pathname.startsWith("/api/")) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  if (pathname !== "/") url.searchParams.set("next", pathname);
+  return NextResponse.redirect(url);
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/admin/:path*"]
+  // Run on everything except Next internals and static assets
+  matcher: ["/((?!_next/|favicon|manifest|robots|sitemap|.*\\.).*)"]
 };
