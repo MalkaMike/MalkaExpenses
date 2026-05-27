@@ -1,23 +1,26 @@
 import Link from "next/link";
-import { ArrowRight, Plus, Upload } from "lucide-react";
+import { ArrowRight, Plus, Upload, Sparkles } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { getRole } from "@/lib/auth/admin";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
 import { getDashboardData } from "@/lib/dashboard/queries";
+import { getInsights } from "@/lib/insights/engine";
 import { formatBRL, monthLabel } from "@/lib/format";
 import { TransactionRow } from "@/components/transaction-row";
 import { KpiCard } from "@/components/kpi-card";
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { MonthlyTrend } from "@/components/charts/monthly-trend";
 import { CategoryChip } from "@/components/category-chip";
+import { InsightsPanel } from "@/components/insights-panel";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const role = await getRole();
-  const [accounts, dash] = await Promise.all([
+  const [accounts, dash, insights] = await Promise.all([
     getAccountsWithBalances(role),
-    getDashboardData(role)
+    getDashboardData(role),
+    getInsights(role)
   ]);
 
   const empty = dash.accountsCount === 0;
@@ -88,6 +91,17 @@ export default async function Home() {
             />
             <KpiCard label="Saldo do mês" value={dash.thisMonth.net} previous={dash.prevMonth.net} />
           </section>
+
+          {/* Smart Facts */}
+          {insights.length > 0 && (
+            <section className="mb-5">
+              <header className="flex items-center gap-2 mb-3 px-1">
+                <Sparkles size={14} className="text-accent" />
+                <h2 className="font-medium">Insights</h2>
+              </header>
+              <InsightsPanel insights={insights} />
+            </section>
+          )}
 
           {/* Category donut */}
           <section className="rounded-2xl bg-card border border-border p-5 mb-5">

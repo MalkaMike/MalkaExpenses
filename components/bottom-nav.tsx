@@ -1,14 +1,14 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ListChecks, PieChart, BarChart3, Settings } from "lucide-react";
+import { Home, ListChecks, PieChart, Target, Settings } from "lucide-react";
 import type { Role } from "@/lib/auth/admin";
 
 const ITEMS = [
   { href: "/", label: "Início", icon: Home },
   { href: "/transactions", label: "Movimentos", icon: ListChecks },
   { href: "/categories", label: "Categorias", icon: PieChart },
-  { href: "/months", label: "Meses", icon: BarChart3 }
+  { href: "/budgets", label: "Orçamentos", icon: Target }
 ];
 
 export function BottomNav({ role }: { role: Role }) {
