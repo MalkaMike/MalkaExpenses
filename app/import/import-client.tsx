@@ -246,14 +246,15 @@ export function ImportClient({
         fd.append("file", updatedFiles[i].file);
         fd.append("accountId", accountId);
 
-        // Switch to parsing status after a short delay (PDF takes time)
+        // Switch to "parsing" status ~3s in (PDF analysis takes 30-60s via Gemini)
         const parseTimer = setTimeout(() => {
-          updatedFiles = updatedFiles.map((f, idx) =>
-            idx === i && f.status === "uploading"
-              ? { ...f, status: "parsing" as FileStatus }
-              : f
+          setBulkFiles((prev) =>
+            prev.map((f, idx) =>
+              idx === i && f.status === "uploading"
+                ? { ...f, status: "parsing" as FileStatus }
+                : f
+            )
           );
-          setBulkFiles([...updatedFiles]);
         }, 3000);
 
         const uploadRes = await fetch("/api/imports/upload", { method: "POST", body: fd });
@@ -394,10 +395,14 @@ export function ImportClient({
                 {f.status === "error" && (
                   <span className="text-[10px] text-danger truncate max-w-[16ch]">{f.error}</span>
                 )}
-                {(f.status === "uploading" || f.status === "parsing" || f.status === "importing") && (
-                  <span className="text-[10px] text-muted">
-                    {f.status === "uploading" ? "enviando..." : f.status === "parsing" ? "analisando..." : "importando..."}
-                  </span>
+                {f.status === "uploading" && (
+                  <span className="text-[10px] text-muted">enviando...</span>
+                )}
+                {f.status === "parsing" && (
+                  <span className="text-[10px] text-accent font-medium">✦ Gemini a ler PDF...</span>
+                )}
+                {f.status === "importing" && (
+                  <span className="text-[10px] text-accent font-medium">✦ IA a categorizar...</span>
                 )}
               </li>
             ))}

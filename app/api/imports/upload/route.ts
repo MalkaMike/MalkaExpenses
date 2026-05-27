@@ -4,7 +4,7 @@ import { parseOfx } from "@/lib/parsers/ofx";
 import { parsePdfStatement } from "@/lib/ai/parse-pdf";
 
 export const runtime = "nodejs";
-export const maxDuration = 60; // PDF parsing via Gemini can take ~30s
+export const maxDuration = 90; // PDF parsing via Gemini can take 30-60s; give the same ceiling as confirm
 
 type PreviewTx = {
   externalId: string | null;
