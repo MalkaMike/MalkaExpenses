@@ -32,12 +32,15 @@ export function BottomNav({ role }: { role: Role }) {
             <Link
               key={it.href}
               href={it.href}
-              className={`flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] ${
-                active ? "text-accent" : "text-muted"
+              className={`flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] relative transition-colors ${
+                active ? "text-accent" : "text-muted hover:text-fg/70"
               }`}
             >
               <Icon size={20} />
               <span>{it.label}</span>
+              {active && (
+                <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 rounded-full bg-accent" />
+              )}
             </Link>
           );
         })}

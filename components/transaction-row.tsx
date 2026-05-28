@@ -48,8 +48,8 @@ export function TransactionRow(t: TxRowProps) {
             isIncome ? "text-accent" : t.isTransfer ? "text-fg/50" : ""
           }`}
         >
-          {isIncome ? "+" : ""}
-          {formatBRL(t.amountShared)}
+          {isIncome ? "+" : t.isTransfer ? "" : "−"}
+          {formatBRL(Math.abs(t.amountShared))}
         </p>
         {showRealColumn && (
           <p className="text-[11px] text-muted tabular-nums">

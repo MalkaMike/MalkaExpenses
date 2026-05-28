@@ -36,17 +36,13 @@ export function CategoryIcon({
 }) {
   const meta = getCategoryMeta(slug);
   const Icon = meta.Icon;
+  const box = size + 16; // 18→34px, 20→36px, 22→38px
   return (
     <div
-      className="inline-flex items-center justify-center rounded-full"
-      style={{
-        width: size + 14,
-        height: size + 14,
-        backgroundColor: `${meta.color}1F`,
-        color: meta.color
-      }}
+      className="inline-flex items-center justify-center rounded-xl shrink-0"
+      style={{ width: box, height: box, backgroundColor: meta.color }}
     >
-      <Icon size={size} />
+      <Icon size={size} color="#ffffff" strokeWidth={1.75} />
     </div>
   );
 }

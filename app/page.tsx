@@ -40,8 +40,18 @@ export default async function Home() {
       <section className="rounded-2xl bg-gradient-to-br from-card to-card/40 border border-border p-5 mb-5">
         <p className="text-xs uppercase tracking-wider text-muted mb-1">Patrimônio total</p>
         <p className="text-4xl font-semibold tabular-nums">{formatBRL(dash.totalShared)}</p>
+        {dash.thisMonth.net !== 0 && (
+          <p
+            className="mt-1.5 text-sm tabular-nums font-medium"
+            style={{ color: dash.thisMonth.net > 0 ? "rgb(var(--accent))" : "rgb(var(--danger))" }}
+          >
+            {dash.thisMonth.net > 0 ? "+" : "−"}
+            {formatBRL(Math.abs(dash.thisMonth.net))}
+            <span className="text-xs text-muted font-normal ml-1.5">este mês</span>
+          </p>
+        )}
         {role === "admin" && dash.totalReal !== null && dash.totalReal !== dash.totalShared && (
-          <p className="mt-1.5 text-xs text-muted tabular-nums">
+          <p className="mt-1 text-xs text-muted tabular-nums">
             real: <span className="text-fg">{formatBRL(dash.totalReal)}</span>
             <span className="ml-2 opacity-70">
               Δ {formatBRL(dash.totalReal - dash.totalShared)}
@@ -146,9 +156,10 @@ export default async function Home() {
                   >
                     <div>
                       <p className="font-medium">{a.name}</p>
-                      <p className="text-xs text-muted capitalize">
-                        {a.bank} · {a.type === "credit_card" ? "cartão" : a.type === "checking" ? "corrente" : "poupança"}
-                      </p>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-xs text-muted">{a.bank}</span>
+                        <AccountTypeBadge type={a.type} />
+                      </div>
                     </div>
                     <div className="text-right">
                       <p className="font-semibold tabular-nums">{formatBRL(a.sharedBalance)}</p>
@@ -207,6 +218,20 @@ export default async function Home() {
         </div>
       )}
     </div>
+  );
+}
+
+function AccountTypeBadge({ type }: { type: string }) {
+  const map: Record<string, { label: string; cls: string }> = {
+    credit_card: { label: "cartão",   cls: "bg-warning/15 text-warning" },
+    checking:    { label: "corrente", cls: "bg-accent/15  text-accent"  },
+    savings:     { label: "poupança", cls: "bg-fg/10      text-muted"   },
+  };
+  const { label, cls } = map[type] ?? { label: type, cls: "bg-fg/10 text-muted" };
+  return (
+    <span className={`inline-flex px-1.5 py-0.5 rounded-md text-[10px] font-medium ${cls}`}>
+      {label}
+    </span>
   );
 }
 
