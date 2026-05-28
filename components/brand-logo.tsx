@@ -3,7 +3,7 @@
 export function BrandLogo() {
   return (
     <h1 className="text-xl font-semibold tracking-tight select-none">
-      {process.env.NEXT_PUBLIC_APP_NAME || "Casa"}
+      Casa
     </h1>
   );
 }
