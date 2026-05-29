@@ -9,6 +9,7 @@ import { getLang } from "@/lib/i18n/server";
 import { LangProvider } from "@/lib/i18n/context";
 import { AdminBanner } from "@/components/admin-banner";
 import { BottomNav } from "@/components/bottom-nav";
+import { SwRegister } from "@/components/sw-register";
 
 export const metadata: Metadata = {
   title: "Casa",
@@ -29,6 +30,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang={lang === "en" ? "en" : "pt-BR"} className={geist.variable}>
       <body data-role={role} style={{ fontFamily: "var(--font-geist), ui-sans-serif, system-ui, sans-serif" }}>
         <LangProvider initialLang={lang}>
+          <SwRegister />
           <AdminBanner role={role} />
           <main className="min-h-screen pb-24">{children}</main>
           <BottomNav role={role} />
