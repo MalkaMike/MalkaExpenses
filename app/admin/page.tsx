@@ -31,12 +31,16 @@ export default async function AdminLanding({
   const totalShared = accounts.reduce((s, a) => s + a.sharedBalance, 0);
 
   const sb = serverClient();
-  const [{ count: total }, { count: pending }, { count: fakes }, { count: imports }] =
+  const [{ count: total }, { count: pending }, { count: fakes }, { count: hidden }] =
     await Promise.all([
       sb.from("transactions").select("*", { count: "exact", head: true }),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("status", "pending_review"),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", true),
-      sb.from("statement_imports").select("*", { count: "exact", head: true })
+      sb
+        .from("transactions")
+        .select("*", { count: "exact", head: true })
+        .eq("shared_amount", 0)
+        .neq("status", "pending_review")
     ]);
 
   return (
@@ -83,6 +87,16 @@ export default async function AdminLanding({
         />
         <PluggySyncButton />
         <ReconcileButton />
+        <AdminLink
+          href="/admin/archive"
+          title="Arquivo"
+          subtitle={
+            (hidden ?? 0) > 0
+              ? `${hidden} item(ns) removido(s) — pode restaurar`
+              : "itens removidos do portal"
+          }
+          Icon={Archive}
+        />
         <AdminLink
           href="/"
           title="Voltar ao app"

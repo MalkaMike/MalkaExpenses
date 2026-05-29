@@ -1,6 +1,8 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Search, X, TrendingUp, TrendingDown } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Search, X, TrendingUp, TrendingDown, EyeOff, Undo2, Loader2 } from "lucide-react";
 import { TransactionRow } from "@/components/transaction-row";
 import { TransactionEditModal, type EditableTx } from "@/components/transaction-edit-modal";
 import { CATEGORY_META, getCategoryTree } from "@/lib/categories/meta";
@@ -47,10 +49,35 @@ export function TransactionsClient({
   initialCat?: string;
 }) {
   const { lang } = useLang();
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>(initialCat);
   const [accId, setAccId] = useState<string>(initialAccId);
   const [editing, setEditing] = useState<EditableTx | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  // One-tap take-out (hide) / bring-back (unhide) from the list — admin only.
+  // Hidden rows go to the Archive (shared_amount=0); nothing is deleted.
+  async function quickToggleHide(r: Row) {
+    const hiding = r.amountShared !== 0;
+    setBusyId(r.id);
+    try {
+      const res = await fetch(`/api/transactions/${r.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hide: hiding })
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        toast.error(j.error ?? "erro");
+        return;
+      }
+      toast.success(hiding ? "Tirado do portal — guardado no Arquivo" : "Trazido de volta ao portal");
+      router.refresh();
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const filtered = useMemo(() => {
     const qLower = q.trim().toLowerCase();
@@ -176,35 +203,57 @@ export function TransactionsClient({
             </h3>
             <div className="space-y-2">
               {list.map((r) => (
-                <button
-                  key={r.id}
-                  onClick={() =>
-                    setEditing({
-                      id: r.id,
-                      date: r.date,
-                      description: r.description,
-                      amountShared: r.amountShared,
-                      amountReal: r.amountReal,
-                      categorySlug: r.categorySlug,
-                      isFake: r.isFake,
-                      isTransfer: r.isTransfer
-                    })
-                  }
-                  className="block w-full text-left"
-                >
-                  <TransactionRow
-                    id={r.id}
-                    date={r.date}
-                    description={r.description}
-                    amountShared={r.amountShared}
-                    amountReal={r.amountReal}
-                    categorySlug={r.categorySlug}
-                    isFake={r.isFake}
-                    isTransfer={r.isTransfer}
-                    role={role}
-                    showDate={false}
-                  />
-                </button>
+                <div key={r.id} className="flex items-stretch gap-2">
+                  <button
+                    onClick={() =>
+                      setEditing({
+                        id: r.id,
+                        date: r.date,
+                        description: r.description,
+                        amountShared: r.amountShared,
+                        amountReal: r.amountReal,
+                        categorySlug: r.categorySlug,
+                        isFake: r.isFake,
+                        isTransfer: r.isTransfer
+                      })
+                    }
+                    className="block flex-1 min-w-0 text-left"
+                  >
+                    <TransactionRow
+                      id={r.id}
+                      date={r.date}
+                      description={r.description}
+                      amountShared={r.amountShared}
+                      amountReal={r.amountReal}
+                      categorySlug={r.categorySlug}
+                      isFake={r.isFake}
+                      isTransfer={r.isTransfer}
+                      role={role}
+                      showDate={false}
+                    />
+                  </button>
+                  {role === "admin" && (
+                    <button
+                      onClick={() => quickToggleHide(r)}
+                      disabled={busyId === r.id}
+                      title={r.amountShared === 0 ? "Trazer de volta ao portal" : "Tirar do portal"}
+                      aria-label={r.amountShared === 0 ? "Trazer de volta" : "Tirar do portal"}
+                      className={`shrink-0 w-11 rounded-xl border inline-flex items-center justify-center transition disabled:opacity-50 ${
+                        r.amountShared === 0
+                          ? "border-accent/30 text-accent bg-accent/5 hover:bg-accent/10"
+                          : "border-border bg-card text-muted hover:text-danger hover:border-danger/40"
+                      }`}
+                    >
+                      {busyId === r.id ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : r.amountShared === 0 ? (
+                        <Undo2 size={16} />
+                      ) : (
+                        <EyeOff size={16} />
+                      )}
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           </div>
