@@ -6,6 +6,7 @@ import { getAccountsWithBalances } from "@/lib/balance/queries";
 import { formatBRL } from "@/lib/format";
 import { LoginForm } from "./login-form";
 import { ReconcileButton } from "./reconcile-button";
+import { PluggySyncButton } from "./pluggy-sync-button";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +83,7 @@ export default async function AdminLanding({
           subtitle={`${pending ?? 0} pendentes de revisão`}
           Icon={FileCog}
         />
+        <PluggySyncButton />
         <ReconcileButton />
         <AdminLink
           href="/"

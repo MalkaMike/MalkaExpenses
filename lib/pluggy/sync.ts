@@ -33,6 +33,16 @@ function defaultFromDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Incremental window with overlap: re-pull a few days before the last sync so
+// late-posting transactions (dated before our last run but posted after) aren't
+// missed. The external_id dedup makes the overlap free of duplicates.
+function incrementalFromDate(lastSyncIso: string, overlapDays = 7): string {
+  const d = new Date(`${isoToDate(lastSyncIso)}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return defaultFromDate();
+  d.setUTCDate(d.getUTCDate() - overlapDays);
+  return d.toISOString().slice(0, 10);
+}
+
 /**
  * Sync one Pluggy item (one bank login → one or more accounts) into Casa.
  *  - links each Pluggy account to a Casa account (creating it on first sync)
@@ -75,7 +85,7 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
         .insert({
           name: pa.name || item.connector?.name || "Conta",
           bank: bankKey,
-          type: mapAccountType(pa.type),
+          type: mapAccountType(pa.type, pa.subtype),
           real_starting_balance: 0,
           shared_starting_balance: 0,
           cc_issuer: pa.type === "CREDIT" ? bankKey : null,
@@ -92,7 +102,7 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
 
     // 2) Pull transactions since last sync (overlap by a few days to catch
     //    late-posting items; dedup handles the overlap).
-    const from = lastSync ? isoToDate(lastSync) : defaultFromDate();
+    const from = lastSync ? incrementalFromDate(lastSync) : defaultFromDate();
     let pluggyTx: PluggyTransaction[] = [];
     try {
       pluggyTx = await listTransactions(pa.id, from);
