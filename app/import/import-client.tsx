@@ -14,6 +14,8 @@ import {
   CreditCard
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
+import { useLang } from "@/lib/i18n/context";
+import { t, type Lang } from "@/lib/i18n/translations";
 
 type Account = { id: string; name: string; bank: string; type: string };
 
@@ -73,6 +75,7 @@ export function ImportClient({
   defaultAccountId?: string;
 }) {
   const router = useRouter();
+  const { lang } = useLang();
   const [accountId, setAccountId] = useState(defaultAccountId ?? accounts[0]?.id ?? "");
 
   // ── Single-file state ──────────────────────────────────────────────────────
@@ -185,7 +188,7 @@ export function ImportClient({
       const r = await fetch("/api/imports/upload", { method: "POST", body: fd });
       const json = await r.json();
       if (!r.ok) {
-        setErr(json.error ?? "erro desconhecido");
+        setErr(json.error ?? t("import.err_unknown", lang));
         setSingleStage("error");
         return;
       }
@@ -194,7 +197,7 @@ export function ImportClient({
         setPreview(json.preview);
         setSingleStage("preview");
       } else {
-        setErr(json.message ?? "Arquivo salvo mas não foi possível processar.");
+        setErr(json.message ?? t("import.err_unprocessable", lang));
         setSingleStage("error");
       }
     } catch (e) {
@@ -216,7 +219,7 @@ export function ImportClient({
       });
       const json: DoneResult & { error?: string } = await r.json();
       if (!r.ok) {
-        setErr(json.error ?? "erro ao importar");
+        setErr(json.error ?? t("import.err_import", lang));
         setSingleStage("error");
         return;
       }
@@ -265,7 +268,7 @@ export function ImportClient({
         if (!uploadRes.ok) {
           const j = await uploadRes.json().catch(() => ({}));
           updatedFiles = updatedFiles.map((f, idx) =>
-            idx === i ? { ...f, status: "error" as FileStatus, error: j.error ?? "upload falhou" } : f
+            idx === i ? { ...f, status: "error" as FileStatus, error: j.error ?? t("import.err_upload", lang) } : f
           );
           setBulkFiles([...updatedFiles]);
           continue;
@@ -275,7 +278,7 @@ export function ImportClient({
         if (!uploadJson.preview || !uploadJson.importId) {
           updatedFiles = updatedFiles.map((f, idx) =>
             idx === i
-              ? { ...f, status: "error" as FileStatus, error: "não foi possível processar o arquivo" }
+              ? { ...f, status: "error" as FileStatus, error: t("import.err_unprocessable_file", lang) }
               : f
           );
           setBulkFiles([...updatedFiles]);
@@ -302,7 +305,7 @@ export function ImportClient({
         if (!confirmRes.ok) {
           updatedFiles = updatedFiles.map((f, idx) =>
             idx === i
-              ? { ...f, status: "error" as FileStatus, error: confirmJson.error ?? "erro ao importar" }
+              ? { ...f, status: "error" as FileStatus, error: confirmJson.error ?? t("import.err_import", lang) }
               : f
           );
         } else {
@@ -351,12 +354,12 @@ export function ImportClient({
   if (accounts.length === 0) {
     return (
       <div className="rounded-2xl bg-card border border-border p-6 text-center">
-        <p className="text-sm text-muted mb-3">Crie uma conta primeiro.</p>
+        <p className="text-sm text-muted mb-3">{t("import.need_account", lang)}</p>
         <a
           href="/accounts/new"
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-fg text-bg text-sm font-medium"
         >
-          Criar conta <ArrowRight size={14} />
+          {t("import.create_account", lang)} <ArrowRight size={14} />
         </a>
       </div>
     );
@@ -377,9 +380,9 @@ export function ImportClient({
               <Loader2 size={20} className="animate-spin" />
             </div>
             <div className="flex-1">
-              <p className="font-medium">Processando {bulkFiles.length} arquivos...</p>
+              <p className="font-medium">{t("import.processing_files", lang)} {bulkFiles.length} {t("import.files_word", lang)}...</p>
               <p className="text-xs text-muted">
-                {done} de {bulkFiles.length} concluídos · {bulkElapsed}s
+                {done} {t("import.of", lang)} {bulkFiles.length} {t("import.bulk_done_word", lang)} · {bulkElapsed}s
               </p>
             </div>
           </div>
@@ -391,21 +394,21 @@ export function ImportClient({
                 <span className="flex-1 truncate text-xs">{f.file.name}</span>
                 {f.status === "done" && (
                   <span className="text-[10px] text-accent tabular-nums">
-                    +{f.inserted} novos
-                    {f.duplicates ? ` · ${f.duplicates} já existiam` : ""}
+                    +{f.inserted} {t("import.new_count", lang)}
+                    {f.duplicates ? ` · ${f.duplicates} ${t("import.already_existed", lang)}` : ""}
                   </span>
                 )}
                 {f.status === "error" && (
                   <span className="text-[10px] text-danger truncate max-w-[16ch]">{f.error}</span>
                 )}
                 {f.status === "uploading" && (
-                  <span className="text-[10px] text-muted">enviando...</span>
+                  <span className="text-[10px] text-muted">{t("import.sending", lang)}</span>
                 )}
                 {f.status === "parsing" && (
-                  <span className="text-[10px] text-accent font-medium">✦ Gemini a ler PDF...</span>
+                  <span className="text-[10px] text-accent font-medium">{t("import.parsing_pdf", lang)}</span>
                 )}
                 {f.status === "importing" && (
-                  <span className="text-[10px] text-accent font-medium">✦ IA a categorizar...</span>
+                  <span className="text-[10px] text-accent font-medium">{t("import.ai_cat", lang)}</span>
                 )}
               </li>
             ))}
@@ -413,7 +416,7 @@ export function ImportClient({
         </div>
         {current && (
           <p className="text-center text-xs text-muted">
-            Por favor não feche essa tela. O processamento continua em segundo plano.
+            {t("import.dont_close", lang)}
           </p>
         )}
       </div>
@@ -433,15 +436,15 @@ export function ImportClient({
               <CheckCircle2 size={28} />
             </div>
             <h2 className="text-xl font-semibold">
-              {bulkFiles.length} {bulkFiles.length === 1 ? "arquivo" : "arquivos"} processados
+              {bulkFiles.length} {bulkFiles.length === 1 ? t("import.file_one", lang) : t("import.file_many", lang)} {t("import.processed", lang)}
             </h2>
           </div>
           <div className="grid grid-cols-3 gap-2 mb-4">
-            <Stat icon={<FileText size={13} />} label="Novos" value={String(totalInserted)} />
-            <Stat icon={<Sparkles size={13} />} label="Categorizados" value={String(totalCategorized)} />
+            <Stat icon={<FileText size={13} />} label={t("import.stat_new", lang)} value={String(totalInserted)} />
+            <Stat icon={<Sparkles size={13} />} label={t("import.stat_categorized", lang)} value={String(totalCategorized)} />
             <Stat
               icon={<AlertTriangle size={13} />}
-              label="Já existiam"
+              label={t("import.stat_existed", lang)}
               value={String(totalDuplicates)}
             />
           </div>
@@ -449,7 +452,7 @@ export function ImportClient({
           {errorFiles.length > 0 && (
             <div className="mb-4 p-3 rounded-xl bg-danger/10 border border-danger/30">
               <p className="text-xs text-danger font-medium mb-1">
-                {errorFiles.length} {errorFiles.length === 1 ? "arquivo com erro:" : "arquivos com erro:"}
+                {errorFiles.length} {errorFiles.length === 1 ? t("import.file_with_error_one", lang) : t("import.file_with_error_many", lang)}
               </p>
               {errorFiles.map((f, i) => (
                 <p key={i} className="text-xs text-danger truncate">
@@ -464,13 +467,13 @@ export function ImportClient({
               onClick={() => router.push("/")}
               className="flex-1 px-4 py-3 rounded-xl bg-fg text-bg font-medium"
             >
-              Ver dashboard
+              {t("import.see_dashboard", lang)}
             </button>
             <button
               onClick={reset}
               className="flex-1 px-4 py-3 rounded-xl bg-card border border-border font-medium inline-flex items-center justify-center gap-2"
             >
-              <RotateCcw size={14} /> Importar mais
+              <RotateCcw size={14} /> {t("import.import_more", lang)}
             </button>
           </div>
         </div>
@@ -500,55 +503,55 @@ export function ImportClient({
           </div>
           {allDuplicates ? (
             <>
-              <h2 className="text-xl font-semibold mb-1">Já importado</h2>
+              <h2 className="text-xl font-semibold mb-1">{t("import.done_dupe_title", lang)}</h2>
               <p className="text-sm text-muted mb-5">
                 {done.total === 1
-                  ? "Este movimento já existe — nada adicionado."
-                  : `Todos os ${done.total} movimentos já existem. Nada adicionado.`}
+                  ? t("import.done_dupe_one", lang)
+                  : `${t("import.done_dupe_many_a", lang)} ${done.total} ${t("import.done_dupe_many_b", lang)}`}
               </p>
             </>
           ) : (
             <>
-              <h2 className="text-2xl font-semibold mb-1">Importado!</h2>
+              <h2 className="text-2xl font-semibold mb-1">{t("import.done_title", lang)}</h2>
               <p className="text-sm text-muted mb-5">
-                {done.inserted === 1 ? "1 movimento adicionado" : `${done.inserted} movimentos adicionados`}
+                {done.inserted === 1 ? t("import.done_added_one", lang) : `${done.inserted} ${t("import.done_added_many", lang)}`}
                 {done.categorized < done.inserted && (
-                  <span className="text-warning"> · alguns precisam de revisão</span>
+                  <span className="text-warning"> · {t("import.some_need_review", lang)}</span>
                 )}
               </p>
             </>
           )}
           <div className="grid grid-cols-2 gap-3 mb-4 text-left">
-            <Stat icon={<FileText size={14} />} label="Novos" value={String(done.inserted)} />
+            <Stat icon={<FileText size={14} />} label={t("import.stat_new", lang)} value={String(done.inserted)} />
             <Stat
               icon={<Sparkles size={14} />}
-              label="Categorizados"
+              label={t("import.stat_categorized", lang)}
               value={done.inserted > 0 ? `${done.categorized}/${done.inserted}` : "—"}
             />
             {(done.ruleMatched ?? 0) > 0 && (
               <Stat
                 icon={<CheckCircle2 size={14} />}
-                label="Via regra"
+                label={t("import.stat_via_rule", lang)}
                 value={String(done.ruleMatched)}
               />
             )}
             {(done.researched ?? 0) > 0 && (
               <Stat
                 icon={<Sparkles size={14} />}
-                label="Pesquisados"
+                label={t("import.stat_researched", lang)}
                 value={String(done.researched)}
               />
             )}
           </div>
           {someDuplicates && (
             <div className="mb-4 p-4 rounded-xl bg-warning/10 border border-warning/30 text-warning text-sm text-left">
-              <strong>⚠ {done.duplicates} {done.duplicates === 1 ? "duplicata" : "duplicatas"} ignorada{done.duplicates === 1 ? "" : "s"}</strong>
-              {" "}— já existia{done.duplicates === 1 ? "" : "m"} na conta.
+              <strong>⚠ {done.duplicates} {done.duplicates === 1 ? t("import.dupe_one", lang) : t("import.dupe_many", lang)} {done.duplicates === 1 ? t("import.dupe_ignored_one", lang) : t("import.dupe_ignored_many", lang)}</strong>
+              {" "}{done.duplicates === 1 ? t("import.dupe_existed_one", lang) : t("import.dupe_existed_many", lang)}
             </div>
           )}
           {done.aiError && (
             <div className="mb-4 p-4 rounded-xl bg-danger/10 border border-danger/30 text-danger text-sm text-left">
-              ⚠ Categorização incompleta: {done.aiError}
+              ⚠ {t("import.cat_incomplete", lang)} {done.aiError}
             </div>
           )}
           <div className="flex flex-col sm:flex-row gap-2">
@@ -557,20 +560,20 @@ export function ImportClient({
                 onClick={() => router.push("/admin/review")}
                 className="flex-1 px-4 py-3 rounded-xl bg-warning/10 border border-warning/30 text-warning font-medium inline-flex items-center justify-center gap-2"
               >
-                Rever categorias
+                {t("import.review_cats", lang)}
               </button>
             )}
             <button
               onClick={() => router.push("/")}
               className="flex-1 px-4 py-3 rounded-xl bg-fg text-bg font-medium"
             >
-              Dashboard {redirectIn !== null && `(${redirectIn}s)`}
+              {t("import.dashboard", lang)} {redirectIn !== null && `(${redirectIn}s)`}
             </button>
             <button
               onClick={reset}
               className="flex-1 px-4 py-3 rounded-xl bg-card border border-border font-medium inline-flex items-center justify-center gap-2"
             >
-              <RotateCcw size={14} /> Importar outro
+              <RotateCcw size={14} /> {t("import.import_another", lang)}
             </button>
           </div>
         </div>
@@ -586,7 +589,7 @@ export function ImportClient({
   }
 
   if (isSingleWorking) {
-    return <ProgressView stage={singleStage} elapsed={elapsed} fileName={file?.name ?? ""} />;
+    return <ProgressView stage={singleStage} elapsed={elapsed} fileName={file?.name ?? ""} lang={lang} />;
   }
 
   if (singleStage === "preview" && preview) {
@@ -598,34 +601,33 @@ export function ImportClient({
               <CheckCircle2 size={20} />
             </div>
             <div>
-              <h2 className="font-medium">Arquivo analisado</h2>
+              <h2 className="font-medium">{t("import.file_analyzed", lang)}</h2>
               <p className="text-xs text-muted">
                 {preview.count}{" "}
-                {preview.count === 1 ? "movimento" : "movimentos"} encontrado
-                {preview.count === 1 ? "" : "s"}
+                {preview.count === 1 ? t("import.tx_found_one", lang) : t("import.tx_found_many", lang)}
               </p>
             </div>
           </div>
           {preview.count === 0 && (
             <div className="rounded-xl bg-warning/10 border border-warning/30 text-warning text-sm px-3 py-2">
-              ⚠ Nenhuma transação foi extraída deste arquivo. Verifique se o PDF contém um extrato legível ou tente outro formato (OFX/QFX).
+              {t("import.no_tx_extracted", lang)}
             </div>
           )}
           <div className="grid grid-cols-2 gap-3 text-sm">
             {preview.bankHint && (
-              <Stat icon={<FileText size={14} />} label="Banco" value={preview.bankHint} />
+              <Stat icon={<FileText size={14} />} label={t("import.bank", lang)} value={preview.bankHint} />
             )}
             {preview.closingBalance !== null && (
               <Stat
                 icon={<FileText size={14} />}
-                label="Saldo no extrato"
+                label={t("import.statement_balance", lang)}
                 value={formatBRL(preview.closingBalance)}
               />
             )}
             {preview.periodStart && preview.periodEnd && (
               <Stat
                 icon={<FileText size={14} />}
-                label="Período"
+                label={t("import.period", lang)}
                 value={`${formatDate(preview.periodStart)} → ${formatDate(preview.periodEnd)}`}
               />
             )}
@@ -634,7 +636,7 @@ export function ImportClient({
 
         <div className="rounded-2xl bg-card border border-border p-4">
           <h3 className="text-xs uppercase tracking-wider text-muted mb-3 px-1">
-            Pré-visualização ({Math.min(preview.transactions.length, 10)} de {preview.count})
+            {t("import.preview_heading", lang)} ({Math.min(preview.transactions.length, 10)} {t("import.of", lang)} {preview.count})
           </h3>
           <div className="max-h-72 overflow-auto -mx-1">
             <table className="w-full text-sm">
@@ -665,18 +667,18 @@ export function ImportClient({
             onClick={reset}
             className="flex-1 px-4 py-3 rounded-xl bg-card border border-border text-sm font-medium"
           >
-            Cancelar
+            {t("import.cancel", lang)}
           </button>
           <button
             onClick={confirm}
             disabled={preview.count === 0}
             className="flex-[2] px-4 py-3 rounded-xl bg-accent text-bg font-medium inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-            title={preview.count === 0 ? "Nenhuma transação encontrada no arquivo" : undefined}
+            title={preview.count === 0 ? t("import.no_tx_in_file", lang) : undefined}
           >
             <Sparkles size={16} />
             {preview.count === 0
-              ? "Nenhuma transação encontrada"
-              : "Importar e categorizar com IA"}
+              ? t("import.no_tx_found", lang)
+              : t("import.import_and_cat", lang)}
           </button>
         </div>
       </div>
@@ -690,13 +692,13 @@ export function ImportClient({
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-danger/20 text-danger mb-3">
             <XCircle size={28} />
           </div>
-          <h2 className="text-lg font-semibold mb-1">Algo deu errado</h2>
+          <h2 className="text-lg font-semibold mb-1">{t("import.something_wrong", lang)}</h2>
           <p className="text-sm text-muted mb-4">{err}</p>
           <button
             onClick={reset}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-card border border-border text-sm font-medium"
           >
-            <RotateCcw size={14} /> Tentar novamente
+            <RotateCcw size={14} /> {t("import.try_again", lang)}
           </button>
         </div>
       </div>
@@ -710,7 +712,7 @@ export function ImportClient({
     <div className="space-y-4">
       {/* Account selector */}
       <label className="block">
-        <span className="block text-xs uppercase tracking-wider text-muted mb-1.5">Conta</span>
+        <span className="block text-xs uppercase tracking-wider text-muted mb-1.5">{t("import.account", lang)}</span>
         <select
           value={accountId}
           onChange={(e) => setAccountId(e.target.value)}
@@ -718,14 +720,14 @@ export function ImportClient({
         >
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name} ({a.bank}){a.type === "credit_card" ? " · Cartão" : ""}
+              {a.name} ({a.bank}){a.type === "credit_card" ? ` · ${t("import.card_suffix", lang)}` : ""}
             </option>
           ))}
         </select>
         {accounts.some((a) => a.type === "credit_card") && (
           <p className="mt-1.5 flex items-center gap-1 text-[10px] text-muted">
             <CreditCard size={10} />
-            Cartões de crédito aparecem na lista — as faturas serão reconciliadas automaticamente.
+            {t("import.cc_hint", lang)}
           </p>
         )}
       </label>
@@ -762,7 +764,7 @@ export function ImportClient({
           <div className="space-y-1.5">
             <div className="flex items-center gap-2 justify-center mb-2">
               <FileText size={22} className="text-accent" />
-              <span className="font-medium">{bulkFiles.length} arquivos selecionados</span>
+              <span className="font-medium">{bulkFiles.length} {t("import.files_selected", lang)}</span>
             </div>
             <div className="max-h-32 overflow-auto text-left space-y-1">
               {bulkFiles.map((f, i) => (
@@ -777,7 +779,7 @@ export function ImportClient({
                 </div>
               ))}
             </div>
-            <p className="text-xs text-muted mt-1">Clique para mudar a seleção</p>
+            <p className="text-xs text-muted mt-1">{t("import.click_to_change", lang)}</p>
           </div>
         )}
 
@@ -786,11 +788,11 @@ export function ImportClient({
           <div className="space-y-2">
             <Upload size={28} className="mx-auto text-muted" />
             <p className="text-sm">
-              Toque para escolher arquivos
+              {t("import.tap_to_choose", lang)}
               <br />
               <span className="text-xs text-muted">.ofx · .pdf · .csv · .qfx</span>
             </p>
-            <p className="text-xs text-muted">Selecione até 12 arquivos de uma vez</p>
+            <p className="text-xs text-muted">{t("import.up_to_12", lang)}</p>
           </div>
         )}
       </label>
@@ -802,7 +804,7 @@ export function ImportClient({
           disabled={!accountId}
           className="w-full p-3.5 rounded-xl bg-fg text-bg font-medium disabled:opacity-40 inline-flex items-center justify-center gap-2"
         >
-          <Sparkles size={16} /> Importar e categorizar {bulkFiles.length} arquivos com IA
+          <Sparkles size={16} /> {t("import.bulk_cta_a", lang)} {bulkFiles.length} {t("import.bulk_cta_b", lang)}
         </button>
       ) : (
         <button
@@ -810,14 +812,14 @@ export function ImportClient({
           disabled={!file || !accountId}
           className="w-full p-3.5 rounded-xl bg-fg text-bg font-medium disabled:opacity-40 inline-flex items-center justify-center gap-2"
         >
-          <Sparkles size={16} /> Enviar e analisar
+          <Sparkles size={16} /> {t("import.single_cta", lang)}
         </button>
       )}
 
       <p className="text-center text-xs text-muted">
-        Itaú, Bradesco, Nubank, Inter, BTG e outros bancos brasileiros.
+        {t("import.banks_hint", lang)}
         <br />
-        PDF é analisado por IA (Gemini 2.5) — até 60s por arquivo.
+        {t("import.pdf_hint", lang)}
       </p>
     </div>
   );
@@ -852,23 +854,25 @@ function BulkStatusIcon({ status }: { status: FileStatus }) {
 function ProgressView({
   stage,
   elapsed,
-  fileName
+  fileName,
+  lang
 }: {
   stage: SingleStage;
   elapsed: number;
   fileName: string;
+  lang: Lang;
 }) {
   const steps = [
-    { key: "uploading", label: "Enviando arquivo", hint: "Subindo para o servidor..." },
+    { key: "uploading", label: t("import.step_upload", lang), hint: t("import.step_upload_hint", lang) },
     {
       key: "parsing",
-      label: "Analisando com IA",
-      hint: "Gemini está lendo o seu extrato e extraindo os movimentos. Isso pode levar 30 a 50 segundos."
+      label: t("import.step_parse", lang),
+      hint: t("import.step_parse_hint", lang)
     },
     {
       key: "importing",
-      label: "Categorizando e salvando",
-      hint: "Aplicando categorias com IA e gravando no banco de dados."
+      label: t("import.step_save", lang),
+      hint: t("import.step_save_hint", lang)
     }
   ] as const;
 
@@ -884,7 +888,7 @@ function ProgressView({
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted truncate">{fileName}</p>
-            <h2 className="font-medium leading-tight">{current?.label ?? "Processando..."}</h2>
+            <h2 className="font-medium leading-tight">{current?.label ?? t("import.processing", lang)}</h2>
           </div>
           <span className="text-sm text-muted tabular-nums">{elapsed}s</span>
         </header>
@@ -915,7 +919,7 @@ function ProgressView({
         </ol>
       </div>
       <p className="text-center text-xs text-muted">
-        Por favor não feche essa tela. O processamento continua mesmo se você voltar.
+        {t("import.dont_close_single", lang)}
       </p>
     </div>
   );

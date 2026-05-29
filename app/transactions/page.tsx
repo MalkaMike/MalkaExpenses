@@ -1,7 +1,8 @@
-import { Search } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
+import { getLang } from "@/lib/i18n/server";
+import { t } from "@/lib/i18n/translations";
 import { TransactionsClient } from "./transactions-client";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +29,7 @@ export default async function TransactionsPage({
   const initialCat = sp.cat ?? "";
 
   const role = await getRole();
+  const lang = await getLang();
   const sb = serverClient();
   const { data: accounts } = await sb
     .from("accounts")
@@ -95,7 +97,7 @@ export default async function TransactionsPage({
   return (
     <div className="px-4 pt-6 max-w-2xl mx-auto">
       <header className="flex items-center justify-between mb-5">
-        <h1 className="text-2xl font-semibold">Movimentos</h1>
+        <h1 className="text-2xl font-semibold">{t("tx.title", lang)}</h1>
         <span className="text-xs text-muted">{rows.length}</span>
       </header>
       <TransactionsClient

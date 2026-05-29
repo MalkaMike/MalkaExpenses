@@ -6,6 +6,8 @@ import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { TransactionRow } from "@/components/transaction-row";
 import { formatBRL, monthLabel } from "@/lib/format";
+import { getLang } from "@/lib/i18n/server";
+import { t, type Lang, type StringKey } from "@/lib/i18n/translations";
 import { AccountEditPanel } from "./account-edit-panel";
 
 export const dynamic = "force-dynamic";
@@ -20,15 +22,21 @@ const BANK_LABEL: Record<string, string> = {
   c6: "C6"
 };
 
-const TYPE_LABEL: Record<string, string> = {
-  checking: "Conta corrente",
-  savings: "Poupança",
-  credit_card: "Cartão de crédito"
+const TYPE_LABEL_KEY: Record<string, StringKey> = {
+  checking: "acct_type.checking_full",
+  savings: "acct_type.savings_full",
+  credit_card: "acct_type.credit_card_full"
 };
+
+function typeLabel(type: string, lang: Lang): string {
+  const key = TYPE_LABEL_KEY[type];
+  return key ? t(key, lang) : type;
+}
 
 export default async function AccountDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const role = await getRole();
+  const lang = await getLang();
   const sb = serverClient();
 
   const { data: account } = await sb
@@ -128,13 +136,13 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
     <div className="px-4 pt-6 max-w-2xl mx-auto">
       <header className="mb-5">
         <Link href="/" className="inline-flex items-center text-sm text-muted hover:text-fg gap-1">
-          <ChevronLeft size={14} /> voltar
+          <ChevronLeft size={14} /> {t("account.back", lang)}
         </Link>
         <div className="flex items-center justify-between mt-2">
           <div>
             <h1 className="text-2xl font-semibold">{account.name}</h1>
             <p className="text-xs text-muted">
-              {BANK_LABEL[account.bank] ?? account.bank} · {TYPE_LABEL[account.type] ?? account.type}
+              {BANK_LABEL[account.bank] ?? account.bank} · {typeLabel(account.type, lang)}
             </p>
           </div>
           {role === "admin" && (
@@ -154,7 +162,7 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
       </header>
 
       <section className="rounded-2xl bg-gradient-to-br from-card to-card/40 border border-border p-5 mb-5">
-        <p className="text-xs uppercase tracking-wider text-muted mb-1">Saldo</p>
+        <p className="text-xs uppercase tracking-wider text-muted mb-1">{t("account.balance", lang)}</p>
         <p className="text-4xl font-semibold tabular-nums">{formatBRL(sharedBalance)}</p>
         {role === "admin" && realBalance !== null && realBalance !== sharedBalance && (
           <p className="mt-1.5 text-xs text-muted tabular-nums">
@@ -165,13 +173,13 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
           href={`/import?account=${id}`}
           className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/30 text-xs hover:bg-accent/20"
         >
-          <Upload size={12} /> importar extrato
+          <Upload size={12} /> {t("account.import", lang)}
         </Link>
       </section>
 
       {monthsBars.length >= 2 && (
         <section className="rounded-2xl bg-card border border-border p-5 mb-5">
-          <h2 className="text-xs uppercase tracking-wider text-muted mb-3">Últimos meses</h2>
+          <h2 className="text-xs uppercase tracking-wider text-muted mb-3">{t("account.recent_months", lang)}</h2>
           <div className="space-y-2.5">
             {monthsBars.map(([m, v]) => {
               const total = v.in + v.out;
@@ -198,24 +206,24 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
       )}
 
       <div className="flex items-center justify-between mb-3 px-1">
-        <h2 className="text-xs uppercase tracking-wider text-muted">Movimentos</h2>
+        <h2 className="text-xs uppercase tracking-wider text-muted">{t("account.movements", lang)}</h2>
         {rows.length > 0 && (
           <span className="text-[11px] text-muted tabular-nums">
-            {Math.min(rows.length, 100)} de {rows.length}
+            {Math.min(rows.length, 100)} {t("account.of", lang)} {rows.length}
             {rows.length === 300 ? "+" : ""}
           </span>
         )}
       </div>
       <div className="space-y-2">
-        {rows.length === 0 && <p className="text-sm text-muted text-center py-8">Nenhum movimento.</p>}
+        {rows.length === 0 && <p className="text-sm text-muted text-center py-8">{t("account.no_movements", lang)}</p>}
         {rows.slice(0, 100).map((r) => (
           <TransactionRow key={r.id} {...r} role={role} />
         ))}
         {rows.length > 100 && (
           <p className="text-center text-xs text-muted py-3 border border-dashed border-border rounded-xl">
-            {rows.length - 100} movimentos mais antigos não exibidos.{" "}
+            {rows.length - 100} {t("account.older_hidden_1", lang)}{" "}
             <a href={`/transactions?account=${id}`} className="text-accent underline">
-              Ver todos em Movimentos
+              {t("account.see_all_tx", lang)}
             </a>
           </p>
         )}

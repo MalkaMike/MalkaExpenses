@@ -5,6 +5,8 @@ import { TransactionRow } from "@/components/transaction-row";
 import { TransactionEditModal, type EditableTx } from "@/components/transaction-edit-modal";
 import { CATEGORY_META, getCategoryTree } from "@/lib/categories/meta";
 import type { Role } from "@/lib/auth/admin";
+import { useLang } from "@/lib/i18n/context";
+import { t, type Lang } from "@/lib/i18n/translations";
 
 type Row = {
   id: string;
@@ -18,14 +20,14 @@ type Row = {
   isTransfer: boolean;
 };
 
-function dayHeader(iso: string): string {
+function dayHeader(iso: string, lang: Lang): string {
   const today = new Date();
   const todayIso = today.toISOString().slice(0, 10);
   const y = new Date(today);
   y.setDate(y.getDate() - 1);
   const yIso = y.toISOString().slice(0, 10);
-  if (iso === todayIso) return "Hoje";
-  if (iso === yIso) return "Ontem";
+  if (iso === todayIso) return t("tx.today", lang);
+  if (iso === yIso) return t("tx.yesterday", lang);
   const [yyyy, mm, dd] = iso.split("-");
   const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   return `${dd} ${months[Number(mm) - 1]} ${yyyy}`;
@@ -44,6 +46,7 @@ export function TransactionsClient({
   initialAccId?: string;
   initialCat?: string;
 }) {
+  const { lang } = useLang();
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>(initialCat);
   const [accId, setAccId] = useState<string>(initialAccId);
@@ -101,14 +104,14 @@ export function TransactionsClient({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="buscar..."
+            placeholder={t("tx.search_ph", lang)}
             className="w-full pl-9 pr-9 py-2.5 rounded-xl bg-card border border-border outline-none text-sm focus:border-accent transition"
           />
           {q && (
             <button
               onClick={() => setQ("")}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
-              aria-label="Limpar busca"
+              aria-label={t("tx.clear_search", lang)}
             >
               <X size={14} />
             </button>
@@ -118,10 +121,10 @@ export function TransactionsClient({
           <FilterSelect
             value={accId}
             onChange={setAccId}
-            placeholder="Todas as contas"
+            placeholder={t("tx.all_accounts", lang)}
             options={accounts.map((a) => ({ value: a.id, label: a.name }))}
           />
-          <GroupedCategorySelect value={cat} onChange={setCat} />
+          <GroupedCategorySelect value={cat} onChange={setCat} lang={lang} />
           {anyFilter && (
             <button
               onClick={() => {
@@ -131,7 +134,7 @@ export function TransactionsClient({
               }}
               className="text-xs text-muted hover:text-fg whitespace-nowrap px-2"
             >
-              limpar
+              {t("tx.clear", lang)}
             </button>
           )}
         </div>
@@ -140,13 +143,13 @@ export function TransactionsClient({
       {/* Totals strip */}
       <div className="grid grid-cols-2 gap-2 mb-5 text-sm">
         <div className="p-3 rounded-xl bg-accent/10 border border-accent/20">
-          <p className="text-[10px] uppercase tracking-wider text-muted">Receita</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted">{t("tx.income", lang)}</p>
           <p className="tabular-nums font-semibold text-accent">
             +{formatBRL(totals.income)}
           </p>
         </div>
         <div className="p-3 rounded-xl bg-danger/10 border border-danger/20">
-          <p className="text-[10px] uppercase tracking-wider text-muted">Despesa</p>
+          <p className="text-[10px] uppercase tracking-wider text-muted">{t("tx.expense", lang)}</p>
           <p className="tabular-nums font-semibold text-danger">
             -{formatBRL(totals.expense)}
           </p>
@@ -156,14 +159,14 @@ export function TransactionsClient({
       {/* Grouped list */}
       {grouped.length === 0 && (
         <div className="text-center py-12 text-sm text-muted">
-          Nenhum movimento {anyFilter ? "com esses filtros" : ""}.
+          {anyFilter ? t("tx.empty_filtered", lang) : `${t("tx.empty", lang)}.`}
         </div>
       )}
       <div className="space-y-5">
         {grouped.map(([date, list]) => (
           <div key={date}>
             <h3 className="text-[11px] uppercase tracking-wider text-muted mb-2 px-1">
-              {dayHeader(date)}
+              {dayHeader(date, lang)}
             </h3>
             <div className="space-y-2">
               {list.map((r) => (
@@ -240,9 +243,11 @@ function FilterSelect({
 function GroupedCategorySelect({
   value,
   onChange,
+  lang,
 }: {
   value: string;
   onChange: (v: string) => void;
+  lang: Lang;
 }) {
   return (
     <select
@@ -252,11 +257,11 @@ function GroupedCategorySelect({
         value ? "border-accent text-accent" : "border-border text-muted"
       } whitespace-nowrap outline-none`}
     >
-      <option value="">Todas as categorias</option>
+      <option value="">{t("tx.all_categories", lang)}</option>
       {getCategoryTree().map(({ parent, children }) =>
         children.length > 0 ? (
           <optgroup key={parent.slug} label={parent.name}>
-            <option value={parent.slug}>{parent.name} (todos)</option>
+            <option value={parent.slug}>{parent.name} {t("tx.all_suffix", lang)}</option>
             {children.map((c) => (
               <option key={c.slug} value={c.slug}>
                 {"  "}{c.name}

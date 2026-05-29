@@ -8,11 +8,14 @@ import { CategoryIcon } from "@/components/category-chip";
 import { CategoryTreeEditor, type DbCategory } from "@/components/category-tree-editor";
 import { getCategoryMeta, mergeCategoryTotalsToParents } from "@/lib/categories/meta";
 import { formatBRL, monthLabel } from "@/lib/format";
+import { getLang } from "@/lib/i18n/server";
+import { t } from "@/lib/i18n/translations";
 
 export const dynamic = "force-dynamic";
 
 export default async function CategoriesPage() {
   const role = await getRole();
+  const lang = await getLang();
   const sb = serverClient();
 
   const [dash, { data: allCats }] = await Promise.all([
@@ -32,8 +35,8 @@ export default async function CategoriesPage() {
   return (
     <div className="px-4 pt-6 max-w-2xl mx-auto">
       <header className="mb-5">
-        <h1 className="text-2xl font-semibold">Categorias</h1>
-        <p className="text-xs text-muted">despesas em {monthLabel(ym)}</p>
+        <h1 className="text-2xl font-semibold">{t("cat.title", lang)}</h1>
+        <p className="text-xs text-muted">{t("cat.expenses_in", lang)} {monthLabel(ym)}</p>
       </header>
 
       <section className="rounded-2xl bg-card border border-border p-5 mb-5">
@@ -43,7 +46,7 @@ export default async function CategoriesPage() {
       <section className="space-y-2 mb-8">
         {mergedCategories.length === 0 && (
           <p className="text-sm text-muted text-center py-12">
-            Sem despesas este mês.
+            {t("cat.no_expenses", lang)}
           </p>
         )}
         {mergedCategories.map((c) => {

@@ -3,12 +3,15 @@ import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { getCategoryMeta } from "@/lib/categories/meta";
 import { formatBRL, monthLabel } from "@/lib/format";
+import { getLang } from "@/lib/i18n/server";
+import { t } from "@/lib/i18n/translations";
 import { BudgetsClient, type BudgetRow } from "./budgets-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function BudgetsPage() {
   const role = await getRole();
+  const lang = await getLang();
   const sb = serverClient();
 
   const { data: budgets } = await sb
@@ -85,14 +88,17 @@ export default async function BudgetsPage() {
   return (
     <div className="px-4 pt-6 max-w-2xl mx-auto pb-24">
       <header className="mb-5">
-        <h1 className="text-2xl font-semibold">Orçamentos</h1>
-        <p className="text-xs text-muted">{monthLabel(ym)} · {rows.length} categorias com orçamento</p>
+        <h1 className="text-2xl font-semibold">{t("budget.title", lang)}</h1>
+        <p className="text-xs text-muted">
+          {monthLabel(ym)} · {rows.length}{" "}
+          {rows.length === 1 ? t("budget.cat_one_with_budget", lang) : t("budget.cat_many_with_budget", lang)}
+        </p>
       </header>
 
       {rows.length > 0 && (
         <section className="grid grid-cols-2 gap-2 mb-5">
           <div className="p-3 rounded-xl bg-card border border-border">
-            <p className="text-[10px] uppercase tracking-wider text-muted">Total orçado</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted">{t("budget.total_budgeted", lang)}</p>
             <p className="tabular-nums font-semibold">{formatBRL(totalLimit)}</p>
           </div>
           <div
@@ -102,7 +108,7 @@ export default async function BudgetsPage() {
                 : "bg-card border-border"
             }`}
           >
-            <p className="text-[10px] uppercase tracking-wider opacity-80">Já gasto</p>
+            <p className="text-[10px] uppercase tracking-wider opacity-80">{t("budget.already_spent", lang)}</p>
             <p className="tabular-nums font-semibold">{formatBRL(totalSpent)}</p>
           </div>
         </section>
@@ -110,7 +116,7 @@ export default async function BudgetsPage() {
 
       {overBudget > 0 && (
         <div className="mb-5 p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger text-sm">
-          ⚠ {overBudget} {overBudget === 1 ? "categoria" : "categorias"} acima do orçamento este mês.
+          ⚠ {overBudget} {overBudget === 1 ? t("budget.over_one", lang) : t("budget.over_many", lang)}
         </div>
       )}
 

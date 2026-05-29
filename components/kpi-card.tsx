@@ -8,9 +8,20 @@ type Props = {
   invertTrend?: boolean; // for "expense" KPIs (lower = better)
   tone?: "neutral" | "positive" | "negative";
   big?: boolean;
+  noChangeLabel?: string; // translated "no change" copy (defaults to pt-BR)
+  vsPreviousLabel?: string; // translated "vs previous month" copy (defaults to pt-BR)
 };
 
-export function KpiCard({ label, value, previous, invertTrend, tone = "neutral", big }: Props) {
+export function KpiCard({
+  label,
+  value,
+  previous,
+  invertTrend,
+  tone = "neutral",
+  big,
+  noChangeLabel = "sem variação",
+  vsPreviousLabel = "vs mês anterior"
+}: Props) {
   let trend: { pct: number; up: boolean } | null = null;
   if (previous !== undefined && previous !== 0) {
     const pct = ((value - previous) / Math.abs(previous)) * 100;
@@ -33,18 +44,29 @@ export function KpiCard({ label, value, previous, invertTrend, tone = "neutral",
           pct={trend.pct}
           up={trend.up}
           better={invertTrend ? !trend.up : trend.up}
+          vsPreviousLabel={vsPreviousLabel}
         />
       )}
       {!trend && previous !== undefined && (
         <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted">
-          <Minus size={11} /> sem variação
+          <Minus size={11} /> {noChangeLabel}
         </p>
       )}
     </div>
   );
 }
 
-function TrendChip({ pct, up, better }: { pct: number; up: boolean; better: boolean }) {
+function TrendChip({
+  pct,
+  up,
+  better,
+  vsPreviousLabel
+}: {
+  pct: number;
+  up: boolean;
+  better: boolean;
+  vsPreviousLabel: string;
+}) {
   const Icon = up ? TrendingUp : TrendingDown;
   const cls = better ? "text-accent" : "text-danger";
   return (
@@ -52,7 +74,7 @@ function TrendChip({ pct, up, better }: { pct: number; up: boolean; better: bool
       <Icon size={11} />
       {up ? "+" : ""}
       {pct.toFixed(1)}%
-      <span className="text-muted ml-0.5">vs mês anterior</span>
+      <span className="text-muted ml-0.5">{vsPreviousLabel}</span>
     </p>
   );
 }

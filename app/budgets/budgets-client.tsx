@@ -6,6 +6,8 @@ import { Plus, Trash2, Save, X, Loader2, Target } from "lucide-react";
 import { CategoryIcon } from "@/components/category-chip";
 import { getCategoryMeta, getCategoryTree, CATEGORY_META } from "@/lib/categories/meta";
 import { formatBRL } from "@/lib/format";
+import { useLang } from "@/lib/i18n/context";
+import { t } from "@/lib/i18n/translations";
 
 export type BudgetRow = {
   id: string;
@@ -20,6 +22,7 @@ export type BudgetRow = {
 
 export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: boolean }) {
   const router = useRouter();
+  const { lang } = useLang();
   const [adding, setAdding] = useState(false);
   const [newSlug, setNewSlug] = useState("");
   const [newLimit, setNewLimit] = useState("");
@@ -44,10 +47,10 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        toast.error(j.error ?? "erro");
+        toast.error(j.error ?? t("budget.toast_err", lang));
         return;
       }
-      toast.success("Orçamento criado");
+      toast.success(t("budget.toast_created", lang));
       setAdding(false);
       setNewSlug("");
       setNewLimit("");
@@ -67,10 +70,10 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
     try {
       const r = await fetch(`/api/budgets/${id}`, { method: "DELETE" });
       if (!r.ok) {
-        toast.error("Erro ao apagar orçamento");
+        toast.error(t("budget.toast_delete_err", lang));
         return;
       }
-      toast.success("Orçamento apagado");
+      toast.success(t("budget.toast_deleted", lang));
       router.refresh();
     } finally {
       setBusy(false);
@@ -85,16 +88,16 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-accent/10 mb-3">
               <Target size={22} className="text-accent" />
             </div>
-            <p className="font-medium mb-1">Nenhum orçamento configurado</p>
+            <p className="font-medium mb-1">{t("budget.empty_title", lang)}</p>
             <p className="text-sm text-muted mb-4">
-              Defina limites mensais por categoria para saber quando está perto de exceder.
+              {t("budget.empty_sub", lang)}
             </p>
             {canEdit && (
               <button
                 onClick={() => setAdding(true)}
                 className="text-sm text-accent hover:underline font-medium"
               >
-                Adicionar agora
+                {t("budget.add_now", lang)}
               </button>
             )}
           </li>
@@ -116,7 +119,7 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
                 <div className="flex-1 min-w-0">
                   <p className="font-medium">{r.categoryName}</p>
                   <p className="text-xs text-muted tabular-nums">
-                    Limite {formatBRL(r.monthlyLimit)}/mês
+                    {t("budget.limit_per_month_a", lang)} {formatBRL(r.monthlyLimit)}{t("budget.limit_per_month_b", lang)}
                   </p>
                 </div>
                 {canEdit && (
@@ -128,10 +131,10 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
                         ? "bg-danger text-bg"
                         : "text-muted hover:text-danger"
                     }`}
-                    aria-label={isConfirmingDel ? "Confirmar exclusão" : "Apagar"}
+                    aria-label={isConfirmingDel ? t("budget.confirm_delete_aria", lang) : t("budget.delete_aria", lang)}
                   >
                     <Trash2 size={12} />
-                    {isConfirmingDel && "confirmar"}
+                    {isConfirmingDel && t("budget.confirm", lang)}
                   </button>
                 )}
               </div>
@@ -154,11 +157,11 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
                 </span>
               </div>
               <p className={`text-xs tabular-nums ${over ? "text-danger font-medium" : "text-muted"}`}>
-                {formatBRL(r.spent)} gastos
+                {formatBRL(r.spent)} {t("budget.spent_label", lang)}
                 {over ? (
-                  <span className="ml-1">· ⚠ excedeu {formatBRL(-remaining)}</span>
+                  <span className="ml-1">· ⚠ {t("budget.exceeded", lang)} {formatBRL(-remaining)}</span>
                 ) : (
-                  <span className="ml-1 text-muted/70">· restam {formatBRL(remaining)}</span>
+                  <span className="ml-1 text-muted/70">· {t("budget.left", lang)} {formatBRL(remaining)}</span>
                 )}
               </p>
             </li>
@@ -171,28 +174,28 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
           onClick={() => setAdding(true)}
           className="w-full p-3 rounded-xl bg-card border border-dashed border-border text-sm font-medium inline-flex items-center justify-center gap-2 hover:border-accent/40 hover:text-accent transition"
         >
-          <Plus size={14} /> Adicionar orçamento
+          <Plus size={14} /> {t("budget.add_budget", lang)}
         </button>
       )}
 
       {canEdit && adding && (
         <div className="rounded-xl bg-card border border-border p-4 space-y-3">
           <div className="flex items-center justify-between">
-            <h3 className="font-medium">Novo orçamento</h3>
-            <button onClick={() => { setAdding(false); setNewSlug(""); setNewLimit(""); }} aria-label="Cancelar">
+            <h3 className="font-medium">{t("budget.new_budget", lang)}</h3>
+            <button onClick={() => { setAdding(false); setNewSlug(""); setNewLimit(""); }} aria-label={t("budget.cancel_aria", lang)}>
               <X size={16} className="text-muted hover:text-fg" />
             </button>
           </div>
           <label className="block">
             <span className="block text-[10px] uppercase tracking-wider text-muted mb-1.5">
-              Categoria
+              {t("budget.category", lang)}
             </span>
             <select
               value={newSlug}
               onChange={(e) => setNewSlug(e.target.value)}
               className="w-full p-3 rounded-xl bg-bg border border-border text-sm outline-none focus:border-accent"
             >
-              <option value="">Selecionar categoria...</option>
+              <option value="">{t("budget.select_category", lang)}</option>
               {getCategoryTree()
                 .filter((node) => !SKIP_SLUGS.has(node.parent.slug))
                 .map(({ parent, children }) => {
@@ -215,7 +218,7 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
                   return (
                     <optgroup key={parent.slug} label={parent.name}>
                       {parentAvailable && (
-                        <option value={parent.slug}>{parent.name} (geral)</option>
+                        <option value={parent.slug}>{parent.name} {t("budget.general_suffix", lang)}</option>
                       )}
                       {availableChildren.map((c) => (
                         <option key={c.slug} value={c.slug}>{"  "}{c.name}</option>
@@ -227,7 +230,7 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
           </label>
           <label className="block">
             <span className="block text-[10px] uppercase tracking-wider text-muted mb-1.5">
-              Limite mensal (R$)
+              {t("budget.monthly_limit", lang)}
             </span>
             <input
               inputMode="decimal"
@@ -244,7 +247,7 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
             className="w-full p-3 rounded-xl bg-accent text-bg font-medium disabled:opacity-50 inline-flex items-center justify-center gap-2 transition"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-            Criar orçamento
+            {t("budget.create_budget", lang)}
           </button>
         </div>
       )}
