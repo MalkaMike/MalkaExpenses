@@ -7,7 +7,7 @@ import { CategoryIcon } from "@/components/category-chip";
 import { getCategoryMeta, getCategoryTree, CATEGORY_META } from "@/lib/categories/meta";
 import { formatBRL } from "@/lib/format";
 import { useLang } from "@/lib/i18n/context";
-import { t } from "@/lib/i18n/translations";
+import { t, type Lang } from "@/lib/i18n/translations";
 
 export type BudgetRow = {
   id: string;
@@ -122,6 +122,7 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
                     {t("budget.limit_per_month_a", lang)} {formatBRL(r.monthlyLimit)}{t("budget.limit_per_month_b", lang)}
                   </p>
                 </div>
+                <BudgetStatusBadge pct={r.pct} lang={lang} />
                 {canEdit && (
                   <button
                     onClick={() => del(r.id)}
@@ -252,5 +253,29 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
         </div>
       )}
     </>
+  );
+}
+
+// Status pill mirroring the Stitch design (Excedido / Atenção / No prazo / Saudável).
+function BudgetStatusBadge({ pct, lang }: { pct: number; lang: Lang }) {
+  let key: "budget.status_over" | "budget.status_attention" | "budget.status_ontrack" | "budget.status_healthy";
+  let cls: string;
+  if (pct >= 100) {
+    key = "budget.status_over";
+    cls = "bg-danger/10 text-danger";
+  } else if (pct >= 80) {
+    key = "budget.status_attention";
+    cls = "bg-warning/15 text-warning";
+  } else if (pct >= 50) {
+    key = "budget.status_ontrack";
+    cls = "bg-accent/10 text-accent";
+  } else {
+    key = "budget.status_healthy";
+    cls = "bg-accent/10 text-accent";
+  }
+  return (
+    <span className={`shrink-0 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ${cls}`}>
+      {t(key, lang)}
+    </span>
   );
 }

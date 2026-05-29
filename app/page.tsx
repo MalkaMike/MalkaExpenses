@@ -13,6 +13,7 @@ import { MonthlyTrend } from "@/components/charts/monthly-trend";
 import { CategoryChip } from "@/components/category-chip";
 import { InsightsPanel } from "@/components/insights-panel";
 import { mergeCategoryTotalsToParents } from "@/lib/categories/meta";
+import { BankSquare } from "@/components/bank-square";
 import { getLang } from "@/lib/i18n/server";
 import { t, type Lang } from "@/lib/i18n/translations";
 
@@ -40,9 +41,14 @@ export default async function Home() {
       </header>
 
       {/* Hero balance */}
-      <section className="rounded-2xl bg-gradient-to-br from-card to-card/40 border border-border p-5 mb-5">
+      <section className="rounded-2xl bg-card border border-border p-5 mb-5">
         <p className="text-xs uppercase tracking-wider text-muted mb-1">{t("home.total_net_worth", lang)}</p>
-        <p className="text-4xl font-semibold tabular-nums">{formatBRL(dash.totalShared)}</p>
+        <p
+          className="text-4xl font-semibold tabular-nums"
+          style={{ color: dash.totalShared >= 0 ? "rgb(var(--accent))" : "rgb(var(--danger))" }}
+        >
+          {formatBRL(dash.totalShared)}
+        </p>
         {dash.thisMonth.net !== 0 && (
           <p
             className="mt-1.5 text-sm tabular-nums font-medium"
@@ -61,24 +67,24 @@ export default async function Home() {
             </span>
           </p>
         )}
-        <div className="mt-4 flex flex-wrap gap-2 text-xs">
-          <span className="px-2.5 py-1 rounded-full bg-bg/60 border border-border">
-            {dash.accountsCount} {dash.accountsCount === 1 ? t("home.account_one", lang) : t("home.account_many", lang)}
-          </span>
+        <div className="mt-4 flex flex-wrap items-center gap-2">
           <Link
             href="/accounts/new"
-            className="px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/30 inline-flex items-center gap-1 hover:bg-accent/20"
+            className="px-4 py-2 rounded-xl bg-accent text-white text-sm font-medium inline-flex items-center gap-2 hover:opacity-90 transition"
           >
-            <Plus size={12} /> {t("home.new_account", lang)}
+            <Plus size={16} /> {t("home.new_account", lang)}
           </Link>
           {dash.accountsCount > 0 && (
             <Link
               href="/import"
-              className="px-2.5 py-1 rounded-full bg-accent/10 text-accent border border-accent/30 inline-flex items-center gap-1 hover:bg-accent/20"
+              className="px-4 py-2 rounded-xl bg-bg border border-border text-sm font-medium inline-flex items-center gap-2 hover:border-accent/40 transition"
             >
-              <Upload size={12} /> {t("home.import", lang)}
+              <Upload size={16} /> {t("home.import", lang)}
             </Link>
           )}
+          <span className="ml-auto text-xs text-muted">
+            {dash.accountsCount} {dash.accountsCount === 1 ? t("home.account_one", lang) : t("home.account_many", lang)}
+          </span>
         </div>
       </section>
 
@@ -165,16 +171,18 @@ export default async function Home() {
                 <li key={a.id}>
                   <Link
                     href={`/accounts/${a.id}`}
-                    className="flex items-center justify-between p-4 rounded-xl bg-card border border-border hover:border-accent/40 transition"
+                    className="flex items-center justify-between gap-3 p-4 rounded-xl bg-card border border-border hover:border-accent/40 transition"
                   >
-                    <div>
-                      <p className="font-medium">{a.name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <span className="text-xs text-muted">{a.bank}</span>
-                        <AccountTypeBadge type={a.type} lang={lang} />
+                    <div className="flex items-center gap-3 min-w-0">
+                      <BankSquare bank={a.bank} size={40} />
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{a.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <AccountTypeBadge type={a.type} lang={lang} />
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right shrink-0">
                       <p className="font-semibold tabular-nums">{formatBRL(a.sharedBalance)}</p>
                       {role === "admin" && a.realBalance !== null && a.realBalance !== a.sharedBalance && (
                         <p className="text-[11px] text-muted tabular-nums">

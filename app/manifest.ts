@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Suas finanças, juntos",
     start_url: "/",
     display: "standalone",
-    background_color: "#0a0a0a",
-    theme_color: "#0a0a0a",
+    background_color: "#f7f9fb",
+    theme_color: "#f7f9fb",
     orientation: "portrait",
     icons: [
       {

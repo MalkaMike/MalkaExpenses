@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { Search, X } from "lucide-react";
+import { Search, X, TrendingUp, TrendingDown } from "lucide-react";
 import { TransactionRow } from "@/components/transaction-row";
 import { TransactionEditModal, type EditableTx } from "@/components/transaction-edit-modal";
 import { CATEGORY_META, getCategoryTree } from "@/lib/categories/meta";
@@ -141,17 +141,23 @@ export function TransactionsClient({
       </div>
 
       {/* Totals strip */}
-      <div className="grid grid-cols-2 gap-2 mb-5 text-sm">
-        <div className="p-3 rounded-xl bg-accent/10 border border-accent/20">
+      <div className="grid grid-cols-2 gap-3 mb-5">
+        <div className="p-4 rounded-xl bg-card border border-border">
+          <div className="w-9 h-9 rounded-xl bg-accent/10 inline-flex items-center justify-center mb-2">
+            <TrendingUp size={16} className="text-accent" />
+          </div>
           <p className="text-[10px] uppercase tracking-wider text-muted">{t("tx.income", lang)}</p>
-          <p className="tabular-nums font-semibold text-accent">
-            +{formatBRL(totals.income)}
+          <p className="text-xl font-semibold tabular-nums text-accent">
+            {formatBRL(totals.income)}
           </p>
         </div>
-        <div className="p-3 rounded-xl bg-danger/10 border border-danger/20">
+        <div className="p-4 rounded-xl bg-card border border-border">
+          <div className="w-9 h-9 rounded-xl bg-danger/10 inline-flex items-center justify-center mb-2">
+            <TrendingDown size={16} className="text-danger" />
+          </div>
           <p className="text-[10px] uppercase tracking-wider text-muted">{t("tx.expense", lang)}</p>
-          <p className="tabular-nums font-semibold text-danger">
-            -{formatBRL(totals.expense)}
+          <p className="text-xl font-semibold tabular-nums text-danger">
+            {formatBRL(totals.expense)}
           </p>
         </div>
       </div>

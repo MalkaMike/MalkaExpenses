@@ -5,6 +5,7 @@ import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { TransactionRow } from "@/components/transaction-row";
+import { BankSquare } from "@/components/bank-square";
 import { formatBRL, monthLabel } from "@/lib/format";
 import { getLang } from "@/lib/i18n/server";
 import { t, type Lang, type StringKey } from "@/lib/i18n/translations";
@@ -138,12 +139,15 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
         <Link href="/" className="inline-flex items-center text-sm text-muted hover:text-fg gap-1">
           <ChevronLeft size={14} /> {t("account.back", lang)}
         </Link>
-        <div className="flex items-center justify-between mt-2">
-          <div>
-            <h1 className="text-2xl font-semibold">{account.name}</h1>
-            <p className="text-xs text-muted">
-              {BANK_LABEL[account.bank] ?? account.bank} · {typeLabel(account.type, lang)}
-            </p>
+        <div className="flex items-center justify-between mt-2 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <BankSquare bank={account.bank} size={44} />
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold truncate">{account.name}</h1>
+              <p className="text-xs text-muted">
+                {BANK_LABEL[account.bank] ?? account.bank} · {typeLabel(account.type, lang)}
+              </p>
+            </div>
           </div>
           {role === "admin" && (
             <AccountEditPanel
