@@ -145,19 +145,19 @@ export function AlertsBell() {
               </div>
             )}
 
-            {/* Pending review */}
+            {/* Acceptance inbox */}
             {(data?.pending_review ?? 0) > 0 && (
               <Link
-                href="/admin/review"
+                href="/admin/inbox"
                 onClick={() => setOpen(false)}
                 className="flex items-start gap-3 px-4 py-3 hover:bg-bg/50 transition group"
               >
                 <Clock size={16} className="text-warning mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-medium group-hover:text-accent transition">
-                    {data!.pending_review} transações para rever
+                    {data!.pending_review} aguardando na caixa de entrada
                   </p>
-                  <p className="text-xs text-muted">Categorias com baixa confiança da IA</p>
+                  <p className="text-xs text-muted">Aceitar, ocultar ou ajustar antes do portal</p>
                 </div>
               </Link>
             )}

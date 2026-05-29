@@ -10,7 +10,6 @@ import {
   type PluggyTransaction
 } from "@/lib/pluggy/client";
 import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
-import { runReconcileScan } from "@/lib/reconciliation/run";
 
 type SB = ReturnType<typeof serverClient>;
 
@@ -130,7 +129,9 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
           description_raw: desc,
           description_clean: desc,
           real_amount: amt,
-          shared_amount: amt,
+          // Staged: shared_amount=0 keeps it OUT of the household portal (the
+          // security view filters shared_amount<>0) until the admin accepts it.
+          shared_amount: 0,
           source: "pluggy" as const,
           status: "pending_review" as const,
           created_by: "import" as const,
@@ -156,14 +157,16 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     result.inserted += insertedIds.length;
     result.perAccount.push({ accountName: pa.name || bankKey, inserted: insertedIds.length });
 
-    // 4) First-sync balance calibration: set starting balance so the computed
-    //    balance (starting + Σ tx) matches Pluggy's reported balance.
+    // 4) First-sync balance calibration: set the REAL starting balance so the
+    //    admin's computed real balance matches Pluggy's reported balance. The
+    //    SHARED starting balance stays 0 — the household sees only accepted
+    //    entries, so its balance must not leak the real total.
     if (isNew) {
       const sumImported = insertedIds.reduce((s, r) => s + r.amount, 0);
       const starting = Number((pa.balance - sumImported).toFixed(2));
       await sb
         .from("accounts")
-        .update({ real_starting_balance: starting, shared_starting_balance: starting })
+        .update({ real_starting_balance: starting, shared_starting_balance: 0 })
         .eq("id", accountId);
     }
 
@@ -180,14 +183,8 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     await sb.from("accounts").update({ pluggy_last_sync: new Date().toISOString() }).eq("id", accountId);
   }
 
-  // 6) Reconcile CC payments across the touched accounts.
-  try {
-    const rec = await runReconcileScan(sb);
-    result.reconciled = rec.autoLinked;
-  } catch {
-    // non-fatal
-  }
-
+  // Note: CC reconciliation is NOT run here — synced rows stay in the admin
+  // acceptance inbox until reviewed. Reconcile is a separate admin action.
   return result;
 }
 
@@ -213,13 +210,15 @@ async function categorizeFresh(
       return desc.includes(pat);
     });
     if (hit) {
+      // Pre-fill the suggested category but keep it staged (pending_review) —
+      // the admin still accepts every row into the portal.
       await sb
         .from("transactions")
         .update({
           category_id: hit.category_id,
           confidence: Number(hit.confidence_default) || 0.95,
           ai_reasoning: "Regra de fornecedor aplicada",
-          status: "auto_accepted"
+          status: "pending_review"
         })
         .eq("id", row.id);
       done += 1;
@@ -248,13 +247,14 @@ async function categorizeFresh(
     if (!catId) continue;
     const isTransfer =
       r.category_slug === "cartao_pagamento" || r.category_slug === "transferencias";
+    // Pre-fill category but keep staged — admin accepts into the portal.
     await sb
       .from("transactions")
       .update({
         category_id: catId,
         confidence: r.confidence,
         ai_reasoning: r.reasoning,
-        status: r.confidence >= 0.85 ? "auto_accepted" : "pending_review",
+        status: "pending_review",
         is_transfer: isTransfer
       })
       .eq("id", r.id);

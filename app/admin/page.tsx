@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Archive, Eye, FileCog, ChevronRight } from "lucide-react";
+import { Archive, Eye, ChevronRight, Inbox } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -72,16 +72,14 @@ export default async function AdminLanding({
       <h2 className="text-xs uppercase tracking-wider text-muted mb-3 px-1">Ferramentas</h2>
       <nav className="space-y-2 mb-6">
         <AdminLink
-          href="/admin/archive"
-          title="Arquivos importados"
-          subtitle={`${imports ?? 0} extratos preservados`}
-          Icon={Archive}
-        />
-        <AdminLink
-          href="/admin/review"
-          title="Revisão de categorias"
-          subtitle={`${pending ?? 0} pendentes de revisão`}
-          Icon={FileCog}
+          href="/admin/inbox"
+          title="Caixa de entrada"
+          subtitle={
+            (pending ?? 0) > 0
+              ? `${pending} aguardando sua decisão`
+              : "tudo decidido"
+          }
+          Icon={Inbox}
         />
         <PluggySyncButton />
         <ReconcileButton />
