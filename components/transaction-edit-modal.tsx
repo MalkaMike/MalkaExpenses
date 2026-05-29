@@ -10,7 +10,9 @@ import {
   Sparkles,
   Save,
   Loader2,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Link2,
+  CreditCard
 } from "lucide-react";
 import { CATEGORY_ORDER, CATEGORY_META, getCategoryMeta } from "@/lib/categories/meta";
 import { formatBRL, formatDate } from "@/lib/format";
@@ -46,6 +48,11 @@ export function TransactionEditModal({
   );
   const [isTransfer, setIsTransfer] = useState(tx?.isTransfer ?? false);
 
+  // CC reconciliation: statements available to link this outflow against.
+  type CcStmt = { id: string; accountName: string; closingBalance: number | null; dueDate: string | null };
+  const [ccStatements, setCcStatements] = useState<CcStmt[]>([]);
+  const [linkStmtId, setLinkStmtId] = useState("");
+
   // Reset internal state when tx changes
   useEffect(() => {
     if (tx) {
@@ -53,8 +60,25 @@ export function TransactionEditModal({
       setCategorySlug(tx.categorySlug ?? "outros");
       setSharedAmount(String(tx.amountShared));
       setIsTransfer(tx.isTransfer);
+      setLinkStmtId("");
     }
   }, [tx]);
+
+  // Admins editing an outflow: load CC statements for the manual link picker.
+  const isOutflow = (tx?.amountReal ?? tx?.amountShared ?? 0) < 0;
+  useEffect(() => {
+    if (!tx || role !== "admin" || !isOutflow) return;
+    let cancelled = false;
+    fetch("/api/reconcile")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j: { statements?: CcStmt[] }) => {
+        if (!cancelled) setCcStatements(j.statements ?? []);
+      })
+      .catch((e) => console.error("[reconcile statements]", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [tx, role, isOutflow]);
 
   // ESC to close
   useEffect(() => {
@@ -126,6 +150,28 @@ export function TransactionEditModal({
     if (role !== "admin") return;
     if (!confirm("Marcar como falso? real_amount será zerado.")) return;
     await patch({ is_fake: true, real_amount: 0 }, "Marcado como falso");
+  }
+
+  async function linkToCc() {
+    if (role !== "admin" || !linkStmtId) return;
+    setBusy(true);
+    try {
+      const r = await fetch("/api/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bankTransactionId: tx!.id, ccStatementImportId: linkStmtId })
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        toast.error(j.error ?? "erro ao vincular");
+        return;
+      }
+      toast.success("Vinculado à fatura — marcado como transferência");
+      router.refresh();
+      onClose();
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function del() {
@@ -245,6 +291,38 @@ export function TransactionEditModal({
             Salvar mudanças
           </button>
         </div>
+
+        {role === "admin" && isOutflow && ccStatements.length > 0 && (
+          <div className="border-t border-border p-4 space-y-2">
+            <p className="text-[10px] uppercase tracking-wider text-muted mb-2 inline-flex items-center gap-1.5">
+              <CreditCard size={11} /> Pagamento de cartão?
+            </p>
+            <p className="text-xs text-muted mb-2">
+              Se este movimento paga uma fatura, vincule-o para não contar duas vezes.
+            </p>
+            <select
+              value={linkStmtId}
+              onChange={(e) => setLinkStmtId(e.target.value)}
+              className="w-full p-3 rounded-xl bg-bg border border-border outline-none focus:border-accent text-sm"
+            >
+              <option value="">Selecionar fatura...</option>
+              {ccStatements.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.accountName}
+                  {s.closingBalance != null ? ` · ${formatBRL(s.closingBalance)}` : ""}
+                  {s.dueDate ? ` · venc. ${formatDate(s.dueDate)}` : ""}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={linkToCc}
+              disabled={busy || !linkStmtId}
+              className="w-full p-3 rounded-xl bg-bg border border-border text-sm inline-flex items-center justify-center gap-2 hover:border-accent/40 disabled:opacity-50"
+            >
+              <Link2 size={14} /> Vincular à fatura
+            </button>
+          </div>
+        )}
 
         {role === "admin" && (
           <div className="border-t border-border p-4 space-y-2">

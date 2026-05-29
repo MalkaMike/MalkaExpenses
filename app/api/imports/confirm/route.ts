@@ -3,6 +3,7 @@ import { z } from "zod";
 import { serverClient } from "@/lib/supabase/server";
 import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
 import { researchMerchants } from "@/lib/ai/merchant-research";
+import { runReconcileScan } from "@/lib/reconciliation/run";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -321,12 +322,29 @@ export async function POST(req: NextRequest) {
 
   await sb.from("statement_imports").update({ status: "imported" }).eq("id", importId);
 
+  // ── 6) CC reconciliation ────────────────────────────────────────────────────
+  // Auto-link any bank CC-payment outflows to their CC statement so the payment
+  // stops double-counting. Scoped to the just-imported account; only finds
+  // matches when CC statements with a closing_balance + due_date exist. Failure
+  // here is non-fatal — the import already succeeded.
+  let reconciledCount = 0;
+  let reconcileNeedsReview = 0;
+  try {
+    const rec = await runReconcileScan(sb, accountId);
+    reconciledCount = rec.autoLinked;
+    reconcileNeedsReview = rec.needsReview.length;
+  } catch (recErr: unknown) {
+    console.error("[reconcile]", recErr);
+  }
+
   return NextResponse.json({
     inserted: newRows.length,
     duplicates: duplicateCount,
     ruleMatched: ruleAppliedCount,
     categorized: categorizedCount,
     researched: researchedCount,
+    reconciled: reconciledCount,
+    reconcileNeedsReview,
     total: rows.length,
     aiError: aiErr
   });
