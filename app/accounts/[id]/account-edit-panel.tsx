@@ -2,13 +2,16 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, X, Loader2, Trash2 } from "lucide-react";
+import { useLang } from "@/lib/i18n/context";
+import { t, type StringKey } from "@/lib/i18n/translations";
 
 const BANKS = ["itau", "bradesco", "santander", "nubank", "inter", "btg", "c6", "outro"];
-const TYPES = [
-  { value: "checking", label: "Conta corrente" },
-  { value: "savings", label: "Poupança" },
-  { value: "credit_card", label: "Cartão de crédito" }
-];
+const TYPE_VALUES = ["checking", "savings", "credit_card"] as const;
+const TYPE_LABEL_KEY: Record<string, StringKey> = {
+  checking: "acct_type.checking_full",
+  savings: "acct_type.savings_full",
+  credit_card: "acct_type.credit_card_full"
+};
 
 type Account = {
   id: string;
@@ -22,6 +25,7 @@ type Account = {
 
 export function AccountEditPanel({ account }: { account: Account }) {
   const router = useRouter();
+  const { lang } = useLang();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(account.name);
   const [bank, setBank] = useState(account.bank);
@@ -85,7 +89,7 @@ export function AccountEditPanel({ account }: { account: Account }) {
       <button
         onClick={() => setOpen(true)}
         className="p-2 rounded-xl text-muted hover:text-fg hover:bg-card border border-transparent hover:border-border transition"
-        aria-label="Editar conta"
+        aria-label={t("account.edit", lang)}
       >
         <Pencil size={16} />
       </button>
@@ -102,13 +106,13 @@ export function AccountEditPanel({ account }: { account: Account }) {
           {/* Sheet */}
           <div className="relative z-10 w-full max-w-lg bg-card rounded-t-2xl sm:rounded-2xl border border-border p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between mb-1">
-              <h2 className="font-semibold text-lg">Editar conta</h2>
+              <h2 className="font-semibold text-lg">{t("account.edit", lang)}</h2>
               <button onClick={() => setOpen(false)} className="text-muted hover:text-fg">
                 <X size={20} />
               </button>
             </div>
 
-            <Field label="Nome">
+            <Field label={t("account.name", lang)}>
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
@@ -116,7 +120,7 @@ export function AccountEditPanel({ account }: { account: Account }) {
               />
             </Field>
 
-            <Field label="Banco">
+            <Field label={t("account.bank", lang)}>
               <select value={bank} onChange={(e) => setBank(e.target.value)} className="field-input">
                 {BANKS.map((b) => (
                   <option key={b} value={b}>{b}</option>
@@ -124,16 +128,16 @@ export function AccountEditPanel({ account }: { account: Account }) {
               </select>
             </Field>
 
-            <Field label="Tipo">
+            <Field label={t("account.type", lang)}>
               <select value={type} onChange={(e) => setType(e.target.value)} className="field-input">
-                {TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                {TYPE_VALUES.map((v) => (
+                  <option key={v} value={v}>{t(TYPE_LABEL_KEY[v], lang)}</option>
                 ))}
               </select>
             </Field>
 
             {type === "credit_card" && (
-              <Field label="Bandeira / emissor">
+              <Field label={t("account.cc_issuer", lang)}>
                 <input
                   value={ccIssuer}
                   onChange={(e) => setCcIssuer(e.target.value)}
@@ -144,7 +148,7 @@ export function AccountEditPanel({ account }: { account: Account }) {
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Saldo inicial real (R$)">
+              <Field label={t("account.real_balance", lang)}>
                 <input
                   inputMode="decimal"
                   value={realStart}
@@ -152,7 +156,7 @@ export function AccountEditPanel({ account }: { account: Account }) {
                   className="field-input"
                 />
               </Field>
-              <Field label="Saldo inicial exibido">
+              <Field label={t("account.shared_balance", lang)}>
                 <input
                   inputMode="decimal"
                   value={sharedStart}
@@ -175,7 +179,7 @@ export function AccountEditPanel({ account }: { account: Account }) {
                 }`}
               >
                 <Trash2 size={14} />
-                {confirmDelete ? "Confirmar exclusão" : "Arquivar"}
+                {confirmDelete ? t("account.confirm_delete", lang) : t("account.archive", lang)}
               </button>
 
               <button
@@ -184,7 +188,7 @@ export function AccountEditPanel({ account }: { account: Account }) {
                 className="flex-1 py-2.5 rounded-xl bg-accent text-bg font-medium disabled:opacity-50 inline-flex items-center justify-center gap-2"
               >
                 {busy && <Loader2 size={14} className="animate-spin" />}
-                Salvar
+                {t("account.save", lang)}
               </button>
             </div>
           </div>

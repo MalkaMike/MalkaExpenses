@@ -1,16 +1,20 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLang } from "@/lib/i18n/context";
+import { t, type StringKey } from "@/lib/i18n/translations";
 
 const BANKS = ["itau", "bradesco", "santander", "nubank", "inter", "btg", "c6", "outro"];
-const TYPES = [
-  { value: "checking", label: "Conta corrente" },
-  { value: "savings", label: "Poupança" },
-  { value: "credit_card", label: "Cartão de crédito" }
-];
+const TYPE_VALUES = ["checking", "savings", "credit_card"] as const;
+const TYPE_LABEL_KEY: Record<string, StringKey> = {
+  checking: "acct_type.checking_full",
+  savings: "acct_type.savings_full",
+  credit_card: "acct_type.credit_card_full"
+};
 
 export function NewAccountForm() {
   const router = useRouter();
+  const { lang } = useLang();
   const [name, setName] = useState("");
   const [bank, setBank] = useState("itau");
   const [type, setType] = useState("checking");
@@ -52,31 +56,31 @@ export function NewAccountForm() {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Field label="Nome">
+      <Field label={t("account.name", lang)}>
         <input
           required
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Itaú corrente"
+          placeholder={t("account.name_ph", lang)}
           className="input"
         />
       </Field>
-      <Field label="Banco">
+      <Field label={t("account.bank", lang)}>
         <select value={bank} onChange={(e) => setBank(e.target.value)} className="input">
           {BANKS.map((b) => (
             <option key={b} value={b}>{b}</option>
           ))}
         </select>
       </Field>
-      <Field label="Tipo">
+      <Field label={t("account.type", lang)}>
         <select value={type} onChange={(e) => setType(e.target.value)} className="input">
-          {TYPES.map((t) => (
-            <option key={t.value} value={t.value}>{t.label}</option>
+          {TYPE_VALUES.map((v) => (
+            <option key={v} value={v}>{t(TYPE_LABEL_KEY[v], lang)}</option>
           ))}
         </select>
       </Field>
       {type === "credit_card" && (
-        <Field label="Bandeira / emissor (para reconciliação)">
+        <Field label={t("account.cc_issuer", lang)}>
           <input
             value={ccIssuer}
             onChange={(e) => setCcIssuer(e.target.value)}
@@ -85,7 +89,7 @@ export function NewAccountForm() {
           />
         </Field>
       )}
-      <Field label="Saldo inicial real (R$)">
+      <Field label={t("account.real_balance", lang)}>
         <input
           inputMode="decimal"
           value={realStart}
@@ -93,12 +97,12 @@ export function NewAccountForm() {
           className="input"
         />
       </Field>
-      <Field label="Saldo inicial mostrado (vazio = igual ao real)">
+      <Field label={t("account.shared_balance_new", lang)}>
         <input
           inputMode="decimal"
           value={sharedStart}
           onChange={(e) => setSharedStart(e.target.value)}
-          placeholder="igual ao real"
+          placeholder={t("account.same_as_real", lang)}
           className="input"
         />
       </Field>
@@ -108,7 +112,7 @@ export function NewAccountForm() {
         disabled={busy || !name}
         className="w-full p-3 rounded-xl bg-fg text-bg disabled:opacity-40 font-medium"
       >
-        Criar conta
+        {t("account.create", lang)}
       </button>
       <style jsx>{`
         :global(.input) {

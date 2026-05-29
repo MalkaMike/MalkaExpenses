@@ -81,6 +81,11 @@ export const STRINGS = {
   "account.confirm_delete": { pt: "Confirmar exclusão", en: "Confirm delete" },
   "account.real_balance":   { pt: "Saldo inicial real (R$)", en: "Real starting balance (R$)" },
   "account.shared_balance": { pt: "Saldo inicial exibido",   en: "Displayed starting balance" },
+  "account.shared_balance_new": { pt: "Saldo inicial mostrado (vazio = igual ao real)", en: "Displayed starting balance (empty = same as real)" },
+  "account.cc_issuer":      { pt: "Bandeira / emissor",     en: "Card issuer" },
+  "account.same_as_real":   { pt: "igual ao real",          en: "same as real" },
+  "account.create":         { pt: "Criar conta",            en: "Create account" },
+  "account.name_ph":        { pt: "Itaú corrente",          en: "Checking account" },
 
   // ── Transactions page ────────────────────────────────────────────────────────
   "tx.title":        { pt: "Movimentos",              en: "Transactions" },
@@ -284,6 +289,15 @@ export const STRINGS = {
   "common.loading": { pt: "A carregar…", en: "Loading…" },
   "common.error":   { pt: "Erro",    en: "Error" },
   "common.back":    { pt: "voltar",  en: "back" },
+
+  // ── Transaction edit modal (household-visible parts) ─────────────────────────
+  "modal.edit_tx":         { pt: "Editar movimento",          en: "Edit transaction" },
+  "modal.description":     { pt: "Descrição",                 en: "Description" },
+  "modal.category":        { pt: "Categoria",                 en: "Category" },
+  "modal.save_changes":    { pt: "Salvar mudanças",           en: "Save changes" },
+  "modal.t_updated":       { pt: "Movimento atualizado",      en: "Transaction updated" },
+  "modal.t_save_err":      { pt: "erro ao salvar",            en: "save failed" },
+  "modal.t_resolve_cat":   { pt: "não consegui resolver categoria", en: "couldn't resolve category" },
 } as const;
 
 export type StringKey = keyof typeof STRINGS;

@@ -14,9 +14,11 @@ import {
   Link2,
   CreditCard
 } from "lucide-react";
-import { CATEGORY_ORDER, CATEGORY_META, getCategoryMeta } from "@/lib/categories/meta";
+import { CATEGORY_META, getCategoryMeta, getCategoryTree, SYSTEM_SLUGS } from "@/lib/categories/meta";
 import { formatBRL, formatDate } from "@/lib/format";
 import type { Role } from "@/lib/auth/admin";
+import { useLang } from "@/lib/i18n/context";
+import { t } from "@/lib/i18n/translations";
 
 export type EditableTx = {
   id: string;
@@ -39,6 +41,7 @@ export function TransactionEditModal({
   onClose: () => void;
 }) {
   const router = useRouter();
+  const { lang } = useLang();
   const overlayRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
   const [description, setDescription] = useState(tx?.description ?? "");
@@ -121,7 +124,7 @@ export function TransactionEditModal({
     // Workaround: fetch categories once, find id by slug.
     const categoryId = cats[categorySlug];
     if (!categoryId) {
-      toast.error("não consegui resolver categoria");
+      toast.error(t("modal.t_resolve_cat", lang));
       return;
     }
     const body: Record<string, unknown> = {
@@ -133,7 +136,7 @@ export function TransactionEditModal({
       if (Number.isFinite(n)) body.shared_amount = n;
       body.is_transfer = isTransfer;
     }
-    await patch(body, "Movimento atualizado");
+    await patch(body, t("modal.t_updated", lang));
   }
 
   async function toggleHide() {
@@ -210,13 +213,13 @@ export function TransactionEditModal({
         <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-card z-10">
           <div className="flex items-center gap-2 min-w-0">
             <div
-              className="w-9 h-9 rounded-full inline-flex items-center justify-center shrink-0"
-              style={{ backgroundColor: `${meta.color}1F`, color: meta.color }}
+              className="w-9 h-9 rounded-xl inline-flex items-center justify-center shrink-0"
+              style={{ backgroundColor: meta.color }}
             >
-              <meta.Icon size={16} />
+              <meta.Icon size={16} color="#ffffff" />
             </div>
             <div className="min-w-0">
-              <p className="font-medium truncate">Editar movimento</p>
+              <p className="font-medium truncate">{t("modal.edit_tx", lang)}</p>
               <p className="text-xs text-muted">{formatDate(tx.date)}</p>
             </div>
           </div>
@@ -230,7 +233,7 @@ export function TransactionEditModal({
         </header>
 
         <div className="p-4 space-y-4">
-          <Field label="Descrição">
+          <Field label={t("modal.description", lang)}>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -238,17 +241,29 @@ export function TransactionEditModal({
             />
           </Field>
 
-          <Field label="Categoria">
+          <Field label={t("modal.category", lang)}>
             <select
               value={categorySlug}
               onChange={(e) => setCategorySlug(e.target.value)}
               className="w-full p-3 rounded-xl bg-bg border border-border outline-none focus:border-accent text-sm"
             >
-              {CATEGORY_ORDER.map((slug) => (
-                <option key={slug} value={slug}>
-                  {CATEGORY_META[slug].name}
-                </option>
-              ))}
+              {getCategoryTree().map(({ parent, children }) =>
+                children.length > 0 ? (
+                  <optgroup key={parent.slug} label={parent.name}>
+                    <option value={parent.slug}>{parent.name} (geral)</option>
+                    {children.map((c) => (
+                      <option key={c.slug} value={c.slug}>{"  "}{c.name}</option>
+                    ))}
+                  </optgroup>
+                ) : (
+                  <option key={parent.slug} value={parent.slug}>{parent.name}</option>
+                )
+              )}
+              <optgroup label="Sistema">
+                {Array.from(SYSTEM_SLUGS).map((slug) => (
+                  <option key={slug} value={slug}>{CATEGORY_META[slug]?.name ?? slug}</option>
+                ))}
+              </optgroup>
             </select>
           </Field>
 
@@ -288,7 +303,7 @@ export function TransactionEditModal({
             className="w-full p-3 rounded-xl bg-accent text-bg font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {busy ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
-            Salvar mudanças
+            {t("modal.save_changes", lang)}
           </button>
         </div>
 
