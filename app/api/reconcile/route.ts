@@ -25,9 +25,8 @@ export async function GET() {
     .from("statement_imports")
     .select("id, account_id, closing_balance, due_date, accounts!inner(name, cc_issuer, type)")
     .not("closing_balance", "is", null)
-    .not("due_date", "is", null)
     .eq("accounts.type", "credit_card")
-    .order("due_date", { ascending: false });
+    .order("uploaded_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 

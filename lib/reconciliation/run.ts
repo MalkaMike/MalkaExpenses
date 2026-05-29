@@ -54,13 +54,31 @@ export async function runReconcileScan(
   if (accountId) bankQ = bankQ.eq("account_id", accountId);
   const { data: bankRows } = await bankQ.limit(1000);
 
-  // 2) CC statements with closing balance + due date.
+  // 2) CC statements with a closing balance. due_date may be null (OFX); we
+  //    derive a fallback close date from each statement's own line items below.
   const { data: stmtRows } = await sb
     .from("statement_imports")
     .select("id, account_id, closing_balance, due_date, accounts!inner(name, cc_issuer, type)")
     .not("closing_balance", "is", null)
-    .not("due_date", "is", null)
     .eq("accounts.type", "credit_card");
+
+  // 2b) Close date per statement = max line-item date (transactions carry
+  //     source_file_id = the statement import id).
+  const stmtIds = (stmtRows ?? []).map((r) => r.id as string);
+  const closeDateByStmt = new Map<string, string>();
+  if (stmtIds.length > 0) {
+    const { data: lineDates } = await sb
+      .from("transactions")
+      .select("source_file_id, date")
+      .in("source_file_id", stmtIds);
+    for (const row of lineDates ?? []) {
+      const sid = row.source_file_id as string | null;
+      const d = row.date as string | null;
+      if (!sid || !d) continue;
+      const prev = closeDateByStmt.get(sid);
+      if (!prev || d > prev) closeDateByStmt.set(sid, d); // YYYY-MM-DD sorts lexically
+    }
+  }
 
   const statements: CcStatementInput[] = (stmtRows ?? []).map((r) => {
     const acc = one(
@@ -75,6 +93,7 @@ export async function runReconcileScan(
       accountName: acc?.name ?? "—",
       closingBalance: r.closing_balance === null ? null : Number(r.closing_balance),
       dueDate: (r.due_date as string | null) ?? null,
+      closeDate: closeDateByStmt.get(r.id as string) ?? null,
       ccIssuer: acc?.cc_issuer ?? null
     };
   });

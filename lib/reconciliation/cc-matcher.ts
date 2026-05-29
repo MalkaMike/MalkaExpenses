@@ -22,7 +22,8 @@ export type CcStatementInput = {
   accountId: string; // the credit-card account id
   accountName: string; // for display in the review picker
   closingBalance: number | null; // positive amount owed on the statement
-  dueDate: string | null; // YYYY-MM-DD
+  dueDate: string | null; // YYYY-MM-DD — fatura due date (PDF only)
+  closeDate: string | null; // YYYY-MM-DD — statement close (≈ last line-item date); fallback for OFX / early payers
   ccIssuer: string | null; // accounts.cc_issuer (e.g. "nubank", "itau")
 };
 
@@ -51,12 +52,21 @@ export function daysBetween(a: string, b: string): number {
   return Math.round(Math.abs(da - db) / 86_400_000);
 }
 
-export type MatchOpts = { amountTolerance?: number; dayWindow?: number };
+export type MatchOpts = {
+  amountTolerance?: number; // ±R$ on the bill amount
+  dueWindow?: number; // ±days around the fatura due date (tight — payment lands near due date)
+  closeWindow?: number; // days after statement close a payment may land (wider — close is ~7-12d before due)
+};
 
 /**
  * Find candidate CC statements that the given bank payment could be settling.
  * Returns candidates sorted best-first (highest confidence, then tightest
  * amount, then tightest date). Empty array if none qualify.
+ *
+ * A statement qualifies on amount (±tolerance) AND a date match against EITHER:
+ *   - its due date, within `dueWindow` days (strong signal), OR
+ *   - its close date, within `closeWindow` days (fallback for OFX statements
+ *     that carry no due date, and for early auto-debit payers).
  *
  * The caller decides what to do with the result:
  *   - exactly 1 candidate with confidence >= 0.80 → auto-link
@@ -68,7 +78,8 @@ export function matchCcPayment(
   opts: MatchOpts = {}
 ): CcMatchCandidate[] {
   const amountTol = opts.amountTolerance ?? 1.0; // ±R$1
-  const dayWindow = opts.dayWindow ?? 5; // ±5 days
+  const dueWindow = opts.dueWindow ?? 5; // ±5 days around due date
+  const closeWindow = opts.closeWindow ?? 12; // up to ~12 days after close
 
   // Only outflows can be a bill payment.
   if (bankTx.amount >= 0) return [];
@@ -77,23 +88,42 @@ export function matchCcPayment(
   const candidates: CcMatchCandidate[] = [];
 
   for (const st of statements) {
-    if (st.closingBalance == null || st.dueDate == null) continue;
+    if (st.closingBalance == null) continue;
 
     // payment ≈ -closingBalance  ⇒  closingBalance + amount ≈ 0
     const amountDelta = Math.abs(st.closingBalance + bankTx.amount);
     if (amountDelta > amountTol) continue;
 
-    const dayDelta = daysBetween(bankTx.date, st.dueDate);
-    if (dayDelta > dayWindow) continue;
+    // Date check against due date (tight) and/or close date (wider). Take the
+    // closest qualifying one; remember whether the strong due-date signal hit.
+    let bestDelta = Number.POSITIVE_INFINITY;
+    let matchedViaDue = false;
+
+    if (st.dueDate) {
+      const d = daysBetween(bankTx.date, st.dueDate);
+      if (d <= dueWindow && d < bestDelta) {
+        bestDelta = d;
+        matchedViaDue = true;
+      }
+    }
+    if (st.closeDate) {
+      const d = daysBetween(bankTx.date, st.closeDate);
+      if (d <= closeWindow && d < bestDelta) {
+        bestDelta = d;
+        matchedViaDue = false;
+      }
+    }
+    if (!Number.isFinite(bestDelta)) continue; // no date matched
 
     const issuerMatched =
       !!st.ccIssuer && descLower.includes(st.ccIssuer.toLowerCase());
 
-    // Confidence: base + amount tightness + date tightness + issuer signal.
+    // Confidence: base + amount tightness + date signal + issuer signal.
     let confidence = 0.6;
-    if (amountDelta < 0.01) confidence += 0.2;
+    if (amountDelta < 0.01) confidence += 0.2; // exact-to-the-cent is very strong
     else if (amountDelta < 1.0) confidence += 0.1;
-    if (dayDelta <= 2) confidence += 0.1;
+    if (matchedViaDue && bestDelta <= 2) confidence += 0.1; // tight due-date hit
+    else if (matchedViaDue) confidence += 0.05;
     if (issuerMatched) confidence += 0.1;
     confidence = Math.min(0.99, confidence);
 
@@ -103,7 +133,7 @@ export function matchCcPayment(
       accountName: st.accountName,
       confidence,
       amountDelta,
-      dayDelta,
+      dayDelta: bestDelta,
       issuerMatched
     });
   }

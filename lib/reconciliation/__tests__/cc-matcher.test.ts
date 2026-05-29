@@ -14,6 +14,7 @@ const nubankStatement: CcStatementInput = {
   accountName: "Nubank CC",
   closingBalance: 4685.3, // owed
   dueDate: "2026-05-10",
+  closeDate: "2026-05-01", // statement closed ~9 days before due
   ccIssuer: "nubank"
 };
 
@@ -23,6 +24,7 @@ const itauStatement: CcStatementInput = {
   accountName: "Itaú Personnalité CC",
   closingBalance: 12000.0,
   dueDate: "2026-05-15",
+  closeDate: "2026-05-06",
   ccIssuer: "itau"
 };
 
@@ -90,19 +92,42 @@ describe("matchCcPayment", () => {
     expect(beyond).toHaveLength(0);
   });
 
-  // 4) Date window: 5 days matches (edge), 7 days does not.
-  it("respects the ±5 day window", () => {
+  // 4a) Due-date window in isolation (no close date): 5 days matches, 7 doesn't.
+  it("respects the ±5 day due-date window when no close date is present", () => {
+    const dueOnly: CcStatementInput = { ...nubankStatement, closeDate: null };
     const edge = matchCcPayment(
-      { id: "b4", date: "2026-05-05", amount: -4685.3, description: "fatura" }, // 5 days before
-      [nubankStatement]
+      { id: "b4", date: "2026-05-05", amount: -4685.3, description: "fatura" }, // 5 days before due
+      [dueOnly]
     );
     expect(edge).toHaveLength(1);
 
     const outside = matchCcPayment(
-      { id: "b4b", date: "2026-05-03", amount: -4685.3, description: "fatura" }, // 7 days
-      [nubankStatement]
+      { id: "b4b", date: "2026-05-03", amount: -4685.3, description: "fatura" }, // 7 days from due
+      [dueOnly]
     );
     expect(outside).toHaveLength(0);
+  });
+
+  // 4b) Close-date fallback (OFX statement, no due date): a payment landing
+  //     after the statement close still matches within the wider close window.
+  it("matches via close date when there is no due date (OFX statements)", () => {
+    const ofxStyle: CcStatementInput = {
+      ...nubankStatement,
+      dueDate: null,
+      closeDate: "2026-05-01"
+    };
+    const within = matchCcPayment(
+      { id: "b4c", date: "2026-05-09", amount: -4685.3, description: "fatura" }, // 8 days after close
+      [ofxStyle]
+    );
+    expect(within).toHaveLength(1);
+    expect(within[0].dayDelta).toBe(8);
+
+    const beyond = matchCcPayment(
+      { id: "b4d", date: "2026-05-21", amount: -4685.3, description: "fatura" }, // 20 days after close
+      [ofxStyle]
+    );
+    expect(beyond).toHaveLength(0);
   });
 
   // 5) Multiple candidates: two statements both plausible → return both, sorted.
