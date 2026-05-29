@@ -5,6 +5,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
 import { formatBRL } from "@/lib/format";
 import { LoginForm } from "./login-form";
+import { ReconcileButton } from "./reconcile-button";
 
 export const dynamic = "force-dynamic";
 
@@ -81,6 +82,7 @@ export default async function AdminLanding({
           subtitle={`${pending ?? 0} pendentes de revisão`}
           Icon={FileCog}
         />
+        <ReconcileButton />
         <AdminLink
           href="/"
           title="Voltar ao app"

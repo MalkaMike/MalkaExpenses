@@ -160,6 +160,7 @@ export const STRINGS = {
   "import.some_need_review":{ pt: "alguns precisam de revisão", en: "some need review" },
   "import.stat_via_rule":  { pt: "Via regra",                 en: "Via rule" },
   "import.stat_researched":{ pt: "Pesquisados",               en: "Researched" },
+  "import.stat_reconciled":{ pt: "Vinculadas à fatura",       en: "Linked to bill" },
   "import.dupe_one":        { pt: "duplicata",                en: "duplicate" },
   "import.dupe_many":       { pt: "duplicatas",               en: "duplicates" },
   "import.dupe_ignored_one":{ pt: "ignorada",                 en: "ignored" },

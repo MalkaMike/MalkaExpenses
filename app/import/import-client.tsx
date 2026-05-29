@@ -48,6 +48,7 @@ type DoneResult = {
   ruleMatched?: number;
   categorized: number;
   researched?: number;
+  reconciled?: number;
   total: number;
   aiError?: string | null;
 };
@@ -540,6 +541,13 @@ export function ImportClient({
                 icon={<Sparkles size={14} />}
                 label={t("import.stat_researched", lang)}
                 value={String(done.researched)}
+              />
+            )}
+            {(done.reconciled ?? 0) > 0 && (
+              <Stat
+                icon={<CheckCircle2 size={14} />}
+                label={t("import.stat_reconciled", lang)}
+                value={String(done.reconciled)}
               />
             )}
           </div>
