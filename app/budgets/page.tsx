@@ -6,6 +6,7 @@ import { formatBRL, monthLabel } from "@/lib/format";
 import { getLang } from "@/lib/i18n/server";
 import { t } from "@/lib/i18n/translations";
 import { BudgetsClient, type BudgetRow } from "./budgets-client";
+import { WeeklySpendBar, type WeekBar } from "@/components/charts/weekly-spend-bar";
 
 export const dynamic = "force-dynamic";
 
@@ -80,6 +81,95 @@ export default async function BudgetsPage() {
     };
   });
 
+  // Week bucket helper: returns 0-based week index (0–3) for a day-of-month
+  function weekIndex(day: number): number {
+    if (day <= 7) return 0;
+    if (day <= 14) return 1;
+    if (day <= 21) return 2;
+    return 3;
+  }
+
+  // Current month date range
+  const curStart = `${ym}-01`;
+  const curLastDay = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getUTCDate();
+  const curEnd = `${ym}-${String(curLastDay).padStart(2, "0")}`;
+
+  // Previous month date range
+  const prevDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const prevYm = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}`;
+  const prevStart = `${prevYm}-01`;
+  const prevLastDay = new Date(prevDate.getUTCFullYear(), prevDate.getUTCMonth() + 1, 0).getUTCDate();
+  const prevEnd = `${prevYm}-${String(prevLastDay).padStart(2, "0")}`;
+
+  const weekTotals: [number, number, number, number] = [0, 0, 0, 0];
+  const prevWeekTotals: [number, number, number, number] = [0, 0, 0, 0];
+
+  if (role !== "admin") {
+    const sh = sharedClient();
+    const [{ data: curData }, { data: prevData }] = await Promise.all([
+      sh
+        .from("shared_transactions_v")
+        .select("amount, date, is_transfer")
+        .gte("date", curStart)
+        .lte("date", curEnd)
+        .eq("is_transfer", false),
+      sh
+        .from("shared_transactions_v")
+        .select("amount, date, is_transfer")
+        .gte("date", prevStart)
+        .lte("date", prevEnd)
+        .eq("is_transfer", false)
+    ]);
+    for (const r of curData ?? []) {
+      if (Number(r.amount) >= 0) continue;
+      const day = new Date(r.date as string).getUTCDate();
+      const wi = weekIndex(day);
+      weekTotals[wi] += -Number(r.amount);
+    }
+    for (const r of prevData ?? []) {
+      if (Number(r.amount) >= 0) continue;
+      const day = new Date(r.date as string).getUTCDate();
+      const wi = weekIndex(day);
+      prevWeekTotals[wi] += -Number(r.amount);
+    }
+  } else {
+    const [{ data: curData }, { data: prevData }] = await Promise.all([
+      sb
+        .from("transactions")
+        .select("shared_amount, date, is_transfer")
+        .gte("date", curStart)
+        .lte("date", curEnd)
+        .eq("is_transfer", false),
+      sb
+        .from("transactions")
+        .select("shared_amount, date, is_transfer")
+        .gte("date", prevStart)
+        .lte("date", prevEnd)
+        .eq("is_transfer", false)
+    ]);
+    for (const r of (curData ?? []) as { shared_amount: number; date: string; is_transfer: boolean }[]) {
+      const amt = Number(r.shared_amount);
+      if (amt >= 0) continue;
+      const day = new Date(r.date).getUTCDate();
+      const wi = weekIndex(day);
+      weekTotals[wi] += -amt;
+    }
+    for (const r of (prevData ?? []) as { shared_amount: number; date: string; is_transfer: boolean }[]) {
+      const amt = Number(r.shared_amount);
+      if (amt >= 0) continue;
+      const day = new Date(r.date).getUTCDate();
+      const wi = weekIndex(day);
+      prevWeekTotals[wi] += -amt;
+    }
+  }
+
+  const weeks: WeekBar[] = [
+    { week: "Sem 1", current: weekTotals[0], prev: prevWeekTotals[0] },
+    { week: "Sem 2", current: weekTotals[1], prev: prevWeekTotals[1] },
+    { week: "Sem 3", current: weekTotals[2], prev: prevWeekTotals[2] },
+    { week: "Sem 4", current: weekTotals[3], prev: prevWeekTotals[3] }
+  ];
+
   // Total over-budget
   const overBudget = rows.filter((r) => r.spent > r.monthlyLimit).length;
   const totalLimit = rows.reduce((s, r) => s + r.monthlyLimit, 0);
@@ -121,6 +211,27 @@ export default async function BudgetsPage() {
       )}
 
       <BudgetsClient rows={rows} canEdit={role === "admin"} />
+
+      {weeks.length > 0 && (
+        <section className="mt-6 mb-8 bg-card border border-border rounded-xl overflow-hidden">
+          <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+            <span className="text-sm font-medium">Comparativo de Gastos Semanal</span>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-accent inline-block" />
+                Este mês
+              </span>
+              <span className="flex items-center gap-1.5 text-muted">
+                <span className="w-2 h-2 rounded-full bg-[#bbcabf] inline-block" />
+                Mês anterior
+              </span>
+            </div>
+          </div>
+          <div className="p-4">
+            <WeeklySpendBar data={weeks} />
+          </div>
+        </section>
+      )}
     </div>
   );
 }

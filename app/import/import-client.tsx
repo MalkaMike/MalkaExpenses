@@ -90,6 +90,7 @@ export function ImportClient({
   const [redirectIn, setRedirectIn] = useState<number | null>(null);
   const elapsedTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const redirectTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // ── Bulk-file state ────────────────────────────────────────────────────────
   const [bulkFiles, setBulkFiles] = useState<BulkFileItem[]>([]);
@@ -601,93 +602,184 @@ export function ImportClient({
   }
 
   if (singleStage === "preview" && preview) {
+    const selectedAccount = accounts.find((a) => a.id === accountId);
     return (
-      <div className="space-y-5">
-        <div className="rounded-2xl bg-card border border-border p-5">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-accent/10 text-accent inline-flex items-center justify-center">
-              <CheckCircle2 size={20} />
-            </div>
-            <div>
-              <h2 className="font-medium">{t("import.file_analyzed", lang)}</h2>
-              <p className="text-xs text-muted">
-                {preview.count}{" "}
-                {preview.count === 1 ? t("import.tx_found_one", lang) : t("import.tx_found_many", lang)}
-              </p>
+      <div className="grid lg:grid-cols-[2fr_3fr] gap-5 items-start">
+        {/* LEFT — upload summary */}
+        <div className="space-y-4">
+          {/* Step 1 — account used */}
+          <div className="rounded-2xl bg-card border border-border p-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted mb-2 font-medium">
+              1 — {t("import.account", lang)}
+            </p>
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-accent/50 bg-accent/5">
+              <CheckCircle2 size={16} className="text-accent flex-shrink-0" />
+              <span className="text-sm font-medium truncate">
+                {selectedAccount?.name ?? accountId}
+              </span>
+              {selectedAccount && (
+                <span className="ml-auto text-[10px] text-muted flex-shrink-0">
+                  {selectedAccount.bank}
+                </span>
+              )}
             </div>
           </div>
-          {preview.count === 0 && (
-            <div className="rounded-xl bg-warning/10 border border-warning/30 text-warning text-sm px-3 py-2">
-              {t("import.no_tx_extracted", lang)}
+
+          {/* Step 2 — file uploaded */}
+          <div className="rounded-2xl bg-card border border-border p-4">
+            <p className="text-[10px] uppercase tracking-wider text-muted mb-2 font-medium">
+              2 — {t("import.file_analyzed", lang)}
+            </p>
+            <div className="flex items-center gap-3 px-3 py-2 rounded-xl border border-accent/50 bg-accent/5">
+              <FileText size={18} className="text-accent flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium truncate">{file?.name ?? "—"}</p>
+                <p className="text-[11px] text-muted">
+                  {preview.count}{" "}
+                  {preview.count === 1 ? t("import.tx_found_one", lang) : t("import.tx_found_many", lang)}
+                  {preview.bankHint ? ` · ${preview.bankHint}` : ""}
+                </p>
+              </div>
             </div>
-          )}
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            {preview.bankHint && (
-              <Stat icon={<FileText size={14} />} label={t("import.bank", lang)} value={preview.bankHint} />
+            {preview.count === 0 && (
+              <div className="mt-3 rounded-xl bg-warning/10 border border-warning/30 text-warning text-xs px-3 py-2">
+                {t("import.no_tx_extracted", lang)}
+              </div>
             )}
-            {preview.closingBalance !== null && (
-              <Stat
-                icon={<FileText size={14} />}
-                label={t("import.statement_balance", lang)}
-                value={formatBRL(preview.closingBalance)}
-              />
-            )}
-            {preview.periodStart && preview.periodEnd && (
-              <Stat
-                icon={<FileText size={14} />}
-                label={t("import.period", lang)}
-                value={`${formatDate(preview.periodStart)} → ${formatDate(preview.periodEnd)}`}
-              />
-            )}
+            <div className="mt-3 grid grid-cols-1 gap-2 text-sm">
+              {preview.closingBalance !== null && (
+                <Stat
+                  icon={<FileText size={13} />}
+                  label={t("import.statement_balance", lang)}
+                  value={formatBRL(preview.closingBalance)}
+                />
+              )}
+              {preview.periodStart && preview.periodEnd && (
+                <Stat
+                  icon={<FileText size={13} />}
+                  label={t("import.period", lang)}
+                  value={`${formatDate(preview.periodStart)} → ${formatDate(preview.periodEnd)}`}
+                />
+              )}
+            </div>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={reset}
+              className="flex-1 px-4 py-3 rounded-xl bg-card border border-border text-sm font-medium"
+            >
+              {t("import.cancel", lang)}
+            </button>
+            <button
+              onClick={confirm}
+              disabled={preview.count === 0}
+              className="flex-[2] px-4 py-3 rounded-xl bg-accent text-white font-medium inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={preview.count === 0 ? t("import.no_tx_in_file", lang) : undefined}
+            >
+              <Sparkles size={16} />
+              {preview.count === 0
+                ? t("import.no_tx_found", lang)
+                : t("import.import_and_cat", lang)}
+            </button>
           </div>
         </div>
 
-        <div className="rounded-2xl bg-card border border-border p-4">
-          <h3 className="text-xs uppercase tracking-wider text-muted mb-3 px-1">
-            {t("import.preview_heading", lang)} ({Math.min(preview.transactions.length, 10)} {t("import.of", lang)} {preview.count})
-          </h3>
-          <div className="max-h-72 overflow-auto -mx-1">
+        {/* RIGHT — preview table */}
+        <div className="rounded-2xl bg-card border border-border overflow-hidden">
+          <div className="px-5 py-4 border-b border-border">
+            <h2 className="font-semibold">{t("import.preview_heading", lang)}</h2>
+            <p className="text-xs text-muted mt-0.5">
+              {lang === "pt"
+                ? `Conferindo ${preview.count} lançamento${preview.count !== 1 ? "s" : ""} detectado${preview.count !== 1 ? "s" : ""}`
+                : `Reviewing ${preview.count} transaction${preview.count !== 1 ? "s" : ""} detected`}
+            </p>
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden md:block overflow-auto max-h-[480px]">
             <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-card border-b border-border z-10">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-muted font-medium w-24">
+                    Data
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-muted font-medium">
+                    Descrição
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-muted font-medium w-36">
+                    Categoria sugerida
+                  </th>
+                  <th className="px-4 py-2.5 text-right text-[10px] uppercase tracking-wider text-muted font-medium w-28">
+                    Valor
+                  </th>
+                </tr>
+              </thead>
               <tbody>
-                {preview.transactions.slice(0, 50).map((t, i) => (
-                  <tr key={i} className="border-t border-border first:border-t-0">
-                    <td className="p-2 text-xs text-muted tabular-nums w-20">
-                      {formatDate(t.date)}
+                {preview.transactions.slice(0, 50).map((tx, i) => (
+                  <tr key={i} className="border-t border-border first:border-t-0 hover:bg-bg/50 transition-colors">
+                    <td className="px-4 py-2.5 text-xs text-muted tabular-nums whitespace-nowrap">
+                      {formatDate(tx.date)}
                     </td>
-                    <td className="p-2 truncate max-w-[18ch]">{t.description}</td>
-                    <td
-                      className={`p-2 text-right tabular-nums font-medium ${
-                        t.amount > 0 ? "text-accent" : ""
-                      }`}
-                    >
-                      {t.amount > 0 ? "+" : ""}
-                      {formatBRL(t.amount)}
+                    <td className="px-4 py-2.5">
+                      <p className="font-medium text-sm truncate max-w-[22ch]">{tx.description}</p>
+                      {selectedAccount && (
+                        <p className="text-[10px] text-muted mt-0.5">{selectedAccount.type === "credit_card" ? t("import.card_suffix", lang) : selectedAccount.bank}</p>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/10 text-accent text-[11px] font-medium whitespace-nowrap">
+                        <Sparkles size={10} />
+                        {tx.type ?? "A categorizar"}
+                      </span>
+                    </td>
+                    <td className={`px-4 py-2.5 text-right tabular-nums font-semibold text-sm whitespace-nowrap ${tx.amount >= 0 ? "text-accent" : "text-danger"}`}>
+                      {tx.amount >= 0 ? "+" : ""}
+                      {formatBRL(tx.amount)}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
 
-        <div className="flex gap-2">
-          <button
-            onClick={reset}
-            className="flex-1 px-4 py-3 rounded-xl bg-card border border-border text-sm font-medium"
-          >
-            {t("import.cancel", lang)}
-          </button>
-          <button
-            onClick={confirm}
-            disabled={preview.count === 0}
-            className="flex-[2] px-4 py-3 rounded-xl bg-accent text-bg font-medium inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-            title={preview.count === 0 ? t("import.no_tx_in_file", lang) : undefined}
-          >
-            <Sparkles size={16} />
-            {preview.count === 0
-              ? t("import.no_tx_found", lang)
-              : t("import.import_and_cat", lang)}
-          </button>
+          {/* Mobile card list */}
+          <div className="md:hidden divide-y divide-border max-h-[480px] overflow-auto">
+            {preview.transactions.slice(0, 50).map((tx, i) => (
+              <div key={i} className="px-4 py-3 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{tx.description}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-[10px] text-muted tabular-nums">{formatDate(tx.date)}</span>
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-medium">
+                      <Sparkles size={9} />
+                      {tx.type ?? "A categorizar"}
+                    </span>
+                  </div>
+                </div>
+                <span className={`tabular-nums font-semibold text-sm whitespace-nowrap ${tx.amount >= 0 ? "text-accent" : "text-danger"}`}>
+                  {tx.amount >= 0 ? "+" : ""}
+                  {formatBRL(tx.amount)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Confirm button at bottom of right column */}
+          <div className="px-5 py-4 border-t border-border">
+            <button
+              onClick={confirm}
+              disabled={preview.count === 0}
+              className="w-full px-4 py-3 rounded-xl bg-accent text-white font-medium inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              title={preview.count === 0 ? t("import.no_tx_in_file", lang) : undefined}
+            >
+              <Sparkles size={16} />
+              {preview.count === 0
+                ? t("import.no_tx_found", lang)
+                : t("import.import_and_cat", lang)}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -717,118 +809,212 @@ export function ImportClient({
   const hasSelectedFiles = file !== null || bulkFiles.length > 0;
 
   return (
-    <div className="space-y-4">
-      {/* Account selector */}
-      <label className="block">
-        <span className="block text-xs uppercase tracking-wider text-muted mb-1.5">{t("import.account", lang)}</span>
-        <select
-          value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
-          className="w-full p-3 rounded-xl bg-card border border-border text-sm outline-none focus:border-accent"
-        >
-          {accounts.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name} ({a.bank}){a.type === "credit_card" ? ` · ${t("import.card_suffix", lang)}` : ""}
-            </option>
-          ))}
-        </select>
-        {accounts.some((a) => a.type === "credit_card") && (
-          <p className="mt-1.5 flex items-center gap-1 text-[10px] text-muted">
-            <CreditCard size={10} />
-            {t("import.cc_hint", lang)}
+    <div className="grid lg:grid-cols-[2fr_3fr] gap-5 items-start">
+      {/* LEFT COLUMN — institution selector + upload */}
+      <div className="space-y-4">
+        {/* Step 1 — institution / account */}
+        <div className="rounded-2xl bg-card border border-border p-5">
+          <p className="text-[11px] uppercase tracking-wider text-muted font-semibold mb-3">
+            1 — {t("import.account", lang)}
           </p>
-        )}
-      </label>
-
-      {/* Drop zone */}
-      <label
-        className={`block rounded-2xl border-2 border-dashed p-6 text-center cursor-pointer transition ${
-          hasSelectedFiles
-            ? "border-accent/50 bg-accent/5"
-            : "border-border hover:border-accent/40 hover:bg-card"
-        }`}
-      >
-        <input
-          type="file"
-          accept=".ofx,.qfx,.csv,.pdf"
-          multiple
-          onChange={onFilesSelected}
-          className="sr-only"
-        />
-
-        {/* Single file */}
-        {file && (
-          <div className="flex items-center gap-3 justify-center">
-            <FileText size={28} className="text-accent flex-shrink-0" />
-            <div className="text-left min-w-0">
-              <p className="font-medium truncate max-w-[22ch]">{file.name}</p>
-              <p className="text-xs text-muted">{(file.size / 1024).toFixed(0)} KB</p>
-            </div>
-          </div>
-        )}
-
-        {/* Multiple files */}
-        {bulkFiles.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2 justify-center mb-2">
-              <FileText size={22} className="text-accent" />
-              <span className="font-medium">{bulkFiles.length} {t("import.files_selected", lang)}</span>
-            </div>
-            <div className="max-h-32 overflow-auto text-left space-y-1">
-              {bulkFiles.map((f, i) => (
-                <div key={i} className="flex items-center gap-2 text-xs">
-                  <span className="w-4 h-4 rounded-full bg-accent/10 text-accent inline-flex items-center justify-center text-[10px] flex-shrink-0">
-                    {i + 1}
-                  </span>
-                  <span className="truncate text-muted">{f.file.name}</span>
-                  <span className="ml-auto text-muted flex-shrink-0">
-                    {(f.file.size / 1024).toFixed(0)}KB
-                  </span>
-                </div>
-              ))}
-            </div>
-            <p className="text-xs text-muted mt-1">{t("import.click_to_change", lang)}</p>
-          </div>
-        )}
-
-        {/* Empty */}
-        {!hasSelectedFiles && (
           <div className="space-y-2">
-            <Upload size={28} className="mx-auto text-muted" />
-            <p className="text-sm">
-              {t("import.tap_to_choose", lang)}
-              <br />
-              <span className="text-xs text-muted">.ofx · .pdf · .csv · .qfx</span>
+            {accounts.map((a) => (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() => setAccountId(a.id)}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-sm transition-all ${
+                  accountId === a.id
+                    ? "border-accent bg-accent/5 text-fg"
+                    : "border-border bg-bg text-fg hover:border-accent/40"
+                }`}
+              >
+                <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 inline-flex items-center justify-center transition-colors ${
+                  accountId === a.id ? "border-accent bg-accent" : "border-border"
+                }`}>
+                  {accountId === a.id && (
+                    <CheckCircle2 size={10} className="text-white" />
+                  )}
+                </span>
+                <span className="flex-1 text-left font-medium truncate">{a.name}</span>
+                <span className="text-[10px] text-muted flex-shrink-0">{a.bank}</span>
+                {a.type === "credit_card" && (
+                  <CreditCard size={12} className="text-muted flex-shrink-0" />
+                )}
+              </button>
+            ))}
+          </div>
+          {accounts.some((a) => a.type === "credit_card") && (
+            <p className="mt-2 flex items-center gap-1 text-[10px] text-muted">
+              <CreditCard size={10} />
+              {t("import.cc_hint", lang)}
             </p>
-            <p className="text-xs text-muted">{t("import.up_to_12", lang)}</p>
+          )}
+        </div>
+
+        {/* Step 2 — drop zone */}
+        <div className="space-y-3">
+          <label
+            className={`block rounded-2xl border-2 border-dashed p-8 text-center cursor-pointer transition ${
+              hasSelectedFiles
+                ? "border-accent/50 bg-accent/5"
+                : "border-border hover:border-accent/40 hover:bg-card"
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".ofx,.qfx,.csv,.pdf"
+              multiple
+              onChange={onFilesSelected}
+              className="sr-only"
+            />
+
+            {/* Single file selected */}
+            {file && !isBulk && (
+              <div className="space-y-3">
+                <FileText size={32} className="mx-auto text-accent" />
+                <div>
+                  <p className="font-medium truncate max-w-[22ch] mx-auto">{file.name}</p>
+                  <p className="text-xs text-muted">{(file.size / 1024).toFixed(0)} KB</p>
+                </div>
+                <p className="text-xs text-muted">{t("import.click_to_change", lang)}</p>
+              </div>
+            )}
+
+            {/* Multiple files selected */}
+            {isBulk && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 justify-center mb-1">
+                  <FileText size={24} className="text-accent" />
+                  <span className="font-medium">{bulkFiles.length} {t("import.files_selected", lang)}</span>
+                </div>
+                <div className="max-h-32 overflow-auto text-left space-y-1 px-2">
+                  {bulkFiles.map((f, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs">
+                      <span className="w-4 h-4 rounded-full bg-accent/10 text-accent inline-flex items-center justify-center text-[10px] flex-shrink-0">
+                        {i + 1}
+                      </span>
+                      <span className="truncate text-muted">{f.file.name}</span>
+                      <span className="ml-auto text-muted flex-shrink-0">
+                        {(f.file.size / 1024).toFixed(0)}KB
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-muted">{t("import.click_to_change", lang)}</p>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!hasSelectedFiles && (
+              <div className="space-y-3">
+                <Upload size={32} className="mx-auto text-muted" />
+                <div>
+                  <p className="text-sm font-medium">Arraste ou clique para enviar</p>
+                  <p className="text-xs text-muted mt-1">Suporta arquivos .CSV, .OFX ou .PDF</p>
+                </div>
+              </div>
+            )}
+          </label>
+
+          {/* Pill button — Selecionar Arquivo */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full px-4 py-2.5 rounded-full bg-accent text-white text-sm font-semibold transition hover:bg-accent/90 active:scale-95"
+          >
+            Selecionar Arquivo
+          </button>
+        </div>
+
+        {/* Uploaded files card (when files are selected) */}
+        {hasSelectedFiles && (
+          <div className="rounded-2xl bg-card border border-border p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <p className="text-xs uppercase tracking-wider text-muted font-semibold flex-1">Arquivos Carregados</p>
+              <span className="px-2 py-0.5 rounded-full bg-accent/10 text-accent text-[10px] font-bold">
+                {file ? 1 : bulkFiles.length}
+              </span>
+            </div>
+            {file && (
+              <div className="flex items-center gap-3 text-sm">
+                <FileText size={16} className="text-muted flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium truncate">{file.name}</p>
+                  <p className="text-[10px] text-muted">{accounts.find((a) => a.id === accountId)?.bank ?? "—"}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setFile(null); setSingleStage("idle"); }}
+                  className="text-muted hover:text-danger transition-colors flex-shrink-0"
+                  aria-label="Remover arquivo"
+                >
+                  <XCircle size={16} />
+                </button>
+              </div>
+            )}
+            {isBulk && (
+              <div className="space-y-2">
+                {bulkFiles.map((f, i) => (
+                  <div key={i} className="flex items-center gap-3 text-sm">
+                    <FileText size={16} className="text-muted flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate text-xs">{f.file.name}</p>
+                      <p className="text-[10px] text-muted">{accounts.find((a) => a.id === accountId)?.bank ?? "—"}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = bulkFiles.filter((_, idx) => idx !== i);
+                        if (next.length === 0) { setBulkFiles([]); }
+                        else if (next.length === 1) { setFile(next[0].file); setBulkFiles([]); }
+                        else { setBulkFiles(next); }
+                      }}
+                      className="text-muted hover:text-danger transition-colors flex-shrink-0"
+                      aria-label="Remover arquivo"
+                    >
+                      <XCircle size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
-      </label>
 
-      {/* Action button */}
-      {isBulk ? (
-        <button
-          onClick={startBulk}
-          disabled={!accountId}
-          className="w-full p-3.5 rounded-xl bg-fg text-bg font-medium disabled:opacity-40 inline-flex items-center justify-center gap-2"
-        >
-          <Sparkles size={16} /> {t("import.bulk_cta_a", lang)} {bulkFiles.length} {t("import.bulk_cta_b", lang)}
-        </button>
-      ) : (
-        <button
-          onClick={upload}
-          disabled={!file || !accountId}
-          className="w-full p-3.5 rounded-xl bg-fg text-bg font-medium disabled:opacity-40 inline-flex items-center justify-center gap-2"
-        >
-          <Sparkles size={16} /> {t("import.single_cta", lang)}
-        </button>
-      )}
+        {/* Action button */}
+        {isBulk ? (
+          <button
+            onClick={startBulk}
+            disabled={!accountId}
+            className="w-full p-3.5 rounded-xl bg-fg text-bg font-medium disabled:opacity-40 inline-flex items-center justify-center gap-2"
+          >
+            <Sparkles size={16} /> {t("import.bulk_cta_a", lang)} {bulkFiles.length} {t("import.bulk_cta_b", lang)}
+          </button>
+        ) : (
+          <button
+            onClick={upload}
+            disabled={!file || !accountId}
+            className="w-full p-3.5 rounded-xl bg-fg text-bg font-medium disabled:opacity-40 inline-flex items-center justify-center gap-2"
+          >
+            <Sparkles size={16} /> {t("import.single_cta", lang)}
+          </button>
+        )}
 
-      <p className="text-center text-xs text-muted">
-        {t("import.banks_hint", lang)}
-        <br />
-        {t("import.pdf_hint", lang)}
-      </p>
+        <p className="text-center text-xs text-muted">
+          {t("import.banks_hint", lang)}
+          <br />
+          {t("import.pdf_hint", lang)}
+        </p>
+      </div>
+
+      {/* RIGHT COLUMN — placeholder before any file is uploaded */}
+      <div className="hidden lg:flex flex-col items-center justify-center rounded-2xl bg-card border border-border p-10 text-center min-h-[300px]">
+        <FileText size={40} className="text-muted mb-4 opacity-40" />
+        <p className="text-sm font-medium text-muted">Prévia das Transações</p>
+        <p className="text-xs text-muted mt-1 opacity-60">Selecione um arquivo para ver a pré-visualização</p>
+      </div>
     </div>
   );
 }
