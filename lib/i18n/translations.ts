@@ -166,6 +166,18 @@ export const STRINGS = {
   "import.stat_via_rule":  { pt: "Via regra",                 en: "Via rule" },
   "import.stat_researched":{ pt: "Pesquisados",               en: "Researched" },
   "import.stat_reconciled":{ pt: "Vinculadas à fatura",       en: "Linked to bill" },
+
+  // ── Open Finance (Pluggy) import page ────────────────────────────────────────
+  "of.title":              { pt: "Conectar banco",            en: "Connect a bank" },
+  "of.subtitle":           { pt: "Via Open Finance — as transações entram sozinhas, sem baixar extrato.", en: "Via Open Finance — transactions flow in automatically, no statement download." },
+  "of.label":              { pt: "Open Finance",              en: "Open Finance" },
+  "of.auto_title":         { pt: "Conexão automática",        en: "Automatic connection" },
+  "of.auto_sub":           { pt: "Conecte com segurança pelo seu banco. Você continua no controle do que aparece.", en: "Connect securely through your bank. You stay in control of what's shown." },
+  "of.connected":          { pt: "Bancos conectados",         en: "Connected banks" },
+  "of.synced_on":          { pt: "sincronizado em",           en: "synced on" },
+  "of.awaiting":           { pt: "aguardando primeira sincronização", en: "awaiting first sync" },
+  "of.household_title":    { pt: "Contas",                    en: "Accounts" },
+  "of.household_msg":      { pt: "Suas contas são sincronizadas automaticamente via Open Finance.", en: "Your accounts sync automatically via Open Finance." },
   "import.dupe_one":        { pt: "duplicata",                en: "duplicate" },
   "import.dupe_many":       { pt: "duplicatas",               en: "duplicates" },
   "import.dupe_ignored_one":{ pt: "ignorada",                 en: "ignored" },
