@@ -82,7 +82,10 @@ async function hasHousehold(req: NextRequest): Promise<boolean> {
   return verifyToken(t, HOUSEHOLD_TIMEOUT_DAYS * 86400 * 1000);
 }
 
-// Always-open paths (auth flows + static). Match prefixes.
+// Always-open paths (auth flows + static + self-secured machine endpoints).
+// Match prefixes. The Pluggy webhook and the cron endpoint carry no session
+// cookie by design — they authenticate with their own secrets (webhook ?token=
+// and cron Authorization: Bearer CRON_SECRET), so they must skip the cookie gate.
 function isAlwaysOpen(pathname: string): boolean {
   return (
     pathname === "/login" ||
@@ -91,7 +94,9 @@ function isAlwaysOpen(pathname: string): boolean {
     pathname.startsWith("/api/household/login") ||
     pathname.startsWith("/api/household/logout") ||
     pathname.startsWith("/api/admin/login") ||
-    pathname.startsWith("/api/admin/logout")
+    pathname.startsWith("/api/admin/logout") ||
+    pathname.startsWith("/api/pluggy/webhook") ||
+    pathname.startsWith("/api/cron/")
   );
 }
 
