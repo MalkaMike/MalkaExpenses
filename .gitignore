@@ -12,3 +12,5 @@ coverage
 .vscode
 .idea
 .local/
+
+.vercel
