@@ -65,6 +65,30 @@ Two real issues found + fixed:
 Plus a functional fix: household "sair" always hit the admin logout → couldn't
 log out.
 
+## Follow-up hardening (same day)
+- **Loading skeletons**: every route is `force-dynamic`, so navigation blanked
+  until the server responded. Added a shared `PageSkeleton` (finance-list shape)
+  + `loading.tsx` for home/transactions/categories/budgets/admin-inbox.
+- **Dead-code removal (Pluggy-only)**: `statement_imports` never populates now,
+  so three surfaces were dead + misleading — removed: the edit-modal "link to CC
+  statement" picker, `GET /api/reconcile` + its manual-link `POST` branch, and
+  the `failed_imports` alert. Kept the description-based reconcile auto-scan, the
+  "mark as transfer" checkbox, and pending_review/missing_months alerts.
+- **Leak-guard test**: extracted the pure `assertSafeTable`/`assertSafeColumns`
+  predicates from `shared-client.ts` into `lib/supabase/guard.ts` and locked them
+  with 7 unit tests (forbidden tables/columns throw; the shared view + safe
+  columns pass; `shared_amount` can't be mistaken for `real_amount`). The runtime
+  backstop had no coverage before. **42 tests total** (was 35).
+- **Privacy wall re-verified end-to-end** after the changes: traced every read of
+  `real_amount`/`is_fake`/`notes_private` across app+components — all admin-gated
+  or behind the view. No new leaks. `next build` ✓.
+- **Docs reconciled** with Pluggy-only reality: ADR-0001 Update section (status
+  Active, only import path, acceptance-gate staging, description-based reconcile)
+  + GLOSSARY Pluggy entry.
+
 ## Still open (not blocking)
-- Pluggy production access (commercial/KYB — Mickael).
-- Budgets "weekly trend" bar chart from the Stitch design (cosmetic, deferred).
+- Pluggy production access (commercial/KYB — Mickael), then a 1-env-var swap.
+- Deferred until real data exists (premature now — ~zero rows): LLM "Smart Facts"
+  insights, N+1 → batched queries, SQL/materialized aggregation, net-worth
+  snapshot cron. DB-enforced RLS wall is also deferred (needs a household-login
+  verification step that can't be done safely without the live cookie).
