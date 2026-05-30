@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getRole, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
+import { householdSafeTransaction } from "@/lib/security/sanitize";
 
 export const runtime = "nodejs";
 
@@ -111,16 +112,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const safeTransaction =
     role === "admin"
       ? updated
-      : {
-          id: updated.id,
-          account_id: updated.account_id,
-          date: updated.date,
-          description_clean: updated.description_clean,
-          shared_amount: updated.shared_amount,
-          category_id: updated.category_id,
-          status: updated.status,
-          is_transfer: updated.is_transfer
-        };
+      : householdSafeTransaction(updated as Record<string, unknown>);
 
   // Learn merchant rule from category corrections (best-effort)
   if (b.category_id && existing.category_id !== b.category_id && existing.description_raw) {
