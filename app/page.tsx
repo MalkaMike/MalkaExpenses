@@ -33,6 +33,11 @@ export default async function Home() {
   const now = new Date();
   const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 
+  // The admin's headline is their REAL net worth (the truth); the household's is
+  // the shared/curated total. Avoids the admin seeing R$0 while items are staged.
+  const heroTotal =
+    role === "admin" && dash.totalReal !== null ? dash.totalReal : dash.totalShared;
+
   return (
     <div className="px-4 pt-6 max-w-2xl mx-auto">
       <header className="flex items-center justify-between mb-6">
@@ -45,9 +50,9 @@ export default async function Home() {
         <p className="text-xs uppercase tracking-wider text-muted mb-1">{t("home.total_net_worth", lang)}</p>
         <p
           className="text-4xl font-semibold tabular-nums"
-          style={{ color: dash.totalShared >= 0 ? "rgb(var(--accent))" : "rgb(var(--danger))" }}
+          style={{ color: heroTotal >= 0 ? "rgb(var(--accent))" : "rgb(var(--danger))" }}
         >
-          {formatBRL(dash.totalShared)}
+          {formatBRL(heroTotal)}
         </p>
         {dash.thisMonth.net !== 0 && (
           <p
@@ -61,7 +66,7 @@ export default async function Home() {
         )}
         {role === "admin" && dash.totalReal !== null && dash.totalReal !== dash.totalShared && (
           <p className="mt-1 text-xs text-muted tabular-nums">
-            real: <span className="text-fg">{formatBRL(dash.totalReal)}</span>
+            mostrado no portal: <span className="text-fg">{formatBRL(dash.totalShared)}</span>
             <span className="ml-2 opacity-70">
               Δ {formatBRL(dash.totalReal - dash.totalShared)}
             </span>

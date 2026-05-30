@@ -72,7 +72,23 @@ export function TransactionsClient({
         toast.error(j.error ?? "erro");
         return;
       }
-      toast.success(hiding ? "Tirado do portal — guardado no Arquivo" : "Trazido de volta ao portal");
+      if (hiding) {
+        toast.success("Tirado do portal — guardado no Arquivo", {
+          action: {
+            label: "Desfazer",
+            onClick: async () => {
+              await fetch(`/api/transactions/${r.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ hide: false })
+              });
+              router.refresh();
+            }
+          }
+        });
+      } else {
+        toast.success("Trazido de volta ao portal");
+      }
       router.refresh();
     } finally {
       setBusyId(null);
