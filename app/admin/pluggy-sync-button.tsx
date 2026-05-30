@@ -31,7 +31,7 @@ export function PluggySyncButton() {
         toast.success("Nenhum banco conectado ainda.", { id: tid });
       } else {
         toast.success(
-          `${j.inserted ?? 0} novas · ${j.items} banco(s) · ${j.reconciled ?? 0} fatura(s) vinculada(s)`,
+          `${j.inserted ?? 0} nova(s) transação(ões) · ${j.items} banco(s) sincronizado(s)`,
           { id: tid }
         );
       }

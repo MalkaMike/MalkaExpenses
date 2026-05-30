@@ -1,37 +1,30 @@
+import "server-only";
 import type { serverClient } from "@/lib/supabase/server";
-import {
-  matchCcPayment,
-  shouldAutoLink,
-  isCcPaymentDescription,
-  type BankTxInput,
-  type CcStatementInput,
-  type CcMatchCandidate
-} from "@/lib/reconciliation/cc-matcher";
+import { isCcPaymentDescription } from "@/lib/reconciliation/cc-matcher";
 
 type SB = ReturnType<typeof serverClient>;
 
 export type ReconcileResult = {
-  scanned: number;
-  autoLinked: number;
-  needsReview: Array<{
-    bankTx: BankTxInput & { accountId: string };
-    candidates: CcMatchCandidate[];
-  }>;
+  scanned: number; // CC-payment-looking outflows seen
+  autoLinked: number; // # marked as transfer
+  needsReview: never[]; // kept for response-shape compatibility (always empty now)
 };
 
-function one<T>(rel: T | T[] | null | undefined): T | null {
-  if (Array.isArray(rel)) return rel[0] ?? null;
-  return rel ?? null;
-}
-
 /**
- * Scan unreconciled bank outflows that look like CC bill payments and link the
- * unambiguous ones to their CC statement (marking the bank line as a transfer
- * so it stops double-counting). Ambiguous / low-confidence matches are returned
- * in `needsReview` for the user to resolve — never auto-linked.
+ * Mark credit-card BILL PAYMENTS as transfers so they don't double-count.
  *
- * Pure-ish: all I/O goes through the passed Supabase client; the matching
- * decision lives in the unit-tested cc-matcher module.
+ * In the Open Finance (Pluggy) model there are no separate CC "statements" to
+ * match against — the card purchases already arrive as line items on the card
+ * account, and the bank account shows a single "PAG FATURA CARTAO" outflow that
+ * settles them. That outflow is an internal transfer, not a real expense, so we
+ * detect it by description and mark is_transfer (excluded from spend totals) +
+ * category cartao_pagamento.
+ *
+ * We do NOT touch status or shared_amount — staged rows stay in the admin
+ * acceptance inbox for the usual accept/hide decision.
+ *
+ * (Statement-based amount matching still lives, tested, in ./cc-matcher for if
+ *  a statement import path is ever reintroduced for banks Pluggy can't cover.)
  */
 export async function runReconcileScan(
   sb: SB,
@@ -44,115 +37,32 @@ export async function runReconcileScan(
     .single();
   const payCatId = payCat?.id as string | undefined;
 
-  // 1) Candidate bank payments: outflows from checking/savings accounts.
+  // Bank outflows (checking/savings) not already flagged as transfers.
   let bankQ = sb
     .from("transactions")
-    .select("id, date, real_amount, description_raw, account_id, accounts!inner(type)")
+    .select("id, description_raw, accounts!inner(type)")
     .lt("real_amount", 0)
     .eq("is_transfer", false)
     .in("accounts.type", ["checking", "savings"]);
   if (accountId) bankQ = bankQ.eq("account_id", accountId);
-  const { data: bankRows } = await bankQ.limit(1000);
+  const { data: bankRows } = await bankQ.limit(2000);
 
-  // 2) CC statements with a closing balance. due_date may be null (OFX); we
-  //    derive a fallback close date from each statement's own line items below.
-  const { data: stmtRows } = await sb
-    .from("statement_imports")
-    .select("id, account_id, closing_balance, due_date, accounts!inner(name, cc_issuer, type)")
-    .not("closing_balance", "is", null)
-    .eq("accounts.type", "credit_card");
-
-  // 2b) Close date per statement = max line-item date (transactions carry
-  //     source_file_id = the statement import id).
-  const stmtIds = (stmtRows ?? []).map((r) => r.id as string);
-  const closeDateByStmt = new Map<string, string>();
-  if (stmtIds.length > 0) {
-    const { data: lineDates } = await sb
-      .from("transactions")
-      .select("source_file_id, date")
-      .in("source_file_id", stmtIds);
-    for (const row of lineDates ?? []) {
-      const sid = row.source_file_id as string | null;
-      const d = row.date as string | null;
-      if (!sid || !d) continue;
-      const prev = closeDateByStmt.get(sid);
-      if (!prev || d > prev) closeDateByStmt.set(sid, d); // YYYY-MM-DD sorts lexically
-    }
-  }
-
-  const statements: CcStatementInput[] = (stmtRows ?? []).map((r) => {
-    const acc = one(
-      r.accounts as
-        | { name: string; cc_issuer: string | null }
-        | { name: string; cc_issuer: string | null }[]
-        | null
-    );
-    return {
-      id: r.id as string,
-      accountId: r.account_id as string,
-      accountName: acc?.name ?? "—",
-      closingBalance: r.closing_balance === null ? null : Number(r.closing_balance),
-      dueDate: (r.due_date as string | null) ?? null,
-      closeDate: closeDateByStmt.get(r.id as string) ?? null,
-      ccIssuer: acc?.cc_issuer ?? null
-    };
-  });
-
-  // 3) Exclude already-reconciled bank txs.
-  const { data: existing } = await sb
-    .from("cc_reconciliations")
-    .select("bank_transaction_id");
-  const reconciled = new Set((existing ?? []).map((e) => e.bank_transaction_id as string));
-
-  // 4) Match.
   let scanned = 0;
   let autoLinked = 0;
-  const needsReview: ReconcileResult["needsReview"] = [];
 
   for (const row of bankRows ?? []) {
-    const id = row.id as string;
-    if (reconciled.has(id)) continue;
-    const description = (row.description_raw as string) ?? "";
-    if (!isCcPaymentDescription(description)) continue;
-
+    const desc = (row.description_raw as string) ?? "";
+    if (!isCcPaymentDescription(desc)) continue;
     scanned += 1;
-    const bankTx: BankTxInput = {
-      id,
-      date: row.date as string,
-      amount: Number(row.real_amount),
-      description
-    };
-    const candidates = matchCcPayment(bankTx, statements);
-    if (candidates.length === 0) continue;
-
-    if (shouldAutoLink(candidates)) {
-      const best = candidates[0];
-      const { error: recErr } = await sb.from("cc_reconciliations").insert({
-        bank_transaction_id: id,
-        cc_statement_import_id: best.statementId,
-        match_confidence: best.confidence,
-        user_confirmed: false
-      });
-      if (recErr) {
-        needsReview.push({ bankTx: { ...bankTx, accountId: row.account_id as string }, candidates });
-        continue;
-      }
-      await sb
-        .from("transactions")
-        .update({
-          is_transfer: true,
-          status: "auto_accepted",
-          ...(payCatId ? { category_id: payCatId } : {})
-        })
-        .eq("id", id);
-      autoLinked += 1;
-    } else {
-      needsReview.push({
-        bankTx: { ...bankTx, accountId: row.account_id as string },
-        candidates
-      });
-    }
+    const { error } = await sb
+      .from("transactions")
+      .update({
+        is_transfer: true,
+        ...(payCatId ? { category_id: payCatId } : {})
+      })
+      .eq("id", row.id as string);
+    if (!error) autoLinked += 1;
   }
 
-  return { scanned, autoLinked, needsReview };
+  return { scanned, autoLinked, needsReview: [] };
 }

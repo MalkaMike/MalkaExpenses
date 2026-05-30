@@ -10,6 +10,7 @@ import {
   type PluggyTransaction
 } from "@/lib/pluggy/client";
 import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
+import { isCcPaymentDescription } from "@/lib/reconciliation/cc-matcher";
 
 type SB = ReturnType<typeof serverClient>;
 
@@ -199,9 +200,34 @@ async function categorizeFresh(
     .select("pattern, pattern_type, category_id, confidence_default")
     .order("hit_count", { ascending: false });
 
+  // Resolve slug → id once (used for CC-payment detection + AI results).
+  const { data: cats } = await sb.from("categories").select("id, slug");
+  const slugToId = new Map<string, string>();
+  for (const c of cats ?? []) slugToId.set(c.slug as string, c.id as string);
+  const ccPayId = slugToId.get("cartao_pagamento");
+
   const remaining: typeof rows = [];
   let done = 0;
   for (const row of rows) {
+    // 0) Credit-card BILL PAYMENT → it's a transfer, not a real expense
+    //    (the card purchases already arrive on the card account). Mark it so it
+    //    doesn't double-count. Deterministic — runs before merchant rules / AI.
+    if (ccPayId && isCcPaymentDescription(row.description)) {
+      await sb
+        .from("transactions")
+        .update({
+          category_id: ccPayId,
+          is_transfer: true,
+          confidence: 0.99,
+          ai_reasoning: "Pagamento de cartão — marcado como transferência",
+          status: "pending_review"
+        })
+        .eq("id", row.id);
+      done += 1;
+      continue;
+    }
+
+    // 1) Merchant rule (deterministic, no AI cost).
     const desc = row.description.toLowerCase();
     const hit = (rules ?? []).find((rule) => {
       const pat = rule.pattern.toLowerCase();
@@ -229,7 +255,7 @@ async function categorizeFresh(
 
   if (remaining.length === 0) return done;
 
-  // AI batch for the rest.
+  // 2) AI batch for the rest.
   const queue: CategorizeInput[] = remaining.map((r) => ({
     id: r.id,
     date: r.date,
@@ -237,10 +263,6 @@ async function categorizeFresh(
     amount: r.amount
   }));
   const results = await categorizeAll(queue);
-
-  const { data: cats } = await sb.from("categories").select("id, slug");
-  const slugToId = new Map<string, string>();
-  for (const c of cats ?? []) slugToId.set(c.slug as string, c.id as string);
 
   for (const r of results) {
     const catId = slugToId.get(r.category_slug) ?? slugToId.get("outros");

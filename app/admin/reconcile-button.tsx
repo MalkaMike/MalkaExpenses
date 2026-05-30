@@ -2,10 +2,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Link2, ChevronRight, Loader2 } from "lucide-react";
+import { ArrowLeftRight, ChevronRight, Loader2 } from "lucide-react";
 
-// Admin tool: run the CC reconciliation scan over all existing bank payments.
-// Auto-links unambiguous matches; reports how many were linked / need review.
+// Admin tool: scan existing bank outflows and mark credit-card bill payments
+// as transfers (so they don't double-count against the card's own line items).
 export function ReconcileButton() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -28,17 +28,15 @@ export function ReconcileButton() {
         autoLinked: number;
         needsReview: unknown[];
       };
-      const review = Array.isArray(j.needsReview) ? j.needsReview.length : 0;
-      if (j.autoLinked === 0 && review === 0) {
+      if (j.autoLinked === 0) {
         toast.success(
           j.scanned === 0
             ? "Nenhum pagamento de cartão encontrado"
-            : "Tudo já reconciliado"
+            : "Tudo já marcado"
         );
       } else {
         toast.success(
-          `${j.autoLinked} vinculado${j.autoLinked === 1 ? "" : "s"}` +
-            (review > 0 ? ` · ${review} para rever manualmente` : "")
+          `${j.autoLinked} pagamento${j.autoLinked === 1 ? "" : "s"} de cartão marcado${j.autoLinked === 1 ? "" : "s"} como transferência`
         );
       }
       router.refresh();
@@ -55,12 +53,12 @@ export function ReconcileButton() {
     >
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-bg/60 inline-flex items-center justify-center text-muted">
-          {busy ? <Loader2 size={18} className="animate-spin" /> : <Link2 size={18} />}
+          {busy ? <Loader2 size={18} className="animate-spin" /> : <ArrowLeftRight size={18} />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-medium">Reconciliar faturas</p>
+          <p className="font-medium">Marcar pagamentos de cartão</p>
           <p className="text-xs text-muted truncate">
-            Vincular pagamentos de cartão às faturas (evita contar 2×)
+            Detecta pagamentos de fatura e marca como transferência (evita contar 2×)
           </p>
         </div>
         <ChevronRight size={16} className="text-muted" />
