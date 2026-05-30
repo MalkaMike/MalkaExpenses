@@ -39,7 +39,8 @@ portal), `admin` (`pf_admin` cookie, sees the real ledger + `/admin/*`).
 
 **Open Finance / Pluggy** — Brazil's bank-aggregation API. Connects a bank via
 the **Connect widget**, returns an **Item** (one bank login) exposing **accounts**
-and **transactions**. The only import path (manual upload was removed).
+and **transactions**. Pluggy is the only import path — manual OFX/CSV/PDF upload
+was removed. Synced rows land **Staged** in the **Acceptance gate / inbox**.
 
 **Item** — a Pluggy connection (one bank login). One Item → one or more Casa
 accounts (`accounts.pluggy_item_id` / `pluggy_account_id`).

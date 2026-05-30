@@ -1,7 +1,26 @@
 # ADR 0001 — Open Finance auto-sync via Pluggy
 
-**Status:** Accepted (code complete; awaiting credentials + migration to activate)
+**Status:** Active — migration applied, credentials set, webhook verified live (≈1s ack)
 **Date:** 2026-05-29
+
+## Update (2026-05-30)
+
+The decision below evolved on three points; the original text is kept as the
+historical record.
+
+1. **Pluggy is now the *only* import path** — manual OFX/CSV/PDF upload (UI,
+   routes, parsers) was removed. Supersedes "alongside (not replacing) manual
+   import" in the Decision section.
+2. **Synced rows land in an admin acceptance gate, not the portal.** A fresh
+   sync inserts rows with `shared_amount = 0` and `status = 'pending_review'`,
+   so the household sees nothing until the admin explicitly Accepts (Accept sets
+   `shared_amount = real_amount`). Refines "synced rows appear to the household
+   once `shared_amount <> 0`" — true, but they start staged at 0.
+3. **CC reconciliation is description-based**, not statement-matching: bank
+   "PAG FATURA" outflows are marked `is_transfer` + `cartao_pagamento` so they
+   aren't double-counted against the itemized card transactions Pluggy delivers.
+   The manual "link to CC statement" feature was removed (no statements exist
+   under Pluggy-only). The `matchCcPayment` matcher is retained but unused.
 
 ## Context
 
