@@ -11,6 +11,7 @@ import {
 } from "@/lib/pluggy/client";
 import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
 import { isCcPaymentDescription } from "@/lib/reconciliation/cc-matcher";
+import { mapPluggyCategory } from "@/lib/pluggy/mappers";
 
 type SB = ReturnType<typeof serverClient>;
 
@@ -140,18 +141,29 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
         };
       });
 
-    let insertedIds: Array<{ id: string; date: string; description: string; amount: number }> = [];
+    // Pluggy's own category per transaction id — used as a categorization prior.
+    const pluggyCatById = new Map<string, string | null>();
+    for (const t of pluggyTx) pluggyCatById.set(t.id, t.category ?? null);
+
+    let insertedIds: Array<{
+      id: string;
+      date: string;
+      description: string;
+      amount: number;
+      pluggyCategory: string | null;
+    }> = [];
     if (newRows.length > 0) {
       const { data: ins, error: insErr } = await sb
         .from("transactions")
         .insert(newRows)
-        .select("id, date, description_raw, real_amount");
+        .select("id, date, description_raw, real_amount, external_id");
       if (!insErr && ins) {
         insertedIds = ins.map((r) => ({
           id: r.id as string,
           date: r.date as string,
           description: r.description_raw as string,
-          amount: Number(r.real_amount)
+          amount: Number(r.real_amount),
+          pluggyCategory: pluggyCatById.get(r.external_id as string) ?? null
         }));
       }
     }
@@ -189,10 +201,17 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
   return result;
 }
 
-// Merchant-rules pre-pass + AI batch for freshly-synced rows.
+// Categorize freshly-synced rows: CC-payment → Pluggy's own category → merchant
+// rules → Gemini batch (only the leftovers reach the LLM).
 async function categorizeFresh(
   sb: SB,
-  rows: Array<{ id: string; date: string; description: string; amount: number }>
+  rows: Array<{
+    id: string;
+    date: string;
+    description: string;
+    amount: number;
+    pluggyCategory: string | null;
+  }>
 ): Promise<number> {
   // Merchant rules first (deterministic, no AI cost).
   const { data: rules } = await sb
@@ -225,6 +244,29 @@ async function categorizeFresh(
         .eq("id", row.id);
       done += 1;
       continue;
+    }
+
+    // 0.5) Pluggy's own category as a prior → skip the LLM when it maps to one
+    //      of our slugs (bank-grade, free, usually better than a desc-only guess).
+    const pluggySlug = mapPluggyCategory(row.pluggyCategory);
+    if (pluggySlug) {
+      const catId = slugToId.get(pluggySlug);
+      if (catId) {
+        const isTransfer =
+          pluggySlug === "cartao_pagamento" || pluggySlug === "transferencias";
+        await sb
+          .from("transactions")
+          .update({
+            category_id: catId,
+            is_transfer: isTransfer,
+            confidence: 0.9,
+            ai_reasoning: "Categoria do Open Finance",
+            status: "pending_review"
+          })
+          .eq("id", row.id);
+        done += 1;
+        continue;
+      }
     }
 
     // 1) Merchant rule (deterministic, no AI cost).

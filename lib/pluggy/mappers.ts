@@ -59,6 +59,42 @@ export function mapAccountType(
   return "checking";
 }
 
+/**
+ * Map Pluggy's own transaction category (PT or EN) to a Casa category slug.
+ * Pluggy already categorizes every transaction with bank-grade data — using it
+ * as a prior lets us skip the LLM for the common cases (big cost cut + often
+ * better than a description-only guess). Returns null when unknown → fall back
+ * to merchant rules / AI.
+ */
+export function mapPluggyCategory(category: string | null | undefined): string | null {
+  if (!category) return null;
+  const n = category.toLowerCase();
+  if (/transfer|transferê|mesma titularidade|ted|doc\b|pix/.test(n)) return "transferencias";
+  if (/cart[aã]o de cr[eé]dito|credit card payment|pagamento de fatura|invoice payment/.test(n))
+    return "cartao_pagamento";
+  if (/sal[aá]rio|payroll|\bincome\b|\brenda\b|proventos/.test(n)) return "receita";
+  if (/supermerc|groceries|grocery/.test(n)) return "mercado";
+  if (/restaurant|dining|food and drink|delivery|ifood|bar\b|lanch/.test(n)) return "restaurantes";
+  if (/aliment/.test(n)) return "alimentacao";
+  if (/combust|\bfuel\b|gas station|posto/.test(n)) return "combustivel";
+  if (/transport|mobilidade|uber|ride.?hail|t[aá]xi|estacionamento|pedágio|toll/.test(n))
+    return "transporte";
+  if (/pharmac|farm[aá]cia|drugstore/.test(n)) return "farmacia";
+  if (/health|sa[uú]de|medic|hospital|clinic/.test(n)) return "saude";
+  if (/hous|morad|aluguel|\brent\b|condom[ií]nio|utilit|electricity|water bill/.test(n))
+    return "moradia";
+  if (/leisure|lazer|entertain|cinema|game|streaming/.test(n)) return "lazer";
+  if (/travel|viage|hotel|airline|airfare|a[eé]reo|pousada/.test(n)) return "viagens";
+  if (/educa|school|tuition|course/.test(n)) return "educacao";
+  if (/subscription|assinatura/.test(n)) return "assinaturas";
+  if (/software|saas|cloud|technology|tecnolog/.test(n)) return "tecnologia";
+  if (/shopping|compras|retail|store|e-?commerce|marketplace/.test(n)) return "compras";
+  if (/cloth|vestu|apparel|fashion/.test(n)) return "vestuario";
+  if (/\btax\b|imposto|tarifa|\bfee\b|juros|interest|bank charge|encargo/.test(n))
+    return "financeiro";
+  return null;
+}
+
 /** Best-effort connector name → Casa bank key used by BankSquare/brand colors. */
 export function mapBankKey(connectorName: string): string {
   const n = (connectorName ?? "").toLowerCase();

@@ -3,6 +3,7 @@ import {
   signedAmount,
   mapAccountType,
   mapBankKey,
+  mapPluggyCategory,
   type PluggyTransaction
 } from "../mappers";
 
@@ -61,5 +62,28 @@ describe("mapBankKey", () => {
   it("falls back to 'outro' for unknown / empty", () => {
     expect(mapBankKey("Some Random Bank")).toBe("outro");
     expect(mapBankKey("")).toBe("outro");
+  });
+});
+
+describe("mapPluggyCategory", () => {
+  it("maps common Pluggy categories (PT + EN) to Casa slugs", () => {
+    expect(mapPluggyCategory("Supermercado")).toBe("mercado");
+    expect(mapPluggyCategory("Restaurants")).toBe("restaurantes");
+    expect(mapPluggyCategory("Transporte")).toBe("transporte");
+    expect(mapPluggyCategory("Combustível")).toBe("combustivel");
+    expect(mapPluggyCategory("Saúde")).toBe("saude");
+    expect(mapPluggyCategory("Farmácia")).toBe("farmacia");
+    expect(mapPluggyCategory("Salário")).toBe("receita");
+    expect(mapPluggyCategory("Travel")).toBe("viagens");
+    expect(mapPluggyCategory("Software / SaaS")).toBe("tecnologia");
+  });
+  it("maps transfers and card payments (excluded from spend)", () => {
+    expect(mapPluggyCategory("Transferência mesma titularidade")).toBe("transferencias");
+    expect(mapPluggyCategory("Pagamento de fatura")).toBe("cartao_pagamento");
+  });
+  it("returns null for unknown / empty (so AI handles it)", () => {
+    expect(mapPluggyCategory("Some weird category")).toBeNull();
+    expect(mapPluggyCategory(null)).toBeNull();
+    expect(mapPluggyCategory("")).toBeNull();
   });
 });
