@@ -105,6 +105,23 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     newValue: updated
   });
 
+  // SECURITY WALL: a household caller (allowed to edit category/description)
+  // must never receive real_amount / is_fake / notes_private in the response.
+  // .select() returns every column, so sanitize before returning to non-admins.
+  const safeTransaction =
+    role === "admin"
+      ? updated
+      : {
+          id: updated.id,
+          account_id: updated.account_id,
+          date: updated.date,
+          description_clean: updated.description_clean,
+          shared_amount: updated.shared_amount,
+          category_id: updated.category_id,
+          status: updated.status,
+          is_transfer: updated.is_transfer
+        };
+
   // Learn merchant rule from category corrections (best-effort)
   if (b.category_id && existing.category_id !== b.category_id && existing.description_raw) {
     const pattern = String(existing.description_raw).split(/\s+/).slice(0, 3).join(" ");
@@ -132,7 +149,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     }
   }
 
-  return NextResponse.json({ ok: true, transaction: updated });
+  return NextResponse.json({ ok: true, transaction: safeTransaction });
 }
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
