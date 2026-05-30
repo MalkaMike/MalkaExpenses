@@ -1,5 +1,6 @@
 import "server-only";
 import { serverClient } from "./server";
+import { assertSafeTable, assertSafeColumns } from "./guard";
 
 // ============================================================================
 // THE SECURITY WALL
@@ -9,31 +10,9 @@ import { serverClient } from "./server";
 //   - the `transactions` table directly  (must use `shared_transactions_v`)
 //   - the columns `real_amount`, `is_fake`, `notes_private`
 // If any leak guard fails, the request crashes before any HTTP response
-// is sent. The integration leak-guard test will catch regressions in CI.
+// is sent. The guard predicates live in ./guard (pure, unit-tested); the
+// integration leak-guard test will catch regressions in CI.
 // ============================================================================
-
-const FORBIDDEN_TABLES = new Set(["transactions", "audit_log", "app_settings"]);
-const FORBIDDEN_COLUMNS = ["real_amount", "is_fake", "notes_private", "private_pin_hash"];
-
-function assertSafeTable(table: string) {
-  if (FORBIDDEN_TABLES.has(table)) {
-    throw new Error(
-      `[shared-client] forbidden table access: "${table}". ` +
-        `Shared code paths must query shared_transactions_v instead.`
-    );
-  }
-}
-
-function assertSafeColumns(cols: string) {
-  for (const c of FORBIDDEN_COLUMNS) {
-    if (cols.includes(c)) {
-      throw new Error(
-        `[shared-client] forbidden column "${c}" in select expression: "${cols}". ` +
-          `This column must never appear in a shared-view response.`
-      );
-    }
-  }
-}
 
 export function sharedClient() {
   const sb = serverClient();
