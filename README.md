@@ -1,126 +1,83 @@
 # Casa — Personal Finance (Dual Ledger)
 
 Private household finance app with two parallel books:
-- **Real ledger** (Mickael only): every transaction as it actually happened.
-- **Shared ledger** (visible to wife): same transactions but with editable amounts; some hidden, some fake entries added. The shared balance is always the honest sum of what's shown.
 
-A PIN-gated "private mode" cookie flips between views. The default view is the shared one — if the phone is borrowed, there's no visible affordance hinting at the second mode.
+- **Real ledger** (admin only): every transaction as it actually happened (`real_amount`).
+- **Shared ledger** (household sees): the same transactions with curated amounts —
+  some hidden, some adjusted, some fake entries added (`shared_amount`). The shared
+  balance is always the honest sum of what's shown.
+
+Bank data flows in automatically via **Open Finance (Pluggy)**. Every synced
+transaction lands in an **admin acceptance inbox** first, invisible to the
+household, until the admin accepts / hides / adjusts it.
+
+Live: **https://malkafinance.vercel.app**
 
 ## Status
 
-**v0.1 — Foundation.** Ships:
-- Postgres schema with the `shared_transactions_v` security-wall view
-- PIN auth + sliding-window private-mode cookie (15 min idle timeout)
-- Middleware that returns 404 on `/private/*` and `/api/private/*` when not unlocked
-- OFX statement upload + parse + preview + confirm import
-- Accounts CRUD (manual via form)
-- Mobile-first shared and private views with computed balances
-- Long-press logo (3s) → unlock page
+Feature-complete and deployed. Open Finance is **live in sandbox**; connecting
+real banks needs Pluggy production access (commercial/KYB approval — then a
+1-env-var swap, no code). See `docs/adr/0001-pluggy-open-finance.md`.
 
-Coming next: v0.2 Claude categorization + review queue, v0.3 PDF + CSV + CC reconciliation, v0.4 fake entry UI + monthly charts, v0.5 PWA polish.
+## How it works (one paragraph)
+
+Pluggy Connect widget → bank login → `Item` → webhook/cron → `lib/pluggy/sync`
+pulls accounts + transactions into the `transactions` table with
+`shared_amount = 0` (staged, invisible to the household). The admin works the
+**`/admin/inbox`** acceptance gate: Accept (show real), Adjust (show custom),
+Hide (keep private), or Add a manual/fake entry. Accepted rows (`shared_amount ≠ 0`)
+appear in the household portal through the `shared_transactions_v` view. Anything
+later taken out goes to **`/admin/archive`**, restorable.
 
 ## Setup
 
 ### 1. Supabase
-
-Create a new Supabase project (use a personal, isolated one — not anything tied to Kenlo).
-
-In the SQL editor, run [`db/migrations/0001_init.sql`](db/migrations/0001_init.sql). This creates the tables, the `shared_transactions_v` view, and enables RLS on every table (so anon/authenticated roles cannot read anything — only the server-side service-role key can).
-
-Create a Storage bucket named `statements` (private).
+Create a personal, isolated project. In the SQL editor run, in order:
+`db/migrations/0001_init.sql` → `0002_view_category_slug.sql` →
+`0003_budgets_goals_snapshots.sql` → `0004_pluggy.sql`.
+Create a private Storage bucket named `statements` (legacy; harmless).
 
 ### 2. Environment
+Copy `.env.example` → `.env.local` and fill in (see that file for comments):
+Supabase keys, `ADMIN_PASSWORD_HASH` + `HOUSEHOLD_PASSWORD_HASH` (bcrypt),
+`MODE_COOKIE_SECRET`, AI keys (`GOOGLE_GENAI_API_KEY` / Vertex), and — to enable
+Open Finance — `PLUGGY_CLIENT_ID`, `PLUGGY_CLIENT_SECRET`, `PLUGGY_WEBHOOK_SECRET`,
+`CRON_SECRET`.
 
-Copy `.env.example` to `.env.local` and fill in:
-
-```
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-MODE_COOKIE_SECRET=     # generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
-ANTHROPIC_API_KEY=      # optional in v0.1
-GOOGLE_GENAI_API_KEY=   # optional in v0.1
-```
-
-### 3. Run
-
+### 3. Run / verify
 ```
 npm install
-npm run dev
-```
-
-Open http://localhost:3000.
-
-First time: long-press the logo (3 seconds) → set a PIN → you're in private mode.
-
-### 4. Tests
-
-```
-npm test           # unit tests (vitest)
+npm run dev        # http://localhost:3000
 npm run typecheck  # tsc --noEmit
+npm test           # vitest
 npm run build      # production build
 ```
 
-## Architecture
+### 4. Deploy
+Push to `main` → Vercel auto-deploys (project `malkafinance`). Env vars live in
+Vercel (Production). After adding Pluggy vars, register the webhook at
+`https://<app>/api/pluggy/webhook?token=<PLUGGY_WEBHOOK_SECRET>`.
 
-The single most important rule: **shared-view code paths must never read `real_amount`, `is_fake`, or `notes_private`.** This is enforced three ways:
+## The security wall (most important rule)
 
-1. **`shared_transactions_v`** — a Postgres VIEW that excludes those columns and any row with `shared_amount = 0`. Hidden transactions don't even exist from the shared side's perspective.
-2. **`lib/supabase/shared-client.ts`** — a runtime wrapper that throws if shared code tries to query `transactions` directly or select forbidden columns by name.
-3. **Middleware (`middleware.ts`)** — gates every `/private/*` and `/api/private/*` route on the `pf_mode` cookie. Returns 404 (not 401/403) when missing — no signal the route exists.
+**Household code paths must never read `real_amount`, `is_fake`, or
+`notes_private`.** Enforced in layers:
 
-The dual-ledger math lives in [`lib/balance/monthly.ts`](lib/balance/monthly.ts) (pure functions with unit tests).
+1. **`shared_transactions_v`** — Postgres view that excludes those columns and any
+   row with `shared_amount = 0`. Staged/hidden transactions don't exist from the
+   household side.
+2. **`lib/supabase/shared-client.ts`** — runtime guard; throws if shared code
+   queries the `transactions` table directly or selects a forbidden column.
+3. **`middleware.ts`** — two-tier auth gate. `/admin/*` + `/api/admin/*` require
+   the `pf_admin` cookie; everything else requires `pf_household` or `pf_admin`;
+   API routes 404 (not 401) when unauthorized. Public machine endpoints
+   (`/api/pluggy/webhook`, `/api/cron/*`) are exempt — they self-auth with secrets.
+4. **Role-gated reads** — every page that shows data branches: non-admin →
+   `shared_transactions_v`; admin → `transactions` (real). API responses to
+   household are sanitized to the safe fields only.
 
-## Privacy threat model
-
-The threat is the wife borrowing an unlocked phone. She sees:
-- The shared dashboard (account names, shared balances, all visible transactions, monthly totals).
-- No menu item, no lock icon, no "switch user" link, no URL path that hints at a second mode.
-- If she pokes at `/private` or `/api/private/...` directly: 404 Not Found.
-
-She does **not** see:
-- `real_amount`, `is_fake`, or `notes_private` in any HTML or API response.
-- Any account-level balance computed from real data — every balance shown to her is the honest sum of `shared_amount` values.
-
-The integration leak-guard test (`app/api/shared/__tests__/no-leak.test.ts`, landing in v0.2) hits every shared route and grep-asserts the response body. If it ever fails, deploy is blocked.
-
-## File map
-
-```
-app/
-  layout.tsx                # root layout; reads getMode() and renders banner
-  page.tsx                  # home — accounts list with shared (and real, if unlocked) balances
-  transactions/             # transaction list, dual-aware
-  accounts/[id]/            # account detail
-  accounts/new/             # create-account form
-  import/                   # statement upload + parse preview
-  months/                   # monthly totals
-  unlock/                   # PIN entry (reached only via long-press)
-  api/
-    accounts/               # POST create account
-    import/upload/          # multipart upload + OFX parse
-    import/confirm/         # batch insert into transactions
-    mode/{enter,exit,setup-pin}/
-
-components/
-  brand-logo.tsx            # long-press handler → /unlock
-  mode-banner.tsx           # red banner + exit, only in private mode
-  transaction-row.tsx       # dual-amount-aware row
-
-lib/
-  env.ts                    # zod-validated env
-  format.ts                 # BRL + date formatting
-  auth/mode.ts              # PIN, cookie, audit log
-  supabase/server.ts        # service-role server client
-  supabase/shared-client.ts # the runtime security guard
-  parsers/ofx.ts            # hand-rolled OFX parser
-  balance/queries.ts        # accounts + balances from DB
-  balance/monthly.ts        # pure balance math (unit tested)
-
-middleware.ts               # 404 gate on /private/* and /api/private/*
-db/migrations/0001_init.sql # schema + shared_transactions_v + RLS
-```
+See `docs/architecture.md` for the full system overview and `docs/GLOSSARY.md`
+for domain terms.
 
 ## License
-
 Private.
