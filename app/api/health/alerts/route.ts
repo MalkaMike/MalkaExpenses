@@ -20,9 +20,12 @@ type FailedImport = {
 // GET /api/health/alerts
 // Returns a summary of actionable issues across all accounts.
 export async function GET() {
+  // Admin-only: these alerts (pending review, missing months, failed imports)
+  // are operational admin concerns. Household must not see them — it would hint
+  // at the hidden ledger. 404 (not 401) so the endpoint's existence isn't leaked.
   const role = await getRole();
-  if (role !== "admin" && role !== "household") {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (role !== "admin") {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
   const sb = serverClient();

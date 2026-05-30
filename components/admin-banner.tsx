@@ -12,7 +12,11 @@ export function AdminBanner({ role }: { role: Role }) {
   if (role === "public") return null;
 
   async function logout() {
-    await fetch("/api/admin/logout", { method: "POST" });
+    // Hit the endpoint that clears THIS role's cookie (household couldn't log
+    // out before — it always called the admin endpoint).
+    await fetch(role === "admin" ? "/api/admin/logout" : "/api/household/logout", {
+      method: "POST"
+    });
     router.refresh();
   }
 
@@ -32,7 +36,10 @@ export function AdminBanner({ role }: { role: Role }) {
         </span>
         <div className="flex items-center gap-2">
           <LangToggle />
-          <AlertsBell />
+          {/* Alerts (pending review, missing months, failed imports) are an
+              admin concern — never shown to household, so the second ledger's
+              existence isn't hinted at. */}
+          {role === "admin" && <AlertsBell />}
           <button onClick={logout} className="underline hover:no-underline">
             sair
           </button>
