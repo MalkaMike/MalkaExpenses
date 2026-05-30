@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Bell, X, Clock, AlertTriangle, FileX, ShieldCheck } from "lucide-react";
+import { Bell, X, Clock, AlertTriangle, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 
 type MissingMonth = {
@@ -9,17 +9,10 @@ type MissingMonth = {
   missing: string[];
 };
 
-type FailedImport = {
-  id: string;
-  file_name: string;
-  uploaded_at: string;
-};
-
 type AlertData = {
   total: number;
   pending_review: number;
   missing_months: MissingMonth[];
-  failed_imports: FailedImport[];
 };
 
 function monthLabel(ym: string) {
@@ -28,15 +21,6 @@ function monthLabel(ym: string) {
     month: "short",
     year: "2-digit"
   });
-}
-
-function timeAgo(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime();
-  const h = Math.floor(diff / 3600000);
-  if (h < 1) return "< 1h atrás";
-  if (h < 24) return `${h}h atrás`;
-  const d = Math.floor(h / 24);
-  return `${d}d atrás`;
 }
 
 export function AlertsBell() {
@@ -180,24 +164,6 @@ export function AlertsBell() {
                       {acc.missing.map(monthLabel).join(", ")}
                     </p>
                   </Link>
-                ))}
-              </div>
-            )}
-
-            {/* Failed imports */}
-            {(data?.failed_imports ?? []).length > 0 && (
-              <div className="px-4 py-3 space-y-2">
-                <p className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5">
-                  <FileX size={11} /> Importações falhadas
-                </p>
-                {data!.failed_imports.map((fi) => (
-                  <div
-                    key={fi.id}
-                    className="rounded-xl bg-bg border border-danger/20 p-2.5 space-y-0.5"
-                  >
-                    <p className="text-sm font-medium truncate">{fi.file_name}</p>
-                    <p className="text-[11px] text-muted">{timeAgo(fi.uploaded_at)}</p>
-                  </div>
                 ))}
               </div>
             )}

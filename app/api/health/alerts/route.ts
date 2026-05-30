@@ -11,18 +11,12 @@ type MissingMonth = {
   missing: string[]; // YYYY-MM strings
 };
 
-type FailedImport = {
-  id: string;
-  file_name: string;
-  uploaded_at: string;
-};
-
 // GET /api/health/alerts
 // Returns a summary of actionable issues across all accounts.
 export async function GET() {
-  // Admin-only: these alerts (pending review, missing months, failed imports)
-  // are operational admin concerns. Household must not see them — it would hint
-  // at the hidden ledger. 404 (not 401) so the endpoint's existence isn't leaked.
+  // Admin-only: these alerts (pending review, missing months) are operational
+  // admin concerns. Household must not see them — it would hint at the hidden
+  // ledger. 404 (not 401) so the endpoint's existence isn't leaked.
   const role = await getRole();
   if (role !== "admin") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -95,34 +89,14 @@ export async function GET() {
     }
   }
 
-  // ── 3) Failed imports (last 30 days) ────────────────────────────────────────
-  const since = new Date();
-  since.setDate(since.getDate() - 30);
-
-  const { data: failedImports } = await sb
-    .from("statement_imports")
-    .select("id, file_name, created_at")
-    .eq("status", "failed")
-    .gte("created_at", since.toISOString())
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  const failed: FailedImport[] = (failedImports ?? []).map((f) => ({
-    id: f.id,
-    file_name: f.file_name,
-    uploaded_at: f.created_at
-  }));
-
   // ── Total alert count (for the badge) ───────────────────────────────────────
   const totalAlerts =
     (pendingReview ?? 0) +
-    missingMonths.reduce((s, m) => s + m.missing.length, 0) +
-    failed.length;
+    missingMonths.reduce((s, m) => s + m.missing.length, 0);
 
   return NextResponse.json({
     total: totalAlerts,
     pending_review: pendingReview ?? 0,
-    missing_months: missingMonths,
-    failed_imports: failed
+    missing_months: missingMonths
   });
 }
