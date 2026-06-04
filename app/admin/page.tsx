@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp } from "lucide-react";
+import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -92,6 +92,12 @@ export default async function AdminLanding({
           title="Pagadores (receitas)"
           subtitle="de onde vem o dinheiro"
           Icon={TrendingUp}
+        />
+        <AdminLink
+          href="/admin/historico"
+          title="Histórico de modificações"
+          subtitle="tudo que você mudou do que a Ayelet vê"
+          Icon={History}
         />
         <PluggySyncButton />
         <ReconcileButton />

@@ -32,6 +32,15 @@ export async function POST(req: NextRequest) {
 
   const sb = serverClient();
 
+  // Capture the previous name for the modification log
+  const { data: before } = await sb
+    .from("merchant_clusters")
+    .select("canonical_name")
+    .eq("canonical_key", canonical_key)
+    .limit(1)
+    .maybeSingle();
+  const oldName = before?.canonical_name ?? canonical_key;
+
   const { data: updated, error } = await sb
     .from("merchant_clusters")
     .update({ canonical_name: name })
@@ -51,6 +60,17 @@ export async function POST(req: NextRequest) {
   // Bust Next.js route caches so the page re-renders with the new name.
   revalidatePath("/admin/merchants");
   revalidatePath(`/admin/merchants/${canonical_key}`);
+
+  await sb.from("admin_modifications").insert({
+    action: "rename",
+    scope: "merchant",
+    target_id: canonical_key,
+    target_name: oldName,
+    field: "canonical_name",
+    before_value: { name: oldName },
+    after_value: { name },
+    affected_count: updatedCount
+  });
 
   await writeAudit("merchant.rename", {
     newValue: { canonical_key, name, updated: updatedCount }

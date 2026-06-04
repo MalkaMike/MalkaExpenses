@@ -106,6 +106,32 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     newValue: updated
   });
 
+  // If shared_amount changed and we're admin, log it to admin_modifications so
+  // /admin/historico can show what was overridden vs the wife's view.
+  const oldShared = Number(existing.shared_amount);
+  const newShared = Number((updated as Record<string, unknown>).shared_amount);
+  if (role === "admin" && oldShared !== newShared) {
+    const realAmt = Number(existing.real_amount);
+    const action =
+      newShared === 0
+        ? "hide"
+        : newShared === realAmt
+          ? "show"
+          : "adjust";
+    const desc = (existing.description_clean as string | null) ?? (existing.description_raw as string);
+    await sb.from("admin_modifications").insert({
+      action,
+      scope: "transaction",
+      target_id: id,
+      target_name: desc.slice(0, 200),
+      field: "shared_amount",
+      before_value: { value: oldShared },
+      after_value: { value: newShared },
+      affected_count: 1,
+      impact_brl: Number((newShared - oldShared).toFixed(2))
+    });
+  }
+
   // SECURITY WALL: a household caller (allowed to edit category/description)
   // must never receive real_amount / is_fake / notes_private in the response.
   // .select() returns every column, so sanitize before returning to non-admins.
