@@ -2,21 +2,31 @@
 @tailwind components;
 @tailwind utilities;
 
-/* "Luminous Clarity" — light-first theme (Stitch design). All UI reads these
-   tokens via bg-bg / bg-card / text-fg / text-muted / border-border, so the
-   whole app re-themes from here. */
+/* ============================================================================
+ * "Serene Financial" — Stitch design system tokens
+ *
+ * Background: warm off-white #FAF9F7 | Primary: deep navy #181D25
+ * Income: pastel emerald (secondary) | Expense: coral/peach (tertiary)
+ * Fonts: Manrope (display) · Inter (body) · JetBrains Mono (numbers)
+ * ============================================================================ */
 :root {
-  --bg: 247 249 251;       /* #f7f9fb page background */
-  --fg: 15 23 42;          /* #0f172a slate-900 ink */
-  --muted: 100 116 139;    /* #64748b slate-500 secondary text */
-  --card: 255 255 255;     /* #ffffff card surface */
-  --border: 226 232 240;   /* #e2e8f0 slate-200 ghost border */
-  --accent: 16 185 129;    /* #10b981 emerald — CTAs, growth, income */
-  --danger: 239 68 68;     /* #ef4444 red — expenses, over-budget */
-  --warning: 217 119 6;    /* #d97706 amber — attention */
-  --indigo: 73 75 214;     /* #494bd6 tertiary — AI insights accent */
+  /* Core semantic tokens — used via bg-bg / text-fg / border-border etc */
+  --bg:      250 249 247;   /* #faf9f7  Serene warm off-white */
+  --fg:      26 28 27;      /* #1a1c1b  on-surface (near-black, warm) */
+  --muted:   69 71 75;      /* #45474b  on-surface-variant */
+  --card:    255 255 255;   /* #ffffff  surface-container-lowest */
+  --border:  197 198 203;   /* #c5c6cb  outline-variant */
+  --accent:  72 101 81;     /* #486551  secondary (pastel emerald income) */
+  --danger:  186 26 26;     /* #ba1a1a  error */
+  --warning: 180 130 0;     /* warm amber */
+  --info:    14 165 233;    /* sky-500 */
+  --purple:  168 85 247;    /* violet for Laik */
+
+  /* Theme color for mobile browser chrome */
+  --theme-color: #faf9f7;
 }
 
+/* Base resets */
 html, body {
   background: rgb(var(--bg));
   color: rgb(var(--fg));
@@ -25,3 +35,50 @@ html, body {
 }
 
 * { box-sizing: border-box; }
+
+/* ── Finance-specific utilities ─────────────────────────────────────────── */
+
+/* All monetary amounts use JetBrains Mono */
+.tabular-nums,
+.money {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Dual-ledger tint — faint green wash on rows with visible shared amount */
+.dual-ledger-shared {
+  background-color: rgba(72, 101, 81, 0.04);
+}
+
+/* Serene card feel — tonal separation instead of heavy shadow */
+.card-serene {
+  background: #ffffff;
+  border: 1px solid #e9e8e6;
+  border-radius: 1rem;
+}
+.card-serene-sm {
+  background: #ffffff;
+  border: 1px solid #e9e8e6;
+  border-radius: 0.75rem;
+}
+
+/* Premium custom scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: #e3e2e0;
+  border-radius: 10px;
+}
+
+/* Manrope headline helper */
+.font-display { font-family: var(--font-manrope, ui-sans-serif); }
+
+/* JetBrains Mono for all number displays */
+.font-mono-num {
+  font-family: var(--font-jetbrains, ui-monospace);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
