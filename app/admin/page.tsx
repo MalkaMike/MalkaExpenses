@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { Archive, Eye, ChevronRight, Inbox } from "lucide-react";
+import { redirect } from "next/navigation";
+import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
 import { formatBRL } from "@/lib/format";
-import { LoginForm } from "./login-form";
 import { ReconcileButton } from "./reconcile-button";
 import { PluggySyncButton } from "./pluggy-sync-button";
 
@@ -19,11 +19,7 @@ export default async function AdminLanding({
   const sp = await searchParams;
 
   if (role !== "admin") {
-    return (
-      <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-[radial-gradient(ellipse_at_top,rgb(var(--danger)/0.08),transparent_60%)]">
-        <LoginForm next={sp.next} />
-      </div>
-    );
+    redirect(`/login?next=${encodeURIComponent(sp.next ?? "/admin")}`);
   }
 
   const accounts = await getAccountsWithBalances("admin");
@@ -84,6 +80,18 @@ export default async function AdminLanding({
               : "tudo decidido"
           }
           Icon={Inbox}
+        />
+        <AdminLink
+          href="/admin/merchants?direction=out"
+          title="Comerciantes (despesas)"
+          subtitle="categorize por merchant — vale por todas"
+          Icon={Store}
+        />
+        <AdminLink
+          href="/admin/merchants?direction=in"
+          title="Pagadores (receitas)"
+          subtitle="de onde vem o dinheiro"
+          Icon={TrendingUp}
         />
         <PluggySyncButton />
         <ReconcileButton />
