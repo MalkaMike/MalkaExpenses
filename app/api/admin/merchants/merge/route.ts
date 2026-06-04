@@ -56,6 +56,14 @@ export async function POST(req: NextRequest) {
   const sourceName = src.canonical_name as string;
   const targetName = tgt.canonical_name as string;
 
+  // Capture the descriptions that WILL be moved BEFORE rewriting
+  // (needed for undo — stored in before_value so the merge can be reversed)
+  const { data: srcDescRows } = await sb
+    .from("merchant_clusters")
+    .select("description_raw")
+    .eq("canonical_key", source_canonical_key);
+  const srcDescList = (srcDescRows ?? []).map((r) => r.description_raw as string);
+
   // Rewrite every source-cluster row to point at the target cluster + name
   const { data: updated, error } = await sb
     .from("merchant_clusters")
@@ -96,17 +104,23 @@ export async function POST(req: NextRequest) {
   revalidatePath(`/admin/merchants/${source_canonical_key}`);
   revalidatePath(`/admin/merchants/${target_canonical_key}`);
 
-  // Modification log (shows in /admin/historico)
+  // Modification log — stores the full description list so the merge can be
+  // undone by reassigning those descriptions back to the original key+name.
   await sb.from("admin_modifications").insert({
-    action: "rename", // use "rename" bucket — semantically a name+grouping change
+    action: "merge",
     scope: "merchant",
     target_id: target_canonical_key,
-    target_name: sourceName,
-    field: "canonical_name",
-    before_value: { name: sourceName, descs: movedDescs },
-    after_value: { name: targetName, key: target_canonical_key },
+    target_name: targetName,
+    field: "canonical_key",
+    before_value: {
+      source_key:  source_canonical_key,
+      source_name: sourceName,
+      // Full list of description_raw values moved — required for undo
+      descriptions: srcDescList
+    },
+    after_value: { key: target_canonical_key, name: targetName },
     affected_count: affectedTxs,
-    notes: `Merge: "${sourceName}" → "${targetName}"`
+    notes: `Merge: "${sourceName}" → "${targetName}" (${movedDescs} descrições)`
   });
 
   await writeAudit("merchant.merge", {

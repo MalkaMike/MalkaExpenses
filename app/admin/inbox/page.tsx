@@ -1,6 +1,5 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
+import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { InboxClient, type InboxRow } from "./inbox-client";
 import { formatInt } from "@/lib/format";
@@ -61,27 +60,20 @@ export default async function InboxPage() {
   const accountsList = (accounts ?? []).map((a) => ({ id: a.id, name: a.name, bank: a.bank }));
 
   return (
-    <div className="px-4 pt-6 max-w-2xl mx-auto pb-28">
-      <header className="mb-6">
-        <Link href="/admin" className="inline-flex items-center text-xs text-on-surface-variant hover:text-on-surface gap-1 mb-3">
-          ← Admin
-        </Link>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-semibold text-on-surface tracking-tight">Caixa de entrada</h1>
-            <p className="text-sm text-on-surface-variant mt-0.5">
-              {out.length === 0
-                ? "Nada para revisar — tudo decidido."
-                : `${formatInt(out.length)} ${out.length === 1 ? "movimento aguardando" : "movimentos aguardando"} sua decisão`}
-            </p>
-          </div>
-          {out.length > 0 && (
-            <span className="badge-hidden mt-1">{formatInt(out.length)}</span>
-          )}
-        </div>
-      </header>
+    <>
+    <PageHeader
+      title="Caixa de entrada"
+      crumbs={[{ href: "/admin", label: "Admin" }]}
+      right={out.length > 0 ? <span className="badge-hidden">{formatInt(out.length)}</span> : undefined}
+    />
+    <div className="px-4 pt-5 max-w-2xl mx-auto pb-28">
+      <p className="text-sm text-on-surface-variant mb-5">
+        {out.length === 0
+          ? "Nada para revisar — tudo decidido."
+          : `${formatInt(out.length)} ${out.length === 1 ? "movimento aguardando" : "movimentos aguardando"} sua decisão`}
+      </p>
 
       <InboxClient rows={out} accounts={accountsList} />
     </div>
-  );
+    </>;
 }

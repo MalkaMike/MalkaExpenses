@@ -1,6 +1,5 @@
-import Link from "next/link";
-import { ChevronLeft } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
+import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, rawDescriptionsForKey, preloadClusters } from "@/lib/merchants/clusters";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
@@ -201,40 +200,36 @@ export default async function MerchantDetailPage({
   }));
 
   return (
-    <div className="px-4 pt-6 max-w-3xl mx-auto pb-24">
-      <header className="mb-5">
-        <Link
-          href={`/admin/merchants?direction=${direction}`}
-          className="inline-flex items-center text-sm text-muted hover:text-fg gap-1"
-        >
-          <ChevronLeft size={14} /> {backLabel}
-        </Link>
-        <h1 className="text-2xl font-semibold mt-2 truncate">{displayName}</h1>
-        <p className="text-xs text-muted mt-1">
-          {formatInt(txs.length)} {txs.length === 1 ? "transação" : "transações"} ·{" "}
-          {oldest && newest ? `${formatDate(oldest)} → ${formatDate(newest)}` : "—"}
-        </p>
-      </header>
+    <>
+    <PageHeader
+      title={displayName}
+      crumbs={[
+        { href: "/admin", label: "Admin" },
+        { href: `/admin/merchants?direction=${direction}`, label: direction === "in" ? "Pagadores" : "Comerciantes" }
+      ]}
+    />
+    <div className="px-4 pt-5 max-w-3xl mx-auto pb-24">
+      {/* Transaction date range */}
+      <p className="text-xs text-on-surface-variant mb-5">
+        {formatInt(txs.length)} {txs.length === 1 ? "transação" : "transações"}
+        {oldest && newest ? ` · ${formatDate(oldest)} → ${formatDate(newest)}` : ""}
+      </p>
 
       {/* Stats */}
       <section className="grid grid-cols-3 gap-3 mb-5">
-        <div className="p-3 rounded-xl bg-card border border-border">
-          <p className="text-[10px] uppercase tracking-wider text-muted">Total absoluto</p>
-          <p className="text-lg font-semibold tabular-nums">{formatBRL(totalAbs)}</p>
+        <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Total absoluto</p>
+          <p className="text-lg font-semibold tabular-nums text-on-surface">{formatBRL(totalAbs)}</p>
         </div>
-        <div className="p-3 rounded-xl bg-card border border-border">
-          <p className="text-[10px] uppercase tracking-wider text-muted">Líquido</p>
-          <p
-            className={`text-lg font-semibold tabular-nums ${
-              totalSigned < 0 ? "text-danger" : "text-accent"
-            }`}
-          >
+        <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Líquido</p>
+          <p className={`text-lg font-semibold tabular-nums ${totalSigned < 0 ? "text-on-tertiary-container" : "text-secondary"}`}>
             {formatBRL(totalSigned)}
           </p>
         </div>
-        <div className="p-3 rounded-xl bg-card border border-border">
-          <p className="text-[10px] uppercase tracking-wider text-muted">Variações</p>
-          <p className="text-lg font-semibold tabular-nums">
+        <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Variações</p>
+          <p className="text-lg font-semibold tabular-nums text-on-surface">
             {formatInt(new Set(txs.map((t) => t.description_raw)).size)}
           </p>
         </div>
@@ -252,5 +247,5 @@ export default async function MerchantDetailPage({
         allClusters={allClusters}
       />
     </div>
-  );
+    </>;
 }

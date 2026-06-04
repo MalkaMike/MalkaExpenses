@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ChevronRight, AlertCircle, EyeOff, SlidersHorizontal } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
+import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
 import { formatBRL, formatInt } from "@/lib/format";
@@ -123,26 +124,19 @@ export default async function MerchantsPage({
   const totalHiddenMerchants = sorted.filter((g) => g.hiddenCount === g.txCount && g.txCount > 0).length;
 
   return (
-    <div className="px-4 pt-6 max-w-5xl mx-auto pb-28">
-
-      {/* Page header */}
-      <header className="mb-6">
-        <Link href="/admin" className="inline-flex items-center text-xs text-on-surface-variant hover:text-on-surface gap-1 mb-3">
-          ← Admin
-        </Link>
-        <div className="flex items-end justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-semibold text-on-surface tracking-tight">{copy.title}</h1>
-            <p className="text-sm text-on-surface-variant mt-0.5">{copy.subtitle}</p>
-          </div>
-          {/* Direction toggle — Stitch pill style */}
-          <div className="flex items-center bg-surface-container-high p-1 rounded-xl gap-0.5">
-            <DirLink current={direction} value="out" includeTransfers={includeTransfers} label="Despesas" />
-            <DirLink current={direction} value="in"  includeTransfers={includeTransfers} label="Receitas" />
-            <DirLink current={direction} value="all" includeTransfers={includeTransfers} label="Tudo" />
-          </div>
+    <>
+    <PageHeader
+      title={copy.title}
+      crumbs={[{ href: "/admin", label: "Admin" }]}
+      right={
+        <div className="flex items-center bg-surface-container-high p-1 rounded-xl gap-0.5">
+          <DirLink current={direction} value="out" includeTransfers={includeTransfers} label="Despesas" />
+          <DirLink current={direction} value="in"  includeTransfers={includeTransfers} label="Receitas" />
+          <DirLink current={direction} value="all" includeTransfers={includeTransfers} label="Tudo" />
         </div>
-      </header>
+      }
+    />
+    <div className="px-4 pt-5 max-w-5xl mx-auto pb-28">
 
       {/* Stats bento grid */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
@@ -303,7 +297,7 @@ export default async function MerchantsPage({
         </div>
       </div>
     </div>
-  );
+    </>;
 }
 
 function DirLink({

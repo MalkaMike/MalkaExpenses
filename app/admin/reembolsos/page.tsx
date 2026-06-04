@@ -1,5 +1,5 @@
-import Link from "next/link";
-import { ChevronLeft, Briefcase, Shield } from "lucide-react";
+import { Briefcase, Shield } from "lucide-react";
+import { PageHeader } from "@/components/page-header";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { formatBRL, formatInt } from "@/lib/format";
@@ -163,16 +163,10 @@ export default async function ReembolsosPage({
   });
 
   return (
-    <div className="px-4 pt-6 max-w-4xl mx-auto pb-28">
-      <header className="mb-6">
-        <Link href="/admin" className="inline-flex items-center text-xs text-on-surface-variant hover:text-on-surface gap-1 mb-3">
-          ← Admin
-        </Link>
-        <h1 className="text-2xl font-semibold text-on-surface tracking-tight">Reembolsos</h1>
-        <p className="text-sm text-on-surface-variant mt-0.5">
-          Despesas marcadas para devolver — Kenlo, Laik, Plano de Saúde.
-        </p>
-      </header>
+    <>
+    <PageHeader title="Reembolsos" crumbs={[{ href: "/admin", label: "Admin" }]} />
+    <div className="px-4 pt-5 max-w-4xl mx-auto pb-28">
+      <p className="text-sm text-on-surface-variant mb-5">Despesas marcadas para devolver — Kenlo, Laik, Plano de Saúde.</p>
 
       {/* Tag entity cards — Stitch style */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
@@ -244,5 +238,5 @@ export default async function ReembolsosPage({
         />
       )}
     </div>
-  );
+    </>;
 }

@@ -7,6 +7,7 @@ import { getAccountsWithBalances } from "@/lib/balance/queries";
 import { formatBRL, formatInt } from "@/lib/format";
 import { ReconcileButton } from "./reconcile-button";
 import { PluggySyncButton } from "./pluggy-sync-button";
+import { PageHeader } from "@/components/page-header";
 
 export const dynamic = "force-dynamic";
 
@@ -38,44 +39,46 @@ export default async function AdminLanding({
     ]);
 
   return (
-    <div className="px-4 pt-6 max-w-2xl mx-auto pb-28">
+    <>
+    <PageHeader title="Admin" />
+    <div className="px-4 pt-5 max-w-2xl mx-auto pb-28">
 
-      {/* Page header */}
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-on-surface tracking-tight">Admin</h1>
-        <p className="text-xs text-on-surface-variant mt-0.5">Painel privado · só você vê</p>
-      </header>
-
-      {/* Dual-ledger balance cards */}
+      {/* Dual-ledger balance cards — both clickable */}
       <section className="grid grid-cols-2 gap-3 mb-4">
-        <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+        <Link
+          href="/accounts"
+          className="block p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow hover:bg-surface-container transition"
+        >
           <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Saldo real</p>
           <p className="text-2xl font-semibold tabular-nums text-on-surface">{formatBRL(totalReal)}</p>
-        </div>
-        <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Mostrado p/ Ayelet</p>
+        </Link>
+        <Link
+          href="/"
+          className="block p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow hover:bg-surface-container transition"
+        >
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Portal Ayelet</p>
           <p className="text-2xl font-semibold tabular-nums text-on-surface">{formatBRL(totalShared)}</p>
-        </div>
+        </Link>
       </section>
 
       {/* Delta hidden */}
       {deltaHidden !== 0 && (
-        <div className="mb-6 px-4 py-2.5 rounded-xl bg-surface-container border border-outline-variant text-sm flex justify-between items-center">
+        <div className="mb-5 px-4 py-2.5 rounded-xl bg-surface-container border border-outline-variant text-sm flex justify-between items-center">
           <span className="text-on-surface-variant text-xs">Diferença oculta</span>
           <span className="tabular-nums font-semibold text-on-surface">{formatBRL(deltaHidden)}</span>
         </div>
       )}
 
-      {/* Stats row */}
+      {/* Stats row — all clickable */}
       <section className="grid grid-cols-3 gap-3 mb-8">
-        <StatCard label="Movimentos" value={total ?? 0} />
-        <StatCard label="A revisar" value={pending ?? 0} accent={!!pending && pending > 0} />
-        <StatCard label="Fake" value={fakes ?? 0} />
+        <StatCard label="Movimentos"  value={total   ?? 0} href="/transactions" />
+        <StatCard label="A revisar"   value={pending ?? 0} href="/admin/inbox"  accent={!!pending && pending > 0} />
+        <StatCard label="Fake"        value={fakes   ?? 0} href="/transactions?status=fake" />
       </section>
 
       {/* Tools section */}
       <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3 px-1">Ferramentas</h2>
-      <nav className="space-y-2 mb-6">
+      <nav className="space-y-2 mb-28">
         <AdminLink
           href="/admin/inbox"
           title="Caixa de entrada"
@@ -130,22 +133,26 @@ export default async function AdminLanding({
         />
       </nav>
     </div>
-  );
+    </>;
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
-  return (
-    <div className={`p-3.5 rounded-xl border soft-ambient-shadow text-center ${
-      accent
-        ? "bg-[#f59e0b]/5 border-[#f59e0b]/20"
-        : "bg-surface-container-lowest border-outline-variant"
-    }`}>
+// StatCard is now a Link when href is provided
+function StatCard({ label, value, accent, href }: { label: string; value: number; accent?: boolean; href?: string }) {
+  const inner = (
+    <>
       <p className={`text-2xl font-semibold tabular-nums ${accent ? "text-[#f59e0b]" : "text-on-surface"}`}>
         {formatInt(value)}
       </p>
       <p className="text-[10px] text-on-surface-variant mt-0.5">{label}</p>
-    </div>
+    </>
   );
+  const cls = `p-3.5 rounded-xl border soft-ambient-shadow text-center transition block ${
+    accent
+      ? "bg-[#f59e0b]/5 border-[#f59e0b]/20 hover:bg-[#f59e0b]/10"
+      : "bg-surface-container-lowest border-outline-variant hover:bg-surface-container"
+  }`;
+  if (href) return <Link href={href} className={cls}>{inner}</Link>;
+  return <div className={cls}>{inner}</div>;
 }
 
 function AdminLink({

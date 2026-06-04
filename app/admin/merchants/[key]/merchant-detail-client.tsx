@@ -186,52 +186,62 @@ export function MerchantDetailClient({
     await applyShare("set", v);
   }
 
-  // Smart submit: if `nameDraft` exactly matches an existing cluster name,
-  // we MERGE this cluster into that one. Otherwise we RENAME.
+  // Direct merge into a specific cluster — no state dependency.
+  // Used by the dropdown click (avoids stale-closure bug with setTimeout + state).
+  async function mergeInto(target: ClusterOption) {
+    setRenameBusy(true);
+    setRenameErr(null);
+    try {
+      const r = await fetch("/api/admin/merchants/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_canonical_key: canonicalKey,
+          target_canonical_key: target.key
+        })
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `Erro ${r.status}`);
+      }
+      // Navigate to the surviving (target) cluster — it now contains all txs
+      router.push(`/admin/merchants/${encodeURIComponent(target.key)}`);
+    } catch (e) {
+      setRenameErr((e as Error).message);
+      setRenameBusy(false);
+    }
+  }
+
+  // Smart submit from the input field: if nameDraft exactly matches an existing
+  // cluster, MERGE. Otherwise RENAME (display name only).
   async function applyRename() {
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === currentName) {
       setEditingName(false);
       return;
     }
+    const match = allClusters.find(
+      (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (match) {
+      await mergeInto(match);
+      return;
+    }
+    // RENAME only
     setRenameBusy(true);
     setRenameErr(null);
     try {
-      // Find exact case-insensitive match among existing clusters
-      const match = allClusters.find(
-        (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase()
-      );
-      let r: Response;
-      if (match) {
-        // MERGE this cluster into the matched target
-        r = await fetch("/api/admin/merchants/merge", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            source_canonical_key: canonicalKey,
-            target_canonical_key: match.key
-          })
-        });
-        if (!r.ok) {
-          const j = await r.json().catch(() => ({}));
-          throw new Error(j.error ?? `Erro ${r.status}`);
-        }
-        // After merge, the URL changes — navigate to the target cluster
-        router.push(`/admin/merchants/${encodeURIComponent(match.key)}`);
-      } else {
-        // RENAME (display name change only)
-        r = await fetch("/api/admin/merchants/rename", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ canonical_key: canonicalKey, name: trimmed })
-        });
-        if (!r.ok) {
-          const j = await r.json().catch(() => ({}));
-          throw new Error(j.error ?? `Erro ${r.status}`);
-        }
-        setEditingName(false);
-        router.refresh();
+      const r = await fetch("/api/admin/merchants/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_key: canonicalKey, name: trimmed })
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `Erro ${r.status}`);
       }
+      setEditingName(false);
+      router.refresh();
     } catch (e) {
       setRenameErr((e as Error).message);
     } finally {
@@ -344,23 +354,27 @@ export function MerchantDetailClient({
                 <X size={14} />
               </button>
 
-              {/* Combobox dropdown with suggestions */}
+              {/* Combobox dropdown — clicking triggers immediate merge (no stale state) */}
               {matchingSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-[88px] mt-1 z-10 rounded-xl bg-card border border-border shadow-lg overflow-hidden">
-                  <p className="text-[10px] uppercase tracking-wider text-muted px-3 pt-2 pb-1">
-                    Comerciantes existentes — clique para FUNDIR
+                <div className="absolute top-full left-0 right-[88px] mt-1 z-10 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow overflow-hidden">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant px-3 pt-2.5 pb-1.5">
+                    Fundir com existente
                   </p>
-                  <ul className="divide-y divide-border max-h-60 overflow-y-auto">
+                  <ul className="divide-y divide-outline-variant max-h-60 overflow-y-auto">
                     {matchingSuggestions.map((c) => (
                       <li key={c.key}>
                         <button
-                          onClick={() => {
+                          onMouseDown={(e) => {
+                            // onMouseDown fires before input onBlur — prevents dropdown closing
+                            e.preventDefault();
                             setNameDraft(c.name);
-                            setTimeout(applyRename, 0);
+                            mergeInto(c); // direct call — no stale closure
                           }}
-                          className="w-full text-left px-3 py-2 text-sm hover:bg-fg/[0.05] transition"
+                          disabled={renameBusy}
+                          className="w-full text-left px-3 py-2.5 text-sm text-on-surface hover:bg-surface-container transition flex items-center justify-between gap-2"
                         >
-                          {c.name}
+                          <span className="font-medium">{c.name}</span>
+                          <span className="text-[10px] font-bold text-[#0ea5e9] uppercase shrink-0">Fundir →</span>
                         </button>
                       </li>
                     ))}

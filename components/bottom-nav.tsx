@@ -17,9 +17,8 @@ export function BottomNav({ role }: { role: Role }) {
     { href: "/budgets",      label: t("nav.budgets",      lang), icon: Target }
   ];
 
-  // Hide nav on auth/admin screens
+  // Hide only on login
   if (pathname === "/login") return null;
-  if (pathname === "/admin" || pathname.startsWith("/admin/")) return null;
 
   return (
     <nav
