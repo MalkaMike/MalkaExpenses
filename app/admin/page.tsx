@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History } from "lucide-react";
+import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -92,6 +92,12 @@ export default async function AdminLanding({
           title="Pagadores (receitas)"
           subtitle="de onde vem o dinheiro"
           Icon={TrendingUp}
+        />
+        <AdminLink
+          href="/admin/reembolsos"
+          title="Reembolsos"
+          subtitle="Kenlo / Laik / Plano de Saúde — a receber"
+          Icon={Briefcase}
         />
         <AdminLink
           href="/admin/historico"

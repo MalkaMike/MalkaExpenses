@@ -142,6 +142,33 @@ export default async function MerchantDetailPage({
       ? "show"
       : "mixed";
 
+  // Reimbursement tags currently applied across these transactions
+  const txIds = txs.map((t) => t.id);
+  type ReimbAgg = { tag_id: string; count: number };
+  const tagCounts = new Map<string, number>();
+  if (txIds.length > 0) {
+    const { data: reimbRows } = await sb
+      .from("transaction_reimbursements")
+      .select("tag_id, transaction_id")
+      .in("transaction_id", txIds);
+    for (const r of reimbRows ?? []) {
+      const k = r.tag_id as string;
+      tagCounts.set(k, (tagCounts.get(k) ?? 0) + 1);
+    }
+  }
+  const { data: tags } = await sb
+    .from("reimbursement_tags")
+    .select("id, slug, name, color, icon")
+    .order("slug");
+  const tagList = (tags ?? []).map((t) => ({
+    id: t.id as string,
+    slug: t.slug as string,
+    name: t.name as string,
+    color: t.color as string,
+    icon: t.icon as string,
+    appliedCount: tagCounts.get(t.id as string) ?? 0
+  }));
+
   const categories = (cats ?? []).map((c) => ({
     id: c.id as string,
     slug: c.slug as string,
@@ -196,6 +223,7 @@ export default async function MerchantDetailPage({
         currentShareMode={shareMode}
         currentSharedTotal={totalShared}
         currentName={displayName}
+        tags={tagList}
       />
     </div>
   );

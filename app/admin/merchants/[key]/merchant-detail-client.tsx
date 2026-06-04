@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2, Pencil, X } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 
 type Row = {
@@ -18,6 +18,15 @@ type Row = {
 };
 type Category = { id: string; slug: string; name: string };
 
+type ReimbTag = {
+  id: string;
+  slug: string;
+  name: string;
+  color: string;
+  icon: string;
+  appliedCount: number;
+};
+
 type Props = {
   canonicalKey: string;
   currentCategoryId: string | null;
@@ -26,6 +35,7 @@ type Props = {
   currentShareMode: "hide" | "show" | "mixed";
   currentSharedTotal: number;
   currentName: string;
+  tags: ReimbTag[];
 };
 
 export function MerchantDetailClient({
@@ -35,7 +45,8 @@ export function MerchantDetailClient({
   rows,
   currentShareMode,
   currentSharedTotal,
-  currentName
+  currentName,
+  tags
 }: Props) {
   const router = useRouter();
   const [selectedCat, setSelectedCat] = useState<string>(currentCategoryId ?? "");
@@ -58,6 +69,42 @@ export function MerchantDetailClient({
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   // Optimistic local override of sharedAmount per row id
   const [localShared, setLocalShared] = useState<Record<string, number>>({});
+
+  // Reimbursement tag bulk-apply state
+  const [tagBusy, setTagBusy] = useState<string | null>(null);
+  const [tagDone, setTagDone] = useState<string | null>(null);
+
+  async function bulkTag(tagSlug: string, action: "add" | "remove") {
+    setTagBusy(tagSlug);
+    setTagDone(null);
+    try {
+      const r = await fetch("/api/admin/reimbursements/tag", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          transaction_ids: rows.map((row) => row.id),
+          tag_slug: tagSlug,
+          action
+        })
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `Erro ${r.status}`);
+      }
+      const j = await r.json();
+      const name = tags.find((t) => t.slug === tagSlug)?.name ?? tagSlug;
+      setTagDone(
+        action === "add"
+          ? `${formatInt(j.updated)} ${j.updated === 1 ? "despesa marcada" : "despesas marcadas"} como ${name}`
+          : `${formatInt(j.updated)} ${j.updated === 1 ? "despesa desmarcada" : "despesas desmarcadas"} de ${name}`
+      );
+      router.refresh();
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setTagBusy(null);
+    }
+  }
 
   async function applyToAll() {
     if (!selectedCat) return;
@@ -414,6 +461,72 @@ export function MerchantDetailClient({
 
         {shareDone && <p className="mt-2 text-xs text-accent">✅ {shareDone}</p>}
         {shareErr && <p className="mt-2 text-xs text-danger">{shareErr}</p>}
+      </section>
+
+      {/* Reimbursement tags — bulk apply per cluster */}
+      <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
+        <p className="text-xs uppercase tracking-wider text-muted mb-2">
+          Reembolso (marca essas {formatInt(rows.length)} despesas)
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {tags.map((t) => {
+            const Icon = t.icon === "shield" ? Shield : t.icon === "briefcase" ? Briefcase : Tag;
+            const allTagged = t.appliedCount >= rows.length && rows.length > 0;
+            const someTagged = t.appliedCount > 0 && !allTagged;
+            const action: "add" | "remove" = allTagged ? "remove" : "add";
+            const isBusy = tagBusy === t.slug;
+            const colorClasses =
+              t.color === "purple"
+                ? "border-fuchsia-500/40 text-fuchsia-500 hover:bg-fuchsia-500/5"
+                : t.color === "info"
+                  ? "border-sky-500/40 text-sky-500 hover:bg-sky-500/5"
+                  : t.color === "warning"
+                    ? "border-warning/40 text-warning hover:bg-warning/5"
+                    : t.color === "danger"
+                      ? "border-danger/40 text-danger hover:bg-danger/5"
+                      : "border-accent/40 text-accent hover:bg-accent/5";
+            const activeClasses =
+              t.color === "purple"
+                ? "bg-fuchsia-500 text-white border-fuchsia-500"
+                : t.color === "info"
+                  ? "bg-sky-500 text-white border-sky-500"
+                  : t.color === "warning"
+                    ? "bg-warning text-bg border-warning"
+                    : t.color === "danger"
+                      ? "bg-danger text-white border-danger"
+                      : "bg-accent text-bg border-accent";
+            return (
+              <button
+                key={t.slug}
+                onClick={() => bulkTag(t.slug, action)}
+                disabled={isBusy}
+                className={`px-3 py-2 rounded-xl text-sm font-medium border transition flex items-center gap-2
+                  ${allTagged ? activeClasses : colorClasses}
+                  ${isBusy ? "opacity-50 cursor-wait" : "active:scale-[0.99]"}`}
+              >
+                {isBusy ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Icon size={14} />
+                )}
+                {t.name}
+                {someTagged && (
+                  <span className="text-[10px] tabular-nums opacity-70">
+                    {formatInt(t.appliedCount)}/{formatInt(rows.length)}
+                  </span>
+                )}
+                {allTagged && (
+                  <Check size={12} />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {tagDone && <p className="mt-2 text-xs text-accent">✅ {tagDone}</p>}
+        <p className="mt-2 text-[10px] text-muted">
+          Clique pra adicionar tag. Se TODAS já estiverem marcadas, clica de novo pra remover.
+          Acompanhe o status em <a href="/admin/reembolsos" className="underline">Reembolsos</a>.
+        </p>
       </section>
 
       {/* Transactions list — per-row hide/show toggle */}
