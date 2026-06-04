@@ -75,5 +75,6 @@ export default async function InboxPage() {
 
       <InboxClient rows={out} accounts={accountsList} />
     </div>
-    </>;
+  </>
+  );
 }

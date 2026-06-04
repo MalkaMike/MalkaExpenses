@@ -247,5 +247,6 @@ export default async function MerchantDetailPage({
         allClusters={allClusters}
       />
     </div>
-    </>;
+  </>
+  );
 }

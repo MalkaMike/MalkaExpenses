@@ -297,7 +297,8 @@ export default async function MerchantsPage({
         </div>
       </div>
     </div>
-    </>;
+  </>
+  );
 }
 
 function DirLink({

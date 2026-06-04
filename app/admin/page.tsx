@@ -133,7 +133,8 @@ export default async function AdminLanding({
         />
       </nav>
     </div>
-    </>;
+  </>
+  );
 }
 
 // StatCard is now a Link when href is provided
