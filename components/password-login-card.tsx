@@ -1,63 +1,39 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Lock, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 
 type Props = {
-  // What this card is logging into
-  variant: "household" | "admin";
-  // POST endpoint for the password submission
-  endpoint: string;
-  // Where to send the user on success
-  defaultNext: string;
-  // Optional override for "next" search param
   next?: string;
 };
 
-const COPY = {
-  household: {
-    title: "Casa",
-    subtitle: "Suas finanças, juntos",
-    placeholder: "senha de casa",
-    icon: null
-  },
-  admin: {
-    title: "Admin",
-    subtitle: "Acesso privado",
-    placeholder: "senha admin",
-    icon: Lock
-  }
-} as const;
-
-export function PasswordLoginCard({ variant, endpoint, defaultNext, next }: Props) {
+export function PasswordLoginCard({ next }: Props) {
   const router = useRouter();
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [shake, setShake] = useState(false);
 
-  const copy = COPY[variant];
-  const IconComp = copy.icon;
-
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
     try {
-      const r = await fetch(endpoint, {
+      const r = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password })
+        body: JSON.stringify({ username, password })
       });
       if (!r.ok) {
-        setErr("Senha incorreta");
+        setErr("Login ou senha incorretos");
         setShake(true);
         setTimeout(() => setShake(false), 500);
-        // Don't clear the password — user may want to fix a typo
         return;
       }
-      router.replace(next || defaultNext);
+      const data = await r.json();
+      router.replace(next ?? (data.role === "admin" ? "/admin" : "/"));
       router.refresh();
     } catch {
       setErr("Erro de conexão");
@@ -74,32 +50,32 @@ export function PasswordLoginCard({ variant, endpoint, defaultNext, next }: Prop
     >
       <div className="rounded-2xl bg-card border border-border shadow-lg p-7 space-y-6">
         <header className="text-center space-y-2">
-          {IconComp && (
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-danger/10 text-danger mb-2">
-              <IconComp size={20} />
-            </div>
-          )}
           <h1 className="text-3xl font-semibold tracking-tight">
-            {variant === "household"
-              ? process.env.NEXT_PUBLIC_APP_NAME || copy.title
-              : copy.title}
+            {process.env.NEXT_PUBLIC_APP_NAME || "Casa"}
           </h1>
-          <p className="text-sm text-muted">{copy.subtitle}</p>
+          <p className="text-sm text-muted">Suas finanças, juntos</p>
         </header>
 
         <form onSubmit={submit} className="space-y-4">
+          <input
+            type="text"
+            autoFocus
+            autoComplete="username"
+            value={username}
+            onChange={(e) => { setUsername(e.target.value); if (err) setErr(null); }}
+            placeholder="login"
+            className={`w-full px-4 py-3.5 rounded-xl bg-bg border text-base outline-none transition
+              ${err ? "border-danger" : "border-border focus:border-accent"}
+              placeholder:text-muted/60`}
+          />
+
           <div className="relative">
             <input
               type={showPassword ? "text" : "password"}
-              autoFocus
               autoComplete="current-password"
-              inputMode="text"
               value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (err) setErr(null);
-              }}
-              placeholder={copy.placeholder}
+              onChange={(e) => { setPassword(e.target.value); if (err) setErr(null); }}
+              placeholder="senha"
               className={`w-full pl-4 pr-12 py-3.5 rounded-xl bg-bg border text-base outline-none transition
                 ${err ? "border-danger" : "border-border focus:border-accent"}
                 placeholder:text-muted/60`}
@@ -122,14 +98,14 @@ export function PasswordLoginCard({ variant, endpoint, defaultNext, next }: Prop
             role="alert"
             aria-live="polite"
           >
-            {err ?? " "}
+            {err ?? " "}
           </div>
 
           <button
             type="submit"
-            disabled={busy || password.length === 0}
+            disabled={busy || !username || !password}
             className={`relative w-full py-3.5 rounded-xl font-medium text-base transition
-              ${busy || password.length === 0
+              ${busy || !username || !password
                 ? "bg-fg/40 text-bg cursor-not-allowed"
                 : "bg-fg text-bg hover:bg-fg/90 active:scale-[0.99]"}`}
           >
@@ -142,12 +118,6 @@ export function PasswordLoginCard({ variant, endpoint, defaultNext, next }: Prop
           </button>
         </form>
       </div>
-
-      {variant === "household" && (
-        <p className="mt-6 text-center text-xs text-muted">
-          esqueceu? pergunte ao Mickael
-        </p>
-      )}
 
       <style jsx>{`
         @keyframes shake {

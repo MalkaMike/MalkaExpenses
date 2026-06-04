@@ -4,17 +4,13 @@ import { NextResponse, type NextRequest } from "next/server";
 // Middleware — two-tier auth gate (runs on the edge runtime; uses Web Crypto).
 //
 // Tiers:
-//   Anonymous          : only /login, /admin (login screens) + their auth APIs
+//   Anonymous          : only /login + auth APIs
 //   Household (pf_household)  : main site (everything except /admin/* surface)
 //   Admin (pf_admin)   : full access including /admin/*
 //
-// Behavior:
-//   - /api/admin/login, /api/household/login, /api/household/logout, /api/admin/logout : open
-//   - /login                    : open (renders household login)
-//   - /admin                    : open (renders admin login when not admin)
-//   - /admin/*, /api/admin/*    : require pf_admin cookie (redirect or 404)
-//   - everything else           : require pf_household OR pf_admin (redirect to /login)
-//
+// Token format (v2 — role-bound):
+//   <cookie> = v2.<role>.<ms>.<sig>
+//   Sig:      HMAC-SHA256(MODE_COOKIE_SECRET, "v2.${role}.${ms}")
 // Keep verifyToken in sync with cookie format in lib/auth/admin.ts + household.ts.
 // ============================================================================
 
@@ -22,13 +18,31 @@ const ADMIN_COOKIE = "pf_admin";
 const HOUSEHOLD_COOKIE = "pf_household";
 const ADMIN_TIMEOUT_MIN = Number(process.env.ADMIN_TIMEOUT_MINUTES ?? "60");
 const HOUSEHOLD_TIMEOUT_DAYS = 90;
+const FUTURE_SKEW_MS = 60_000;
+const MIN_SECRET_LENGTH = 32;
 
 const enc = new TextEncoder();
 let keyPromise: Promise<CryptoKey> | null = null;
 
+// Fail-closed: refuse to construct a verification key when the secret is
+// missing or too short. Returns a rejected promise so verifyToken catches and
+// returns false → every request becomes anonymous instead of forgeable.
 function getKey(): Promise<CryptoKey> {
   if (!keyPromise) {
     const secret = process.env.MODE_COOKIE_SECRET ?? "";
+    if (secret.length < MIN_SECRET_LENGTH) {
+      keyPromise = Promise.reject(
+        new Error(
+          `MODE_COOKIE_SECRET missing or < ${MIN_SECRET_LENGTH} chars — refusing to verify cookies (fail-closed).`
+        )
+      );
+      // Don't cache the rejection forever — let env reload retry next request.
+      const p = keyPromise;
+      p.catch(() => {
+        keyPromise = null;
+      });
+      return p;
+    }
     keyPromise = crypto.subtle.importKey(
       "raw",
       enc.encode(secret),
@@ -53,10 +67,15 @@ function constantTimeEqual(a: string, b: string): boolean {
   return r === 0;
 }
 
-async function verifyToken(token: string, maxAgeMs: number): Promise<boolean> {
+async function verifyToken(
+  token: string,
+  expectedRole: "admin" | "household",
+  maxAgeMs: number
+): Promise<boolean> {
   const parts = token.split(".");
-  if (parts.length !== 3 || parts[0] !== "v1") return false;
-  const payload = `${parts[0]}.${parts[1]}`;
+  // Strict format: v2.<role>.<ms>.<sig>
+  if (parts.length !== 4 || parts[0] !== "v2" || parts[1] !== expectedRole) return false;
+  const payload = `${parts[0]}.${parts[1]}.${parts[2]}`;
   let expected: string;
   try {
     const key = await getKey();
@@ -65,36 +84,43 @@ async function verifyToken(token: string, maxAgeMs: number): Promise<boolean> {
   } catch {
     return false;
   }
-  if (!constantTimeEqual(expected, parts[2])) return false;
-  const ms = Number(parts[1]);
+  if (!constantTimeEqual(expected, parts[3])) return false;
+  const ms = Number(parts[2]);
   if (!Number.isFinite(ms)) return false;
+  // Reject future-dated tokens (clock attack / forged signature with future time)
+  if (ms > Date.now() + FUTURE_SKEW_MS) return false;
   return Date.now() - ms <= maxAgeMs;
 }
 
 async function hasAdmin(req: NextRequest): Promise<boolean> {
   const t = req.cookies.get(ADMIN_COOKIE)?.value;
   if (!t) return false;
-  return verifyToken(t, ADMIN_TIMEOUT_MIN * 60 * 1000);
+  return verifyToken(t, "admin", ADMIN_TIMEOUT_MIN * 60 * 1000);
 }
 async function hasHousehold(req: NextRequest): Promise<boolean> {
   const t = req.cookies.get(HOUSEHOLD_COOKIE)?.value;
   if (!t) return false;
-  return verifyToken(t, HOUSEHOLD_TIMEOUT_DAYS * 86400 * 1000);
+  return verifyToken(t, "household", HOUSEHOLD_TIMEOUT_DAYS * 86400 * 1000);
 }
 
 // Always-open paths (auth flows + static + self-secured machine endpoints).
-// Match prefixes. The Pluggy webhook and the cron endpoint carry no session
-// cookie by design — they authenticate with their own secrets (webhook ?token=
-// and cron Authorization: Bearer CRON_SECRET), so they must skip the cookie gate.
+// EXACT matches preferred; prefix matches reserved for whole subtrees we own.
 function isAlwaysOpen(pathname: string): boolean {
-  return (
+  // Exact open paths
+  if (
     pathname === "/login" ||
     pathname === "/admin" ||
     pathname === "/admin/" ||
-    pathname.startsWith("/api/household/login") ||
-    pathname.startsWith("/api/household/logout") ||
-    pathname.startsWith("/api/admin/login") ||
-    pathname.startsWith("/api/admin/logout") ||
+    pathname === "/api/login" ||
+    pathname === "/api/household/login" ||
+    pathname === "/api/household/logout" ||
+    pathname === "/api/admin/login" ||
+    pathname === "/api/admin/logout"
+  ) {
+    return true;
+  }
+  // Subtree open paths (we own these subtrees end-to-end)
+  return (
     pathname.startsWith("/api/pluggy/webhook") ||
     pathname.startsWith("/api/cron/")
   );

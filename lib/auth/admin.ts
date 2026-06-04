@@ -12,14 +12,22 @@ import { hasHouseholdCookie } from "./household";
 // real_amount, edit shared_amount, hide transactions, add fake entries.
 // ============================================================================
 //
-// Cookie format:    pf_admin = v1.<lastActivityIso>.<sig>
-// Sig:              HMAC-SHA256(MODE_COOKIE_SECRET, "v1." + lastActivityIso)
-// Sliding window:   each authenticated request refreshes lastActivityIso
-// Idle timeout:     ADMIN_TIMEOUT_MINUTES (default 60)
+// Cookie format (v2 — role-bound, prevents cookie swap attacks):
+//   pf_admin = v2.admin.<lastActivityMs>.<sig>
+//   Sig:      HMAC-SHA256(MODE_COOKIE_SECRET, "v2.admin." + lastActivityMs)
+//
+// A pf_household token cannot be copied into pf_admin and pass — the signed
+// payload includes the role, so verifyToken rejects mismatched roles.
+//
+// Sliding window: each authenticated request refreshes lastActivityMs
+// Idle timeout:   ADMIN_TIMEOUT_MINUTES (default 60)
 // ============================================================================
 
 export type Role = "public" | "household" | "admin";
 export const COOKIE_NAME = "pf_admin";
+const TOKEN_ROLE: "admin" = "admin";
+// Reject tokens from the future beyond this skew (small NTP tolerance).
+const FUTURE_SKEW_MS = 60_000;
 
 function sign(payload: string): string {
   return createHmac("sha256", env.MODE_COOKIE_SECRET).update(payload).digest("hex");
@@ -32,17 +40,20 @@ function verify(payload: string, sig: string): boolean {
 }
 
 function packToken(lastActivityMs: number): string {
-  const payload = `v1.${lastActivityMs}`;
+  const payload = `v2.${TOKEN_ROLE}.${lastActivityMs}`;
   return `${payload}.${sign(payload)}`;
 }
 
 function unpackToken(token: string): { lastActivity: Date } | null {
   const parts = token.split(".");
-  if (parts.length !== 3 || parts[0] !== "v1") return null;
-  const payload = `${parts[0]}.${parts[1]}`;
-  if (!verify(payload, parts[2])) return null;
-  const ms = Number(parts[1]);
+  // Strict format: v2.admin.<ms>.<sig>
+  if (parts.length !== 4 || parts[0] !== "v2" || parts[1] !== TOKEN_ROLE) return null;
+  const payload = `${parts[0]}.${parts[1]}.${parts[2]}`;
+  if (!verify(payload, parts[3])) return null;
+  const ms = Number(parts[2]);
   if (!Number.isFinite(ms)) return null;
+  // Reject future-issued tokens (signature forgery / clock attack)
+  if (ms > Date.now() + FUTURE_SKEW_MS) return null;
   return { lastActivity: new Date(ms) };
 }
 

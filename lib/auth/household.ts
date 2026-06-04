@@ -11,10 +11,15 @@ import { env } from "@/lib/env";
 //
 // Role hierarchy:  admin > household > public
 // Either cookie passes the main-site gate; only pf_admin passes the /admin gate.
+//
+// Cookie format (v2 — role-bound; see lib/auth/admin.ts header):
+//   pf_household = v2.household.<issuedAtMs>.<sig>
 // ============================================================================
 
 export const HOUSEHOLD_COOKIE_NAME = "pf_household";
 const HOUSEHOLD_TIMEOUT_DAYS = 90; // long-lived; wife shouldn't have to re-enter weekly
+const TOKEN_ROLE: "household" = "household";
+const FUTURE_SKEW_MS = 60_000;
 
 function sign(payload: string): string {
   return createHmac("sha256", env.MODE_COOKIE_SECRET).update(payload).digest("hex");
@@ -26,16 +31,18 @@ function verify(payload: string, sig: string): boolean {
 }
 function packToken(): string {
   const ms = Date.now();
-  const payload = `v1.${ms}`;
+  const payload = `v2.${TOKEN_ROLE}.${ms}`;
   return `${payload}.${sign(payload)}`;
 }
 function unpackToken(token: string): { issuedAt: Date } | null {
   const parts = token.split(".");
-  if (parts.length !== 3 || parts[0] !== "v1") return null;
-  const payload = `${parts[0]}.${parts[1]}`;
-  if (!verify(payload, parts[2])) return null;
-  const ms = Number(parts[1]);
+  if (parts.length !== 4 || parts[0] !== "v2" || parts[1] !== TOKEN_ROLE) return null;
+  const payload = `${parts[0]}.${parts[1]}.${parts[2]}`;
+  if (!verify(payload, parts[3])) return null;
+  const ms = Number(parts[2]);
   if (!Number.isFinite(ms)) return null;
+  // Reject future-issued tokens
+  if (ms > Date.now() + FUTURE_SKEW_MS) return null;
   return { issuedAt: new Date(ms) };
 }
 
