@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase } from "lucide-react";
+import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -25,6 +25,7 @@ export default async function AdminLanding({
   const accounts = await getAccountsWithBalances("admin");
   const totalReal = accounts.reduce((s, a) => s + (a.realBalance ?? 0), 0);
   const totalShared = accounts.reduce((s, a) => s + a.sharedBalance, 0);
+  const deltaHidden = totalReal - totalShared;
 
   const sb = serverClient();
   const [{ count: total }, { count: pending }, { count: fakes }, { count: hidden }] =
@@ -32,94 +33,98 @@ export default async function AdminLanding({
       sb.from("transactions").select("*", { count: "exact", head: true }),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("status", "pending_review"),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", true),
-      sb
-        .from("transactions")
-        .select("*", { count: "exact", head: true })
-        .eq("shared_amount", 0)
-        .neq("status", "pending_review")
+      sb.from("transactions").select("*", { count: "exact", head: true })
+        .eq("shared_amount", 0).neq("status", "pending_review")
     ]);
 
   return (
-    <div className="px-4 pt-6 max-w-2xl mx-auto pb-32">
+    <div className="px-4 pt-6 max-w-2xl mx-auto pb-28">
+
+      {/* Page header */}
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold">Admin</h1>
-        <p className="text-xs text-muted">Painel privado · só você vê</p>
+        <h1 className="text-2xl font-semibold text-on-surface tracking-tight">Admin</h1>
+        <p className="text-xs text-on-surface-variant mt-0.5">Painel privado · só você vê</p>
       </header>
 
-      <section className="grid grid-cols-2 gap-3 mb-6">
-        <div className="p-4 rounded-xl bg-card border border-border">
-          <p className="text-xs uppercase tracking-wider text-muted">Saldo real</p>
-          <p className="text-2xl font-semibold tabular-nums">{formatBRL(totalReal)}</p>
+      {/* Dual-ledger balance cards */}
+      <section className="grid grid-cols-2 gap-3 mb-4">
+        <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Saldo real</p>
+          <p className="text-2xl font-semibold tabular-nums text-on-surface">{formatBRL(totalReal)}</p>
         </div>
-        <div className="p-4 rounded-xl bg-card border border-border">
-          <p className="text-xs uppercase tracking-wider text-muted">Saldo mostrado</p>
-          <p className="text-2xl font-semibold tabular-nums">{formatBRL(totalShared)}</p>
+        <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Mostrado p/ Ayelet</p>
+          <p className="text-2xl font-semibold tabular-nums text-on-surface">{formatBRL(totalShared)}</p>
         </div>
       </section>
 
-      {totalReal !== totalShared && (
-        <p className="mb-6 text-sm text-muted tabular-nums">
-          Diferença oculta: <span className="text-fg">{formatBRL(totalReal - totalShared)}</span>
-        </p>
+      {/* Delta hidden */}
+      {deltaHidden !== 0 && (
+        <div className="mb-6 px-4 py-2.5 rounded-xl bg-surface-container border border-outline-variant text-sm flex justify-between items-center">
+          <span className="text-on-surface-variant text-xs">Diferença oculta</span>
+          <span className="tabular-nums font-semibold text-on-surface">{formatBRL(deltaHidden)}</span>
+        </div>
       )}
 
-      <section className="grid grid-cols-3 gap-3 mb-8 text-center">
-        <Stat label="Movimentos" value={total ?? 0} />
-        <Stat label="A revisar" value={pending ?? 0} />
-        <Stat label="Fake" value={fakes ?? 0} />
+      {/* Stats row */}
+      <section className="grid grid-cols-3 gap-3 mb-8">
+        <StatCard label="Movimentos" value={total ?? 0} />
+        <StatCard label="A revisar" value={pending ?? 0} accent={!!pending && pending > 0} />
+        <StatCard label="Fake" value={fakes ?? 0} />
       </section>
 
-      <h2 className="text-xs uppercase tracking-wider text-muted mb-3 px-1">Ferramentas</h2>
+      {/* Tools section */}
+      <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3 px-1">Ferramentas</h2>
       <nav className="space-y-2 mb-6">
         <AdminLink
           href="/admin/inbox"
           title="Caixa de entrada"
-          subtitle={
-            (pending ?? 0) > 0
-              ? `${formatInt(pending ?? 0)} aguardando sua decisão`
-              : "tudo decidido"
-          }
+          subtitle={(pending ?? 0) > 0 ? `${formatInt(pending ?? 0)} aguardando revisão` : "tudo decidido"}
           Icon={Inbox}
+          badge={(pending ?? 0) > 0 ? String(pending) : undefined}
         />
         <AdminLink
           href="/admin/merchants?direction=out"
-          title="Comerciantes (despesas)"
-          subtitle="categorize por merchant — vale por todas"
+          title="Comerciantes"
+          subtitle="categorize por merchant — vale pra todas"
           Icon={Store}
         />
         <AdminLink
           href="/admin/merchants?direction=in"
-          title="Pagadores (receitas)"
+          title="Pagadores"
           subtitle="de onde vem o dinheiro"
           Icon={TrendingUp}
         />
         <AdminLink
           href="/admin/reembolsos"
           title="Reembolsos"
-          subtitle="Kenlo / Laik / Plano de Saúde — a receber"
+          subtitle="Kenlo · Laik · Plano de Saúde"
           Icon={Briefcase}
         />
         <AdminLink
           href="/admin/historico"
           title="Histórico de modificações"
-          subtitle="tudo que você mudou do que a Ayelet vê"
+          subtitle="o que você alterou vs o que a Ayelet vê"
           Icon={History}
         />
-        <PluggySyncButton />
-        <ReconcileButton />
+        <div className="rounded-xl border border-outline-variant overflow-hidden bg-surface-container-lowest">
+          <div className="px-4 pt-3 pb-1">
+            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Sincronização</p>
+          </div>
+          <div className="p-2">
+            <PluggySyncButton />
+            <ReconcileButton />
+          </div>
+        </div>
         <AdminLink
           href="/admin/archive"
           title="Arquivo"
-          subtitle={
-            (hidden ?? 0) > 0
-              ? `${formatInt(hidden ?? 0)} item(ns) removido(s) — pode restaurar`
-              : "itens removidos do portal"
-          }
+          subtitle={(hidden ?? 0) > 0 ? `${formatInt(hidden ?? 0)} item(ns) oculto(s) — pode restaurar` : "itens removidos do portal"}
           Icon={Archive}
         />
         <AdminLink
           href="/"
-          title="Voltar ao app"
+          title="Portal da Ayelet"
           subtitle="o que sua esposa vê"
           Icon={Eye}
         />
@@ -128,52 +133,56 @@ export default async function AdminLanding({
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function StatCard({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
   return (
-    <div className="p-3 rounded-xl bg-card border border-border">
-      <p className="text-2xl font-semibold tabular-nums">{formatInt(value)}</p>
-      <p className="text-xs text-muted">{label}</p>
+    <div className={`p-3.5 rounded-xl border soft-ambient-shadow text-center ${
+      accent
+        ? "bg-[#f59e0b]/5 border-[#f59e0b]/20"
+        : "bg-surface-container-lowest border-outline-variant"
+    }`}>
+      <p className={`text-2xl font-semibold tabular-nums ${accent ? "text-[#f59e0b]" : "text-on-surface"}`}>
+        {formatInt(value)}
+      </p>
+      <p className="text-[10px] text-on-surface-variant mt-0.5">{label}</p>
     </div>
   );
 }
 
 function AdminLink({
-  href,
-  title,
-  subtitle,
-  Icon,
-  disabled = false
+  href, title, subtitle, Icon, badge, disabled = false
 }: {
-  href: string;
-  title: string;
-  subtitle?: string;
-  Icon: typeof Archive;
-  disabled?: boolean;
+  href: string; title: string; subtitle?: string;
+  Icon: typeof Archive; badge?: string; disabled?: boolean;
 }) {
   const content = (
     <div className="flex items-center gap-3">
-      <div className="w-10 h-10 rounded-xl bg-bg/60 inline-flex items-center justify-center text-muted">
+      <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0">
         <Icon size={18} />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium">{title}</p>
-        {subtitle && <p className="text-xs text-muted truncate">{subtitle}</p>}
+        <p className="font-medium text-sm text-on-surface">{title}</p>
+        {subtitle && <p className="text-xs text-on-surface-variant truncate mt-0.5">{subtitle}</p>}
       </div>
-      <ChevronRight size={16} className="text-muted" />
+      {badge && (
+        <span className="px-2 py-0.5 rounded-full bg-[#f59e0b] text-black text-[10px] font-bold">
+          {badge}
+        </span>
+      )}
+      <ChevronRight size={15} className="text-on-surface-variant shrink-0" />
     </div>
   );
+
   if (disabled) {
     return (
-      <div className="block p-4 rounded-xl bg-card border border-border opacity-50 cursor-not-allowed">
+      <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant opacity-40 cursor-not-allowed">
         {content}
-        <p className="text-[10px] uppercase tracking-wider text-muted mt-2 ml-13">em breve</p>
       </div>
     );
   }
   return (
     <Link
       href={href}
-      className="block p-4 rounded-xl bg-card border border-border active:scale-[0.99] hover:border-accent/40 transition"
+      className="block p-4 rounded-xl bg-surface-container-lowest border border-outline-variant hover:bg-surface-container active:scale-[0.99] transition-all"
     >
       {content}
     </Link>

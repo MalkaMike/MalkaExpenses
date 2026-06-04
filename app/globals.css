@@ -3,27 +3,26 @@
 @tailwind utilities;
 
 /* ============================================================================
- * "Serene Financial" — Stitch design system tokens
+ * "Malka Casa" — Stitch design system (project 6041564693018001250)
  *
- * Background: warm off-white #FAF9F7 | Primary: deep navy #181D25
- * Income: pastel emerald (secondary) | Expense: coral/peach (tertiary)
- * Fonts: Manrope (display) · Inter (body) · JetBrains Mono (numbers)
+ * Surface: #fbf9f6 (warm paper)   Primary: #000000 (authoritative black)
+ * Positive/Income: #006c49        Negative/Expense: #ef4444
+ * Font: Inter (all weights)
  * ============================================================================ */
 :root {
-  /* Core semantic tokens — used via bg-bg / text-fg / border-border etc */
-  --bg:      250 249 247;   /* #faf9f7  Serene warm off-white */
-  --fg:      26 28 27;      /* #1a1c1b  on-surface (near-black, warm) */
-  --muted:   69 71 75;      /* #45474b  on-surface-variant */
+  /* Semantic aliases — keep backwards-compat with existing classes */
+  --bg:      251 249 246;   /* #fbf9f6  surface */
+  --fg:      27 28 26;      /* #1b1c1a  on-surface */
+  --muted:   69 70 77;      /* #45464d  on-surface-variant */
   --card:    255 255 255;   /* #ffffff  surface-container-lowest */
-  --border:  197 198 203;   /* #c5c6cb  outline-variant */
-  --accent:  72 101 81;     /* #486551  secondary (pastel emerald income) */
+  --border:  198 198 205;   /* #c6c6cd  outline-variant */
+  --accent:  0 108 73;      /* #006c49  secondary (emerald income) */
   --danger:  186 26 26;     /* #ba1a1a  error */
-  --warning: 180 130 0;     /* warm amber */
+  --warning: 245 158 11;    /* #f59e0b  amber (hidden/confidential) */
   --info:    14 165 233;    /* sky-500 */
   --purple:  168 85 247;    /* violet for Laik */
 
-  /* Theme color for mobile browser chrome */
-  --theme-color: #faf9f7;
+  --theme-color: #fbf9f6;
 }
 
 /* Base resets */
@@ -36,49 +35,65 @@ html, body {
 
 * { box-sizing: border-box; }
 
-/* ── Finance-specific utilities ─────────────────────────────────────────── */
+/* ── Finance utilities ─────────────────────────────────────────────────── */
 
-/* All monetary amounts use JetBrains Mono */
+/* Tabular nums for all monetary amounts */
 .tabular-nums,
 .money {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
 
-/* Dual-ledger tint — faint green wash on rows with visible shared amount */
+/* Stitch dual-ledger shared-row tint (sky, 2%) */
 .dual-ledger-shared {
-  background-color: rgba(72, 101, 81, 0.04);
+  background-color: rgba(14, 165, 233, 0.02);
 }
 
-/* Serene card feel — tonal separation instead of heavy shadow */
+/* Stitch card  */
 .card-serene {
   background: #ffffff;
-  border: 1px solid #e9e8e6;
-  border-radius: 1rem;
-}
-.card-serene-sm {
-  background: #ffffff;
-  border: 1px solid #e9e8e6;
+  border: 1px solid #c6c6cd;
   border-radius: 0.75rem;
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
 }
 
-/* Premium custom scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+/* Soft ambient shadow (Stitch elevation level 2) */
+.soft-ambient-shadow {
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
 }
+
+/* Hidden / confidential badge — amber pill */
+.badge-hidden {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f59e0b;
+  color: #000000;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* Category pill */
+.badge-category {
+  background: #e4e2df;
+  color: #45464d;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* Stitch scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-  background: #e3e2e0;
-  border-radius: 10px;
-}
+::-webkit-scrollbar-thumb { background: #e4e2df; border-radius: 10px; }
 
-/* Manrope headline helper */
-.font-display { font-family: var(--font-manrope, ui-sans-serif); }
-
-/* JetBrains Mono for all number displays */
-.font-mono-num {
-  font-family: var(--font-jetbrains, ui-monospace);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
-}
+/* Backwards-compat helpers */
+.font-display   { font-family: var(--font-manrope, ui-sans-serif); }
+.font-mono-num  { font-family: var(--font-jetbrains, ui-monospace); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }

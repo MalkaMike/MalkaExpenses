@@ -163,63 +163,76 @@ export default async function ReembolsosPage({
   });
 
   return (
-    <div className="px-4 pt-6 max-w-4xl mx-auto pb-24">
-      <header className="mb-5">
-        <Link
-          href="/admin"
-          className="inline-flex items-center text-sm text-muted hover:text-fg gap-1"
-        >
-          <ChevronLeft size={14} /> admin
+    <div className="px-4 pt-6 max-w-4xl mx-auto pb-28">
+      <header className="mb-6">
+        <Link href="/admin" className="inline-flex items-center text-xs text-on-surface-variant hover:text-on-surface gap-1 mb-3">
+          ← Admin
         </Link>
-        <h1 className="text-2xl font-semibold mt-2">Reembolsos</h1>
-        <p className="text-xs text-muted mt-1">
-          Despesas marcadas com tags que serão devolvidas — Kenlo, Laik, Plano de Saúde.
+        <h1 className="text-2xl font-semibold text-on-surface tracking-tight">Reembolsos</h1>
+        <p className="text-sm text-on-surface-variant mt-0.5">
+          Despesas marcadas para devolver — Kenlo, Laik, Plano de Saúde.
         </p>
       </header>
 
-      {/* Tag tabs */}
-      <nav className="flex flex-wrap gap-2 mb-5">
+      {/* Tag entity cards — Stitch style */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
         {tagList.map((t) => {
           const sum = summaries[t.slug];
           const active = t.slug === activeTag;
           const Icon = t.icon === "shield" ? Shield : Briefcase;
+          // Entity color per tag
+          const colors: Record<string, { bg: string; iconBg: string; iconColor: string; bar: string }> = {
+            kenlo:     { bg: "#eff6ff", iconBg: "#dbeafe", iconColor: "#2563eb", bar: "#2563eb" },
+            laik:      { bg: "#faf5ff", iconBg: "#ede9fe", iconColor: "#7c3aed", bar: "#7c3aed" },
+            insurance: { bg: "#f0fdf4", iconBg: "#dcfce7", iconColor: "#16a34a", bar: "#16a34a" }
+          };
+          const c = colors[t.slug] ?? { bg: "#f5f3f0", iconBg: "#e4e2df", iconColor: "#45464d", bar: "#45464d" };
+          const pendingPct = (sum?.pendingCount ?? 0) > 0
+            ? Math.round(((sum?.pendingCount ?? 0) / Math.max((sum?.pendingCount ?? 0) + (sum?.reimbursedCount ?? 0), 1)) * 100)
+            : 0;
           return (
             <Link
               key={t.id}
               href={`/admin/reembolsos?tag=${t.slug}`}
-              className={`px-4 py-3 rounded-2xl border transition flex items-center gap-3 min-w-[170px]
-                ${active
-                  ? "bg-fg text-bg border-fg"
-                  : "bg-card text-fg border-border hover:border-fg/30"}`}
+              className={`p-4 rounded-xl border transition-all soft-ambient-shadow flex flex-col gap-3 cursor-pointer ${
+                active
+                  ? "border-primary/20 ring-1 ring-primary bg-surface-container-lowest"
+                  : "border-outline-variant bg-surface-container-lowest hover:border-primary/20"
+              }`}
             >
-              <div
-                className={`w-9 h-9 rounded-xl ${
-                  active ? "bg-bg/20" : "bg-fg/5"
-                } flex items-center justify-center`}
-              >
-                <Icon size={16} />
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-sm">{t.name}</p>
-                <p
-                  className={`text-[11px] tabular-nums ${active ? "opacity-70" : "text-muted"}`}
+              <div className="flex items-start justify-between">
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center"
+                  style={{ background: c.iconBg }}
                 >
-                  {formatBRL(sum?.pendingSum ?? 0)} pendente
+                  <Icon size={18} style={{ color: c.iconColor }} />
+                </div>
+                {(sum?.pendingCount ?? 0) > 0 && (
+                  <span
+                    className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+                    style={{ background: c.iconBg, color: c.iconColor }}
+                  >
+                    {formatInt(sum?.pendingCount ?? 0)} pend.
+                  </span>
+                )}
+              </div>
+              <div>
+                <p className="font-semibold text-on-surface">{t.name}</p>
+                <p className="text-xs text-on-surface-variant mt-0.5">
+                  Pendente: <span className="tabular-nums font-medium text-on-surface">{formatBRL(sum?.pendingSum ?? 0)}</span>
                 </p>
               </div>
-              {(sum?.pendingCount ?? 0) > 0 && (
-                <span
-                  className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full tabular-nums ${
-                    active ? "bg-bg/20 text-bg" : "bg-warning/15 text-warning"
-                  }`}
-                >
-                  {formatInt(sum?.pendingCount ?? 0)}
-                </span>
-              )}
+              {/* Progress bar */}
+              <div className="h-1 w-full bg-surface-container rounded-full overflow-hidden">
+                <div
+                  className="h-full transition-all duration-700"
+                  style={{ width: `${pendingPct}%`, background: c.bar }}
+                />
+              </div>
             </Link>
           );
         })}
-      </nav>
+      </div>
 
       {activeTagRow && (
         <ReembolsosClient

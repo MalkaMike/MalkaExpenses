@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, EyeOff, Pencil, Plus, X, Loader2, Save } from "lucide-react";
+import { Check, EyeOff, Pencil, Plus, X, Loader2, Save, CheckCheck } from "lucide-react";
 import { getCategoryMeta, getCategoryTree } from "@/lib/categories/meta";
 import { formatBRL, formatDate } from "@/lib/format";
 
@@ -65,15 +65,11 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
     });
   }
 
-  // Accept → show the full real amount in the portal, with the chosen category.
   async function accept(row: InboxRow) {
     setBusy(true);
     try {
       const cmap = await ensureCatMap();
-      await patch(row.id, {
-        shared_amount: row.amountReal,
-        category_id: cmap[cat[row.id]] ?? undefined
-      });
+      await patch(row.id, { shared_amount: row.amountReal, category_id: cmap[cat[row.id]] ?? undefined });
       toast.success("Aceito — visível no portal");
       drop(row.id);
     } catch (e) {
@@ -83,7 +79,6 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
     }
   }
 
-  // Hide → stays real-only, never shown to the household.
   async function hide(row: InboxRow) {
     setBusy(true);
     try {
@@ -97,13 +92,9 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
     }
   }
 
-  // Adjust → show a custom amount (keeps the sign of the real value).
   async function applyAdjust(row: InboxRow) {
     const n = Number(adjustVal.replace(",", "."));
-    if (!Number.isFinite(n)) {
-      toast.error("Valor inválido");
-      return;
-    }
+    if (!Number.isFinite(n)) { toast.error("Valor inválido"); return; }
     const signed = row.amountReal < 0 ? -Math.abs(n) : Math.abs(n);
     setBusy(true);
     try {
@@ -130,14 +121,9 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
         const row = rows.find((r) => r.id === id);
         if (!row) continue;
         try {
-          await patch(id, {
-            shared_amount: row.amountReal,
-            category_id: cmap[cat[id]] ?? undefined
-          });
+          await patch(id, { shared_amount: row.amountReal, category_id: cmap[cat[id]] ?? undefined });
           ok++;
-        } catch {
-          /* counted via ok */
-        }
+        } catch { /* counted via ok */ }
       }
       toast.success(`${ok} aceitos`);
       setRows((rs) => rs.filter((r) => !selected.has(r.id)));
@@ -158,19 +144,19 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
 
   return (
     <>
-      {/* Bulk bar */}
-      <div className="sticky top-0 z-10 bg-bg/95 backdrop-blur -mx-4 px-4 py-3 mb-4 border-b border-border">
+      {/* Sticky bulk bar — Stitch top bar style */}
+      <div className="sticky top-0 z-10 bg-surface/95 backdrop-blur -mx-4 px-4 py-3 mb-5 border-b border-outline-variant">
         <div className="flex items-center justify-between gap-2">
           <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
             <input
               type="checkbox"
               checked={allSelected}
               onChange={() => setSelected(allSelected ? new Set() : new Set(rows.map((r) => r.id)))}
-              className="accent-accent"
+              className="accent-primary"
               disabled={rows.length === 0}
             />
-            <span className="text-muted">
-              {selected.size > 0 ? `${selected.size} selecionados` : "selecionar todos"}
+            <span className="text-on-surface-variant text-xs font-medium">
+              {selected.size > 0 ? `${selected.size} selecionados` : "Selecionar todos"}
             </span>
           </label>
           <div className="flex items-center gap-2">
@@ -178,144 +164,162 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
               <button
                 disabled={busy}
                 onClick={bulkAccept}
-                className="text-xs px-3 py-1.5 rounded-full bg-accent text-white font-medium disabled:opacity-50 inline-flex items-center gap-1"
+                className="text-xs px-3 py-1.5 rounded-lg bg-primary text-on-primary font-medium disabled:opacity-50 inline-flex items-center gap-1.5 transition active:scale-95"
               >
-                <Check size={12} /> aceitar selecionados
+                {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
+                Aceitar {selected.size}
               </button>
             )}
             <button
               onClick={() => setAdding(true)}
-              className="text-xs px-3 py-1.5 rounded-full bg-card border border-border inline-flex items-center gap-1 hover:border-accent/40"
+              className="text-xs px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-outline-variant inline-flex items-center gap-1.5 hover:bg-surface-container transition"
             >
-              <Plus size={12} /> adicionar
+              <Plus size={12} /> Adicionar
             </button>
           </div>
         </div>
       </div>
 
+      {/* Empty state */}
       {rows.length === 0 && !adding && (
-        <div className="rounded-2xl bg-accent/10 border border-accent/30 p-8 text-center">
-          <Check size={32} className="mx-auto text-accent mb-2" />
-          <h2 className="font-medium mb-1">Tudo decidido</h2>
-          <p className="text-sm text-muted">Nada aguardando no momento.</p>
+        <div className="rounded-xl bg-secondary-container/20 border border-secondary-container p-10 text-center">
+          <div className="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center mx-auto mb-3">
+            <Check size={22} className="text-secondary" />
+          </div>
+          <h2 className="font-semibold text-on-surface mb-1">Tudo decidido</h2>
+          <p className="text-sm text-on-surface-variant">Nenhuma transação aguardando revisão.</p>
         </div>
       )}
 
-      <ul className="space-y-2">
-        {rows.map((r) => {
-          const meta = getCategoryMeta(cat[r.id] ?? r.categorySlug);
-          const isSel = selected.has(r.id);
-          const income = r.amountReal > 0;
-          return (
-            <li
-              key={r.id}
-              className={`rounded-xl border p-3 transition ${isSel ? "border-accent bg-accent/5" : "border-border bg-card"}`}
-            >
-              <div className="flex items-center gap-3">
-                <input
-                  type="checkbox"
-                  checked={isSel}
-                  onChange={() => toggle(r.id)}
-                  className="accent-accent shrink-0"
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium truncate">{r.description}</p>
-                    <p className={`tabular-nums font-semibold shrink-0 ${income ? "text-accent" : ""}`}>
-                      {income ? "+" : "−"}
-                      {formatBRL(Math.abs(r.amountReal))}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-xs text-muted mt-0.5">
-                    <span className="truncate">{r.accountName}</span>
-                    <span>·</span>
-                    <span className="shrink-0">{formatDate(r.date)}</span>
-                  </div>
-                </div>
-              </div>
+      {/* Transaction list — Stitch card style */}
+      {rows.length > 0 && (
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden soft-ambient-shadow">
+          {/* Header */}
+          <div className="px-5 py-3.5 border-b border-outline-variant bg-surface-container-low flex items-center justify-between">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+              {rows.length} transação{rows.length !== 1 ? "ões" : ""} pendente{rows.length !== 1 ? "s" : ""}
+            </span>
+          </div>
 
-              {/* Category + actions */}
-              <div className="mt-2.5 pl-7 flex flex-wrap items-center gap-2">
-                <select
-                  value={cat[r.id] ?? r.categorySlug}
-                  onChange={(e) => setCat((c) => ({ ...c, [r.id]: e.target.value }))}
-                  className="text-xs px-2 py-1.5 rounded-lg bg-bg border border-border outline-none max-w-[160px]"
-                  style={{ color: meta.color }}
+          <ul className="divide-y divide-outline-variant">
+            {rows.map((r) => {
+              const meta = getCategoryMeta(cat[r.id] ?? r.categorySlug);
+              const isSel = selected.has(r.id);
+              const income = r.amountReal > 0;
+              return (
+                <li
+                  key={r.id}
+                  className={`px-5 py-4 hover:bg-surface-container transition-colors ${isSel ? "bg-primary/[0.03]" : ""}`}
                 >
-                  {getCategoryTree().map(({ parent, children }) =>
-                    children.length > 0 ? (
-                      <optgroup key={parent.slug} label={parent.name}>
-                        <option value={parent.slug}>{parent.name} (geral)</option>
-                        {children.map((c) => (
-                          <option key={c.slug} value={c.slug}>{"  "}{c.name}</option>
-                        ))}
-                      </optgroup>
-                    ) : (
-                      <option key={parent.slug} value={parent.slug}>{parent.name}</option>
-                    )
-                  )}
-                </select>
-
-                {adjustId === r.id ? (
-                  <span className="inline-flex items-center gap-1">
+                  <div className="flex items-start gap-3">
                     <input
-                      autoFocus
-                      inputMode="decimal"
-                      value={adjustVal}
-                      onChange={(e) => setAdjustVal(e.target.value)}
-                      placeholder="valor mostrado"
-                      className="text-xs w-28 px-2 py-1.5 rounded-lg bg-bg border border-accent outline-none tabular-nums"
+                      type="checkbox"
+                      checked={isSel}
+                      onChange={() => toggle(r.id)}
+                      className="accent-primary mt-1 shrink-0"
                     />
-                    <button
-                      disabled={busy}
-                      onClick={() => applyAdjust(r)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg bg-accent text-white inline-flex items-center gap-1 disabled:opacity-50"
-                    >
-                      <Save size={11} /> ok
-                    </button>
-                    <button onClick={() => { setAdjustId(null); setAdjustVal(""); }} className="text-muted p-1">
-                      <X size={12} />
-                    </button>
-                  </span>
-                ) : (
-                  <>
-                    <button
-                      disabled={busy}
-                      onClick={() => accept(r)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg bg-accent text-white font-medium inline-flex items-center gap-1 disabled:opacity-50"
-                    >
-                      <Check size={12} /> aceitar
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => { setAdjustId(r.id); setAdjustVal(String(Math.abs(r.amountReal))); }}
-                      className="text-xs px-2.5 py-1.5 rounded-lg bg-card border border-border inline-flex items-center gap-1 hover:border-fg/40 disabled:opacity-50"
-                    >
-                      <Pencil size={11} /> ajustar
-                    </button>
-                    <button
-                      disabled={busy}
-                      onClick={() => hide(r)}
-                      className="text-xs px-2.5 py-1.5 rounded-lg bg-card border border-border text-muted inline-flex items-center gap-1 hover:text-danger hover:border-danger/40 disabled:opacity-50"
-                    >
-                      <EyeOff size={11} /> ocultar
-                    </button>
-                  </>
-                )}
-              </div>
-            </li>
-          );
-        })}
-      </ul>
+                    <div className="flex-1 min-w-0">
+                      {/* Description + amount */}
+                      <div className="flex items-start justify-between gap-3 mb-1.5">
+                        <p className="font-semibold text-sm text-on-surface truncate">{r.description}</p>
+                        <p
+                          className={`tabular-nums font-bold text-sm shrink-0 ${
+                            income ? "text-secondary" : "text-on-tertiary-container"
+                          }`}
+                        >
+                          {income ? "+" : "−"}{formatBRL(Math.abs(r.amountReal))}
+                        </p>
+                      </div>
+                      {/* Meta */}
+                      <div className="flex items-center gap-2 text-xs text-on-surface-variant">
+                        <span className="truncate">{r.accountName}</span>
+                        <span>·</span>
+                        <span className="shrink-0">{formatDate(r.date)}</span>
+                      </div>
+
+                      {/* Category + actions */}
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <select
+                          value={cat[r.id] ?? r.categorySlug}
+                          onChange={(e) => setCat((c) => ({ ...c, [r.id]: e.target.value }))}
+                          className="text-xs px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-outline-variant outline-none max-w-[150px] focus:border-primary transition"
+                          style={{ color: meta.color }}
+                        >
+                          {getCategoryTree().map(({ parent, children }) =>
+                            children.length > 0 ? (
+                              <optgroup key={parent.slug} label={parent.name}>
+                                <option value={parent.slug}>{parent.name} (geral)</option>
+                                {children.map((c) => (
+                                  <option key={c.slug} value={c.slug}>{"  "}{c.name}</option>
+                                ))}
+                              </optgroup>
+                            ) : (
+                              <option key={parent.slug} value={parent.slug}>{parent.name}</option>
+                            )
+                          )}
+                        </select>
+
+                        {adjustId === r.id ? (
+                          <span className="inline-flex items-center gap-1.5">
+                            <input
+                              autoFocus
+                              inputMode="decimal"
+                              value={adjustVal}
+                              onChange={(e) => setAdjustVal(e.target.value)}
+                              placeholder="valor"
+                              className="text-xs w-24 px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-primary outline-none tabular-nums"
+                            />
+                            <button
+                              disabled={busy}
+                              onClick={() => applyAdjust(r)}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-primary text-on-primary inline-flex items-center gap-1 disabled:opacity-50 active:scale-95 transition"
+                            >
+                              <Save size={11} /> OK
+                            </button>
+                            <button onClick={() => { setAdjustId(null); setAdjustVal(""); }} className="text-on-surface-variant p-1">
+                              <X size={12} />
+                            </button>
+                          </span>
+                        ) : (
+                          <>
+                            <button
+                              disabled={busy}
+                              onClick={() => accept(r)}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-primary text-on-primary font-medium inline-flex items-center gap-1.5 disabled:opacity-50 active:scale-95 transition"
+                            >
+                              <Check size={11} /> Aceitar
+                            </button>
+                            <button
+                              disabled={busy}
+                              onClick={() => { setAdjustId(r.id); setAdjustVal(String(Math.abs(r.amountReal))); }}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-surface-container border border-outline-variant inline-flex items-center gap-1.5 hover:bg-surface-container-high disabled:opacity-50 transition text-on-surface"
+                            >
+                              <Pencil size={11} /> Ajustar
+                            </button>
+                            <button
+                              disabled={busy}
+                              onClick={() => hide(r)}
+                              className="text-xs px-2.5 py-1.5 rounded-lg bg-surface-container border border-outline-variant text-on-surface-variant inline-flex items-center gap-1.5 hover:text-error hover:border-error/40 disabled:opacity-50 transition"
+                            >
+                              <EyeOff size={11} /> Ocultar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {adding && (
         <AddEntry
           accounts={accounts}
           onClose={() => setAdding(false)}
-          onCreated={() => {
-            setAdding(false);
-            router.refresh();
-          }}
+          onCreated={() => { setAdding(false); router.refresh(); }}
         />
       )}
     </>
@@ -323,14 +327,8 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
 }
 
 function AddEntry({
-  accounts,
-  onClose,
-  onCreated
-}: {
-  accounts: Account[];
-  onClose: () => void;
-  onCreated: () => void;
-}) {
+  accounts, onClose, onCreated
+}: { accounts: Account[]; onClose: () => void; onCreated: () => void }) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [date, setDate] = useState(todayIso());
   const [description, setDescription] = useState("");
@@ -352,14 +350,7 @@ function AddEntry({
       const r = await fetch("/api/transactions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          account_id: accountId,
-          date,
-          description: description.trim(),
-          shared_amount: shared,
-          category_slug: slug,
-          is_fake: isFake
-        })
+        body: JSON.stringify({ account_id: accountId, date, description: description.trim(), shared_amount: shared, category_slug: slug, is_fake: isFake })
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
@@ -374,22 +365,21 @@ function AddEntry({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4">
-      <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-card border-t sm:border border-border p-5 space-y-3 max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm p-0 sm:p-4">
+      <div className="w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl bg-surface-container-lowest border-t sm:border border-outline-variant p-5 space-y-3 max-h-[92vh] overflow-y-auto soft-ambient-shadow">
         <div className="flex items-center justify-between">
-          <h3 className="font-medium">Adicionar entrada</h3>
-          <button onClick={onClose} className="text-muted hover:text-fg"><X size={18} /></button>
+          <h3 className="font-semibold text-on-surface">Adicionar entrada</h3>
+          <button onClick={onClose} className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg hover:bg-surface-container transition">
+            <X size={18} />
+          </button>
         </div>
-        <p className="text-xs text-muted">
-          Cria um movimento que aparece no portal. Marque “entrada fictícia” para
-          algo que não existe no ledger real.
+        <p className="text-xs text-on-surface-variant">
+          Cria um movimento que aparece no portal. Marque &ldquo;fictício&rdquo; para algo que não existe no ledger real.
         </p>
 
         <Field label="Conta">
           <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="inp">
-            {accounts.map((a) => (
-              <option key={a.id} value={a.id}>{a.name}</option>
-            ))}
+            {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </Field>
 
@@ -416,9 +406,7 @@ function AddEntry({
                 children.length > 0 ? (
                   <optgroup key={parent.slug} label={parent.name}>
                     <option value={parent.slug}>{parent.name} (geral)</option>
-                    {children.map((c) => (
-                      <option key={c.slug} value={c.slug}>{"  "}{c.name}</option>
-                    ))}
+                    {children.map((c) => <option key={c.slug} value={c.slug}>{"  "}{c.name}</option>)}
                   </optgroup>
                 ) : (
                   <option key={parent.slug} value={parent.slug}>{parent.name}</option>
@@ -431,23 +419,23 @@ function AddEntry({
           </Field>
         </div>
 
-        <label className="flex items-center gap-2 text-sm cursor-pointer">
-          <input type="checkbox" checked={isFake} onChange={(e) => setIsFake(e.target.checked)} className="accent-accent" />
+        <label className="flex items-center gap-2 text-sm cursor-pointer text-on-surface">
+          <input type="checkbox" checked={isFake} onChange={(e) => setIsFake(e.target.checked)} className="accent-primary" />
           Entrada fictícia (real_amount = 0)
         </label>
 
         <button
           onClick={submit}
           disabled={busy}
-          className="w-full p-3 rounded-xl bg-accent text-white font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50"
+          className="w-full p-3 rounded-xl bg-primary text-on-primary font-medium inline-flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99] transition"
         >
           {busy ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
           Adicionar ao portal
         </button>
 
         <style jsx global>{`
-          .inp { width: 100%; padding: 0.625rem 0.75rem; border-radius: 0.75rem; background: rgb(var(--bg)); border: 1px solid rgb(var(--border)); color: rgb(var(--fg)); font-size: 0.875rem; outline: none; }
-          .inp:focus { border-color: rgb(var(--accent)); }
+          .inp { width:100%; padding:0.625rem 0.75rem; border-radius:0.5rem; background:#f5f3f0; border:1px solid #c6c6cd; color:#1b1c1a; font-size:0.875rem; outline:none; }
+          .inp:focus { border-color:#000000; }
         `}</style>
       </div>
     </div>
@@ -457,7 +445,7 @@ function AddEntry({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="block text-[10px] uppercase tracking-wider text-muted mb-1.5">{label}</span>
+      <span className="block text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1.5">{label}</span>
       {children}
     </label>
   );

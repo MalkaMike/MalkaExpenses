@@ -28,22 +28,20 @@ export type ReembolsoRow = {
   categoryName: string;
 };
 
-const statusMeta: Record<
-  ReembolsoRow["status"],
-  { label: string; bg: string; fg: string }
-> = {
-  pending: { label: "PENDENTE", bg: "bg-warning/15", fg: "text-warning" },
-  submitted: { label: "ENVIADO", bg: "bg-info/15", fg: "text-info" },
-  reimbursed: { label: "RECEBIDO", bg: "bg-accent/15", fg: "text-accent" },
-  declined: { label: "NEGADO", bg: "bg-danger/15", fg: "text-danger" }
+// Status styling — Stitch palette
+const statusMeta: Record<ReembolsoRow["status"], { label: string; dot: string; text: string }> = {
+  pending:    { label: "Pendente",  dot: "bg-[#f59e0b]",  text: "text-[#f59e0b]"  },
+  submitted:  { label: "Enviado",   dot: "bg-[#0ea5e9]",  text: "text-[#0ea5e9]"  },
+  reimbursed: { label: "Recebido",  dot: "bg-[#006c49]",  text: "text-[#006c49]"  },
+  declined:   { label: "Negado",    dot: "bg-[#ba1a1a]",  text: "text-[#ba1a1a]"  }
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  all: "Todas", pending: "Pendentes", submitted: "Enviadas", reimbursed: "Recebidas", declined: "Negadas"
 };
 
 export function ReembolsosClient({
-  tagSlug,
-  tagName,
-  activeStatus,
-  summary,
-  rows
+  tagSlug, tagName, activeStatus, summary, rows
 }: {
   tagSlug: string;
   tagName: string;
@@ -90,173 +88,195 @@ export function ReembolsosClient({
 
   return (
     <>
-      {/* Summary card */}
+      {/* Summary cards — Stitch entity card style */}
       <section className="grid grid-cols-2 gap-3 mb-5">
-        <div className="p-4 rounded-2xl bg-card border border-border">
-          <p className="text-[10px] uppercase tracking-wider text-muted mb-1">
+        <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">
             Pendente / Enviado
           </p>
-          <p className="text-2xl font-semibold tabular-nums text-warning">
+          <p className="text-2xl font-semibold tabular-nums text-[#f59e0b]">
             {formatBRL(summary.pendingSum)}
           </p>
-          <p className="text-[11px] text-muted mt-0.5">
-            {formatInt(summary.pendingCount)}{" "}
-            {summary.pendingCount === 1 ? "despesa aguardando" : "despesas aguardando"}
+          <p className="text-xs text-on-surface-variant mt-1">
+            {formatInt(summary.pendingCount)} {summary.pendingCount === 1 ? "despesa aguardando" : "despesas aguardando"}
           </p>
+          {/* Progress bar */}
+          <div className="mt-3 h-1 w-full bg-surface-container rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#f59e0b] transition-all duration-700"
+              style={{ width: summary.pendingCount > 0 ? `${Math.min(100, (summary.pendingCount / Math.max(summary.pendingCount + summary.reimbursedCount, 1)) * 100)}%` : "0%" }}
+            />
+          </div>
         </div>
-        <div className="p-4 rounded-2xl bg-card border border-border">
-          <p className="text-[10px] uppercase tracking-wider text-muted mb-1">
+        <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">
             Já recebido
           </p>
-          <p className="text-2xl font-semibold tabular-nums text-accent">
+          <p className="text-2xl font-semibold tabular-nums text-secondary">
             {formatBRL(summary.reimbursedSum)}
           </p>
-          <p className="text-[11px] text-muted mt-0.5">
-            {formatInt(summary.reimbursedCount)}{" "}
-            {summary.reimbursedCount === 1 ? "despesa reembolsada" : "despesas reembolsadas"}
+          <p className="text-xs text-on-surface-variant mt-1">
+            {formatInt(summary.reimbursedCount)} {summary.reimbursedCount === 1 ? "despesa reembolsada" : "despesas reembolsadas"}
           </p>
+          <div className="mt-3 h-1 w-full bg-surface-container rounded-full overflow-hidden">
+            <div
+              className="h-full bg-secondary transition-all duration-700"
+              style={{ width: summary.reimbursedCount > 0 ? "100%" : "0%" }}
+            />
+          </div>
         </div>
       </section>
 
-      {/* Status filter */}
-      <nav className="inline-flex p-1 mb-4 rounded-xl bg-fg/[0.06] border border-border text-xs">
+      {/* Status filter — Stitch segmented control */}
+      <div className="flex items-center bg-surface-container-high p-1 rounded-xl gap-0.5 mb-5">
         {(["all", "pending", "submitted", "reimbursed", "declined"] as const).map((s) => {
-          const labels: Record<string, string> = {
-            all: "Todas",
-            pending: "Pendentes",
-            submitted: "Enviadas",
-            reimbursed: "Recebidas",
-            declined: "Negadas"
-          };
           const active = activeStatus === s;
           return (
             <Link
               key={s}
               href={`/admin/reembolsos?tag=${tagSlug}&status=${s}`}
-              className={`px-3 py-1.5 rounded-lg transition font-medium ${
-                active ? "bg-fg text-bg" : "text-muted hover:text-fg"
+              className={`flex-1 text-center px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
+                active
+                  ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
+                  : "text-on-surface-variant hover:bg-surface-variant"
               }`}
             >
-              {labels[s]}
+              {STATUS_LABELS[s]}
             </Link>
           );
         })}
-      </nav>
+      </div>
 
       {/* Rows */}
       {rows.length === 0 ? (
-        <div className="rounded-2xl bg-card border border-dashed border-border p-12 text-center">
-          <p className="text-sm text-muted">
+        <div className="rounded-xl bg-surface-container-lowest border border-dashed border-outline-variant p-12 text-center">
+          <p className="text-sm text-on-surface-variant">
             Nenhuma despesa marcada com {tagName}.
           </p>
-          <p className="text-xs text-muted mt-2">
-            Pra marcar: vá em <Link href="/admin/merchants?direction=out" className="text-accent underline">Comerciantes</Link>, abra o merchant, clique no botão do tag.
+          <p className="text-xs text-on-surface-variant mt-2">
+            Vá em{" "}
+            <Link href="/admin/merchants?direction=out" className="text-secondary underline">
+              Comerciantes
+            </Link>{" "}
+            → abra o merchant → clique no botão do tag.
           </p>
         </div>
       ) : (
-        <ul className="space-y-2">
-          {rows.map((r) => {
-            const meta = statusMeta[r.status];
-            const isBusy = busy === r.id;
-            return (
-              <li
-                key={r.id}
-                className="p-4 rounded-2xl bg-card border border-border"
-              >
-                <div className="flex items-start gap-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${meta.bg} ${meta.fg}`}
-                      >
-                        {meta.label}
-                      </span>
-                      <span className="text-[10px] text-muted tabular-nums">
-                        {formatDate(r.date)}
-                      </span>
-                      <span className="text-[10px] text-muted">·</span>
-                      <span className="text-[10px] text-muted truncate">
-                        {r.accountName}
-                      </span>
-                      <span className="text-[10px] text-muted">·</span>
-                      <span className="text-[10px] text-muted">{r.categoryName}</span>
+        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden soft-ambient-shadow">
+          {/* Table header */}
+          <div className="px-5 py-3 border-b border-outline-variant bg-surface-container-low grid grid-cols-[auto_1fr_auto_auto] gap-3 items-center">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Status</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Descrição</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Valor</span>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Ações</span>
+          </div>
+
+          <ul className="divide-y divide-outline-variant">
+            {rows.map((r) => {
+              const meta = statusMeta[r.status];
+              const isBusy = busy === r.id;
+              return (
+                <li key={r.id} className={`px-5 py-4 hover:bg-surface-container transition-colors ${r.status === "declined" ? "bg-error/5" : ""}`}>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      {/* Status + meta */}
+                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                        <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ${meta.text}`}>
+                          <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
+                          {meta.label}
+                        </span>
+                        <span className="text-[10px] text-on-surface-variant">{formatDate(r.date)}</span>
+                        <span className="text-[10px] text-on-surface-variant">·</span>
+                        <span className="text-[10px] text-on-surface-variant truncate">{r.accountName}</span>
+                        <span className="text-[10px] text-on-surface-variant">·</span>
+                        <span className="text-[10px] text-on-surface-variant">{r.categoryName}</span>
+                      </div>
+                      {/* Description */}
+                      <p className="font-semibold text-sm text-on-surface truncate" title={r.description}>
+                        {r.description}
+                      </p>
+                      {/* Amounts */}
+                      <div className="mt-1 flex items-center gap-3 text-xs">
+                        <span className="text-on-surface-variant">
+                          Despesa: <span className="tabular-nums text-on-surface font-medium">{formatBRL(r.transactionAmount)}</span>
+                        </span>
+                        <span className="text-on-surface-variant">
+                          A receber: <span className={`tabular-nums font-semibold ${meta.text}`}>{formatBRL(r.claimAmount)}</span>
+                        </span>
+                        {r.claimAmount !== r.transactionAmount && (
+                          <span className="text-[10px] text-[#f59e0b] font-medium">(parcial)</span>
+                        )}
+                      </div>
                     </div>
-                    <p className="font-medium truncate" title={r.description}>
-                      {r.description}
-                    </p>
-                    <div className="mt-1 flex items-baseline gap-2 text-xs">
-                      <span className="text-muted">Despesa:</span>
-                      <span className="tabular-nums">{formatBRL(r.transactionAmount)}</span>
-                      <span className="text-muted ml-2">A receber:</span>
-                      <span className="tabular-nums font-medium text-accent">
-                        {formatBRL(r.claimAmount)}
-                      </span>
-                      {r.claimAmount !== r.transactionAmount && (
-                        <span className="text-[10px] text-warning">(parcial)</span>
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {r.status === "pending" && (
+                        <button
+                          onClick={() => setStatus(r.id, "submitted")}
+                          disabled={isBusy}
+                          title="Marcar como enviado"
+                          className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-[#0ea5e9]"
+                        >
+                          {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                        </button>
                       )}
+                      {(r.status === "pending" || r.status === "submitted") && (
+                        <button
+                          onClick={() => setStatus(r.id, "reimbursed")}
+                          disabled={isBusy}
+                          title="Marcar como recebido"
+                          className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-secondary"
+                        >
+                          {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                        </button>
+                      )}
+                      {r.status === "submitted" && (
+                        <button
+                          onClick={() => setStatus(r.id, "declined")}
+                          disabled={isBusy}
+                          title="Marcar como negado"
+                          className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-error"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                      {(r.status === "reimbursed" || r.status === "declined") && (
+                        <button
+                          onClick={() => setStatus(r.id, "pending")}
+                          disabled={isBusy}
+                          title="Reabrir"
+                          className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-on-surface-variant"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                      )}
+                      <button
+                        onClick={() => untag(r.id)}
+                        disabled={isBusy}
+                        title="Remover tag"
+                        className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-on-surface-variant hover:text-error"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
-                </div>
 
-                {/* Status transitions */}
-                <div className="mt-3 flex gap-1.5 flex-wrap">
-                  {r.status === "pending" && (
-                    <button
-                      onClick={() => setStatus(r.id, "submitted")}
-                      disabled={isBusy}
-                      className="px-2.5 py-1.5 rounded-lg border border-info/40 text-info hover:bg-info/5 text-xs flex items-center gap-1.5"
-                    >
-                      {isBusy ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-                      Marcar enviado
-                    </button>
+                  {r.notes && (
+                    <p className="mt-2 text-xs text-on-surface-variant italic">{r.notes}</p>
                   )}
-                  {(r.status === "pending" || r.status === "submitted") && (
-                    <button
-                      onClick={() => setStatus(r.id, "reimbursed")}
-                      disabled={isBusy}
-                      className="px-2.5 py-1.5 rounded-lg border border-accent/40 text-accent hover:bg-accent/5 text-xs flex items-center gap-1.5"
-                    >
-                      {isBusy ? <Loader2 size={11} className="animate-spin" /> : <Check size={11} />}
-                      Recebido
-                    </button>
-                  )}
-                  {r.status === "submitted" && (
-                    <button
-                      onClick={() => setStatus(r.id, "declined")}
-                      disabled={isBusy}
-                      className="px-2.5 py-1.5 rounded-lg border border-danger/40 text-danger hover:bg-danger/5 text-xs flex items-center gap-1.5"
-                    >
-                      <X size={11} />
-                      Negado
-                    </button>
-                  )}
-                  {(r.status === "reimbursed" || r.status === "declined") && (
-                    <button
-                      onClick={() => setStatus(r.id, "pending")}
-                      disabled={isBusy}
-                      className="px-2.5 py-1.5 rounded-lg border border-border text-muted hover:text-fg text-xs flex items-center gap-1.5"
-                    >
-                      <RotateCcw size={11} />
-                      Reabrir
-                    </button>
-                  )}
-                  <button
-                    onClick={() => untag(r.id)}
-                    disabled={isBusy}
-                    className="ml-auto px-2.5 py-1.5 rounded-lg border border-border text-muted hover:text-danger hover:border-danger/30 text-xs flex items-center gap-1.5"
-                    title="Remover esta tag da despesa"
-                  >
-                    <Trash2 size={11} />
-                  </button>
-                </div>
+                </li>
+              );
+            })}
+          </ul>
 
-                {r.notes && (
-                  <p className="mt-2 text-xs text-muted italic">{r.notes}</p>
-                )}
-              </li>
-            );
-          })}
-        </ul>
+          {/* Table footer */}
+          <div className="px-5 py-3 border-t border-outline-variant bg-surface-container-low/50">
+            <span className="text-xs text-on-surface-variant">
+              {formatInt(rows.length)} {rows.length === 1 ? "despesa" : "despesas"}
+            </span>
+          </div>
+        </div>
       )}
     </>
   );

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { ChevronRight, AlertCircle, EyeOff, SlidersHorizontal } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
@@ -26,17 +26,17 @@ type MerchantGroup = {
   totalSigned: number;
   categoryIds: Map<string, number>;
   uniqueDescriptions: Set<string>;
-  hiddenCount: number;     // shared_amount === 0
-  shownCount: number;      // shared_amount === real_amount
-  adjustedCount: number;   // shared_amount ≠ 0 AND ≠ real_amount
+  hiddenCount: number;
+  shownCount: number;
+  adjustedCount: number;
 };
 
 type Direction = "out" | "in" | "all";
 
 const COPY: Record<Direction, { title: string; subtitle: string; emptyLabel: string; rowsLabel: string }> = {
-  out: { title: "Comerciantes (despesas)", subtitle: "para onde sai o dinheiro", emptyLabel: "Nenhuma despesa", rowsLabel: "comerciantes" },
-  in:  { title: "Pagadores (receitas)",    subtitle: "de onde vem o dinheiro",  emptyLabel: "Nenhuma receita", rowsLabel: "pagadores" },
-  all: { title: "Tudo (despesas + receitas)", subtitle: "todos os comerciantes/pagadores", emptyLabel: "Sem dados", rowsLabel: "entidades" }
+  out: { title: "Comerciantes",       subtitle: "para onde sai o dinheiro",         emptyLabel: "Nenhuma despesa", rowsLabel: "comerciantes" },
+  in:  { title: "Pagadores",          subtitle: "de onde vem o dinheiro",           emptyLabel: "Nenhuma receita", rowsLabel: "pagadores"    },
+  all: { title: "Todas as entidades", subtitle: "despesas + receitas consolidadas", emptyLabel: "Sem dados",       rowsLabel: "entidades"    }
 };
 
 export default async function MerchantsPage({
@@ -47,27 +47,19 @@ export default async function MerchantsPage({
   if ((await getRole()) !== "admin") {
     return (
       <div className="px-4 pt-6 max-w-2xl mx-auto">
-        <p className="text-sm text-muted">Acesso restrito.</p>
+        <p className="text-sm text-on-surface-variant">Acesso restrito.</p>
       </div>
     );
   }
 
   const sp = await searchParams;
   const direction: Direction = sp.direction === "in" ? "in" : sp.direction === "all" ? "all" : "out";
-  // Transfers (CC payments, PIX between own accounts) are excluded by default
-  // — including them double-counts the actual purchases that already sit on
-  // the credit card account. Toggle "transfers=1" to inspect them.
   const includeTransfers = sp.transfers === "1";
   const copy = COPY[direction];
 
   const sb = serverClient();
-
-  // Preload cluster mapping (from DB if available, JSON fallback otherwise)
   await preloadClusters();
 
-  // Pull all transactions in pages (Supabase 1000-row cap).
-  // Deterministic .order("id") prevents skipped/duplicated rows under
-  // concurrent writes.
   const all: TxRow[] = [];
   let off = 0;
   while (true) {
@@ -76,17 +68,13 @@ export default async function MerchantsPage({
       .select("id, description_raw, real_amount, shared_amount, category_id, date, source, is_transfer")
       .order("id", { ascending: true })
       .range(off, off + 999);
-    if (error) {
-      throw new Error(`Failed to load transactions: ${error.message}`);
-    }
+    if (error) throw new Error(`Failed to load transactions: ${error.message}`);
     if (!data || !data.length) break;
     all.push(...(data as TxRow[]));
     if (data.length < 1000) break;
     off += 1000;
   }
 
-  // Filter by direction. Exclude transfers by default (CC payments + own-
-  // account PIX would double-count actual purchases already on the CC).
   const filtered = all.filter((t) => {
     if (!includeTransfers && t.is_transfer) return false;
     const amt = Number(t.real_amount);
@@ -95,28 +83,20 @@ export default async function MerchantsPage({
     return true;
   });
 
-  // Categories lookup
   const { data: cats } = await sb.from("categories").select("id, slug, name");
   const catNameById = new Map<string, string>();
   for (const c of cats ?? []) catNameById.set(c.id as string, c.name as string);
   const outrosId = (cats ?? []).find((c) => c.slug === "outros")?.id as string;
 
-  // Group by canonical merchant
   const groups = new Map<string, MerchantGroup>();
   for (const t of filtered) {
     const c = clusterFor(t.description_raw);
     if (!groups.has(c.key)) {
       groups.set(c.key, {
-        key: c.key,
-        name: c.name,
-        txCount: 0,
-        totalAbs: 0,
-        totalSigned: 0,
-        categoryIds: new Map(),
-        uniqueDescriptions: new Set(),
-        hiddenCount: 0,
-        shownCount: 0,
-        adjustedCount: 0
+        key: c.key, name: c.name,
+        txCount: 0, totalAbs: 0, totalSigned: 0,
+        categoryIds: new Map(), uniqueDescriptions: new Set(),
+        hiddenCount: 0, shownCount: 0, adjustedCount: 0
       });
     }
     const g = groups.get(c.key)!;
@@ -140,150 +120,205 @@ export default async function MerchantsPage({
     return top && top[0] === outrosId;
   });
   const totalAbsAll = sorted.reduce((s, g) => s + g.totalAbs, 0);
+  const totalHiddenMerchants = sorted.filter((g) => g.hiddenCount === g.txCount && g.txCount > 0).length;
 
   return (
-    <div className="px-4 pt-6 max-w-5xl mx-auto pb-24">
-      <header className="mb-5">
-        <Link
-          href="/admin"
-          className="inline-flex items-center text-sm text-muted hover:text-fg gap-1"
-        >
-          <ChevronLeft size={14} /> admin
+    <div className="px-4 pt-6 max-w-5xl mx-auto pb-28">
+
+      {/* Page header */}
+      <header className="mb-6">
+        <Link href="/admin" className="inline-flex items-center text-xs text-on-surface-variant hover:text-on-surface gap-1 mb-3">
+          ← Admin
         </Link>
-        <h1 className="text-2xl font-semibold mt-2">{copy.title}</h1>
-        <p className="text-xs text-muted mt-1">
-          {copy.subtitle} · {formatInt(filtered.length)} transações em{" "}
-          <span className="text-fg">{formatInt(totalMerchants)}</span> {copy.rowsLabel}. Volume:{" "}
-          <span className="text-fg tabular-nums">{formatBRL(totalAbsAll)}</span>.
-        </p>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-semibold text-on-surface tracking-tight">{copy.title}</h1>
+            <p className="text-sm text-on-surface-variant mt-0.5">{copy.subtitle}</p>
+          </div>
+          {/* Direction toggle — Stitch pill style */}
+          <div className="flex items-center bg-surface-container-high p-1 rounded-xl gap-0.5">
+            <DirLink current={direction} value="out" includeTransfers={includeTransfers} label="Despesas" />
+            <DirLink current={direction} value="in"  includeTransfers={includeTransfers} label="Receitas" />
+            <DirLink current={direction} value="all" includeTransfers={includeTransfers} label="Tudo" />
+          </div>
+        </div>
       </header>
 
-      {/* Toggle */}
-      <div className="flex flex-wrap items-center gap-3 mb-4">
-        <nav className="inline-flex p-1 rounded-xl bg-fg/[0.06] border border-border text-sm">
-          <DirLink current={direction} value="out" includeTransfers={includeTransfers} label="Despesas" />
-          <DirLink current={direction} value="in" includeTransfers={includeTransfers} label="Receitas" />
-          <DirLink current={direction} value="all" includeTransfers={includeTransfers} label="Tudo" />
-        </nav>
-        <Link
-          href={`/admin/merchants?direction=${direction}${includeTransfers ? "" : "&transfers=1"}`}
-          className={`px-3 py-1.5 rounded-xl text-xs border transition ${
-            includeTransfers
-              ? "bg-fg/[0.06] border-border text-fg"
-              : "border-border text-muted hover:text-fg"
-          }`}
-          title="Inclui pagamentos de cartão e PIX entre contas próprias — dobra contagem"
-        >
-          {includeTransfers ? "Ocultar" : "Mostrar"} transferências
-        </Link>
+      {/* Stats bento grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <div className="bg-surface-container-lowest border border-outline-variant p-4 rounded-xl soft-ambient-shadow">
+          <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-1">Comerciantes</p>
+          <p className="text-2xl font-semibold text-on-surface">{formatInt(totalMerchants)}</p>
+        </div>
+        <div className="bg-surface-container-lowest border border-outline-variant p-4 rounded-xl soft-ambient-shadow">
+          <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-1">Transações</p>
+          <p className="text-2xl font-semibold text-on-surface">{formatInt(filtered.length)}</p>
+        </div>
+        <div className="bg-surface-container-lowest border border-outline-variant p-4 rounded-xl soft-ambient-shadow">
+          <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-1">Volume total</p>
+          <p className="text-xl font-semibold text-on-surface tabular-nums">{formatBRL(totalAbsAll)}</p>
+        </div>
+        <div className="bg-surface-container-lowest border border-outline-variant p-4 rounded-xl soft-ambient-shadow">
+          <p className="text-xs font-medium text-on-surface-variant uppercase tracking-wider mb-1">Escondidos</p>
+          <div className="flex items-center gap-2">
+            <p className="text-2xl font-semibold text-on-surface">{formatInt(totalHiddenMerchants)}</p>
+            {totalHiddenMerchants > 0 && (
+              <span className="badge-hidden">oculto</span>
+            )}
+          </div>
+        </div>
       </div>
 
+      {/* "Outros" warning */}
       {inOutros.length > 0 && direction === "out" && (
-        <div className="mb-4 p-3 rounded-xl border border-warning/30 bg-warning/5 flex items-center gap-2 text-sm">
-          <AlertCircle size={16} className="text-warning shrink-0" />
-          <span>
-            <span className="font-medium">{formatInt(inOutros.length)}</span> ainda em &quot;Outros&quot; — clique para categorizar todas as ocorrências de uma vez.
+        <div className="mb-4 p-3 rounded-xl border border-outline-variant bg-[#f59e0b]/5 flex items-center gap-2.5 text-sm">
+          <AlertCircle size={15} className="text-[#f59e0b] shrink-0" />
+          <span className="text-on-surface">
+            <span className="font-semibold">{formatInt(inOutros.length)}</span> ainda em &quot;Outros&quot; — clique para categorizar todas as ocorrências de uma vez.
           </span>
         </div>
       )}
 
-      <div className="rounded-2xl bg-card border border-border overflow-hidden">
-        <div className="grid grid-cols-[1fr_80px_100px_140px_24px] gap-3 px-4 py-3 border-b border-border text-[10px] uppercase tracking-wider text-muted font-medium">
-          <span>{direction === "in" ? "Pagador" : "Comerciante"}</span>
-          <span className="text-right">Vezes</span>
-          <span className="text-right">Variações</span>
-          <span className="text-right">Total</span>
+      {/* Transfer toggle */}
+      <div className="flex justify-end mb-3">
+        <Link
+          href={`/admin/merchants?direction=${direction}${includeTransfers ? "" : "&transfers=1"}`}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-outline-variant text-on-surface-variant hover:bg-surface-container-low transition"
+        >
+          <SlidersHorizontal size={12} />
+          {includeTransfers ? "Ocultar" : "Mostrar"} transferências
+        </Link>
+      </div>
+
+      {/* Main table — Stitch high-density style */}
+      <div className="bg-surface-container-lowest border border-outline-variant rounded-xl soft-ambient-shadow overflow-hidden">
+        {/* Table header */}
+        <div className="grid grid-cols-[1fr_72px_96px_128px_20px] gap-3 px-5 py-3.5 border-b border-outline-variant bg-surface-container-low">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+            {direction === "in" ? "Pagador" : "Comerciante"}
+          </span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Vezes</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Variações</span>
+          <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Total</span>
           <span></span>
         </div>
-        <ul className="divide-y divide-border">
+
+        {/* Rows */}
+        <ul className="divide-y divide-outline-variant">
           {sorted.map((g) => {
             const top = [...g.categoryIds.entries()].sort((a, b) => b[1] - a[1])[0];
             const topCatId = top?.[0] ?? "__none__";
             const isOutros = topCatId === outrosId;
             const mixedCat = g.categoryIds.size > 1;
-            const catName =
-              topCatId === "__none__" ? "—" : catNameById.get(topCatId) ?? "—";
+            const catName = topCatId === "__none__" ? "—" : catNameById.get(topCatId) ?? "—";
+            const allHidden = g.hiddenCount === g.txCount && g.txCount > 0;
+            const partialHidden = g.hiddenCount > 0 && g.hiddenCount < g.txCount;
+            const initial = (g.name[0] ?? "?").toUpperCase();
 
             return (
               <li key={g.key}>
                 <Link
                   href={`/admin/merchants/${encodeURIComponent(g.key)}?direction=${direction}${includeTransfers ? "&transfers=1" : ""}`}
-                  className="grid grid-cols-[1fr_80px_100px_140px_24px] gap-3 px-4 py-3 items-center hover:bg-fg/[0.03] active:bg-fg/[0.06] transition"
+                  className="grid grid-cols-[1fr_72px_96px_128px_20px] gap-3 px-5 py-3.5 items-center hover:bg-surface-container transition-colors group"
                 >
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{g.name}</p>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                          isOutros
-                            ? "bg-warning/15 text-warning"
-                            : "bg-accent/10 text-accent"
-                        }`}
-                      >
-                        {catName}
-                        {mixedCat ? " +" : ""}
-                      </span>
-                      {g.hiddenCount === g.txCount && g.txCount > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-warning/15 text-warning">
-                          🙈 ESCONDIDO
+                  {/* Merchant info */}
+                  <div className="min-w-0 flex items-center gap-3">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0"
+                      style={{
+                        background: allHidden ? "#f59e0b18" : direction === "in" ? "#6cf8bb30" : "#efeeeb",
+                        color: allHidden ? "#f59e0b" : direction === "in" ? "#006c49" : "#1b1c1a"
+                      }}
+                    >
+                      {allHidden ? <EyeOff size={14} /> : initial}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-on-surface truncate">{g.name}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                        {/* Category badge */}
+                        <span
+                          className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${
+                            isOutros
+                              ? "bg-[#f59e0b]/10 text-[#f59e0b]"
+                              : "bg-surface-container-highest text-on-surface-variant"
+                          }`}
+                        >
+                          {catName}{mixedCat ? " +" : ""}
                         </span>
-                      )}
-                      {g.hiddenCount > 0 && g.hiddenCount < g.txCount && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-warning/10 text-warning">
-                          🙈 {g.hiddenCount}/{g.txCount} ocultas
-                        </span>
-                      )}
-                      {g.adjustedCount > 0 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-fg/10 text-fg">
-                          ⚖️ {g.adjustedCount} ajustadas
-                        </span>
-                      )}
+                        {/* Hidden badges */}
+                        {allHidden && (
+                          <span className="badge-hidden">
+                            <EyeOff size={9} /> ESCONDIDO
+                          </span>
+                        )}
+                        {partialHidden && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-[#f59e0b]/10 text-[#f59e0b] uppercase">
+                            {g.hiddenCount}/{g.txCount} ocultas
+                          </span>
+                        )}
+                        {g.adjustedCount > 0 && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-surface-container-high text-on-surface-variant uppercase">
+                            {g.adjustedCount} ajust.
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <span className="text-right tabular-nums text-sm text-muted">
+
+                  {/* Count */}
+                  <span className="text-right text-sm tabular-nums text-on-surface-variant">
                     {formatInt(g.txCount)}
                   </span>
-                  <span className="text-right tabular-nums text-sm text-muted">
+
+                  {/* Variations */}
+                  <span className="text-right text-sm tabular-nums text-on-surface-variant">
                     {formatInt(g.uniqueDescriptions.size)}
                   </span>
+
+                  {/* Total */}
                   <span
-                    className={`text-right tabular-nums font-medium ${
-                      direction === "in" ? "text-accent" : ""
+                    className={`text-right text-sm font-semibold tabular-nums ${
+                      direction === "in" ? "text-secondary" : "text-on-tertiary-container"
                     }`}
                   >
                     {formatBRL(g.totalAbs)}
                   </span>
-                  <ChevronRight size={14} className="text-muted" />
+
+                  <ChevronRight size={14} className="text-on-surface-variant opacity-0 group-hover:opacity-100 transition" />
                 </Link>
               </li>
             );
           })}
         </ul>
+
         {sorted.length === 0 && (
-          <p className="px-4 py-6 text-center text-sm text-muted">{copy.emptyLabel}</p>
+          <p className="px-5 py-10 text-center text-sm text-on-surface-variant">{copy.emptyLabel}</p>
         )}
+
+        {/* Table footer */}
+        <div className="bg-surface-container-low px-5 py-3 border-t border-outline-variant">
+          <span className="text-xs text-on-surface-variant">
+            {formatInt(sorted.length)} {copy.rowsLabel} · {formatInt(filtered.length)} transações
+          </span>
+        </div>
       </div>
     </div>
   );
 }
 
 function DirLink({
-  current,
-  value,
-  label,
-  includeTransfers
+  current, value, label, includeTransfers
 }: {
-  current: Direction;
-  value: Direction;
-  label: string;
-  includeTransfers: boolean;
+  current: Direction; value: Direction; label: string; includeTransfers: boolean;
 }) {
   const active = current === value;
   return (
     <Link
       href={`/admin/merchants?direction=${value}${includeTransfers ? "&transfers=1" : ""}`}
-      className={`px-3 py-1.5 rounded-lg transition font-medium ${
-        active ? "bg-fg text-bg" : "text-muted hover:text-fg"
+      className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+        active
+          ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
+          : "text-on-surface-variant hover:bg-surface-variant"
       }`}
     >
       {label}

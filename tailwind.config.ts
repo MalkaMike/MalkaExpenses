@@ -4,7 +4,7 @@ const config: Config = {
   content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}"],
   theme: {
     extend: {
-      // ── Existing semantic tokens (used throughout the app via bg-bg / text-fg etc) ──
+      // ── Semantic aliases (used throughout app as bg-bg / text-fg etc) ──
       colors: {
         bg:      "rgb(var(--bg) / <alpha-value>)",
         fg:      "rgb(var(--fg) / <alpha-value>)",
@@ -17,52 +17,67 @@ const config: Config = {
         info:    "rgb(var(--info) / <alpha-value>)",
         purple:  "rgb(var(--purple) / <alpha-value>)",
 
-        // ── Stitch "Serene Financial" design tokens ─────────────────────────────────
-        // Surface scale (warm off-white)
-        "surface":                    "#faf9f7",
-        "surface-dim":                "#dadad8",
-        "surface-bright":             "#faf9f7",
-        "surface-container-lowest":   "#ffffff",
-        "surface-container-low":      "#f4f3f1",
-        "surface-container":          "#efeeec",
-        "surface-container-high":     "#e9e8e6",
-        "surface-container-highest":  "#e3e2e0",
+        // ── Stitch "Malka Casa" — exact palette from project 6041564693018001250 ──
+        // Surfaces (warm paper white)
+        "surface":                   "#fbf9f6",
+        "surface-dim":               "#dbdad7",
+        "surface-bright":            "#fbf9f6",
+        "surface-container-lowest":  "#ffffff",
+        "surface-container-low":     "#f5f3f0",
+        "surface-container":         "#efeeeb",
+        "surface-container-high":    "#eae8e5",
+        "surface-container-highest": "#e4e2df",
+        "surface-variant":           "#e4e2df",
+        "surface-tint":              "#565e74",
 
         // On-surface
-        "on-surface":         "#1a1c1b",
-        "on-surface-variant": "#45474b",
-        "outline":            "#75777c",
-        "outline-variant":    "#c5c6cb",
+        "on-surface":           "#1b1c1a",
+        "on-surface-variant":   "#45464d",
+        "outline":              "#76777d",
+        "outline-variant":      "#c6c6cd",
+        "inverse-surface":      "#30312f",
+        "inverse-on-surface":   "#f2f0ed",
 
-        // Primary (deep navy)
-        "primary":            "#181d25",
-        "on-primary":         "#ffffff",
-        "primary-container":  "#2d323a",
-        "on-primary-container":"#959aa4",
-        "primary-fixed":      "#dee2ed",
-        "primary-fixed-dim":  "#c2c6d1",
+        // Primary (authoritative black)
+        "primary":                  "#000000",
+        "on-primary":               "#ffffff",
+        "primary-container":        "#131b2e",
+        "on-primary-container":     "#7c839b",
+        "primary-fixed":            "#dae2fd",
+        "primary-fixed-dim":        "#bec6e0",
+        "on-primary-fixed":         "#131b2e",
+        "on-primary-fixed-variant": "#3f465c",
+        "inverse-primary":          "#bec6e0",
 
-        // Secondary (pastel emerald — income)
-        "secondary":              "#486551",
-        "on-secondary":           "#ffffff",
-        "secondary-container":    "#c7e8cf",
-        "on-secondary-container": "#4c6956",
-        "secondary-fixed":        "#caead2",
-        "secondary-fixed-dim":    "#aeceb7",
+        // Secondary (emerald — income / positive)
+        "secondary":                  "#006c49",
+        "on-secondary":               "#ffffff",
+        "secondary-container":        "#6cf8bb",
+        "on-secondary-container":     "#00714d",
+        "secondary-fixed":            "#6ffbbe",
+        "secondary-fixed-dim":        "#4edea3",
+        "on-secondary-fixed":         "#002113",
+        "on-secondary-fixed-variant": "#005236",
 
-        // Tertiary (pastel coral/peach — warm accent)
-        "tertiary":             "#311506",
-        "on-tertiary":          "#ffffff",
-        "tertiary-container":   "#4a2919",
-        "on-tertiary-container":"#bf8f79",
-        "tertiary-fixed":       "#ffdbcc",
-        "tertiary-fixed-dim":   "#f0bba3",
+        // Tertiary (coral — expenses / negative)
+        "tertiary":                    "#000000",
+        "on-tertiary":                 "#ffffff",
+        "tertiary-container":          "#410004",
+        "on-tertiary-container":       "#ef4444",
+        "tertiary-fixed":              "#ffdad7",
+        "tertiary-fixed-dim":          "#ffb3ad",
+        "on-tertiary-fixed":           "#410004",
+        "on-tertiary-fixed-variant":   "#930013",
 
         // Error
-        "error":             "#ba1a1a",
-        "on-error":          "#ffffff",
-        "error-container":   "#ffdad6",
-        "on-error-container":"#93000a",
+        "error":              "#ba1a1a",
+        "on-error":           "#ffffff",
+        "error-container":    "#ffdad6",
+        "on-error-container": "#93000a",
+
+        // Background alias
+        "background":    "#fbf9f6",
+        "on-background": "#1b1c1a",
       },
 
       fontFamily: {
@@ -72,32 +87,47 @@ const config: Config = {
       },
 
       fontSize: {
-        // Display
-        "display-lg": ["3rem",   { lineHeight: "3.5rem",   letterSpacing: "-0.02em", fontWeight: "700" }],
-        // Headlines
-        "headline-lg": ["2rem",  { lineHeight: "2.5rem",   letterSpacing: "-0.01em", fontWeight: "600" }],
-        "headline-md": ["1.5rem",{ lineHeight: "2rem",     letterSpacing: "-0.01em", fontWeight: "600" }],
-        "headline-sm": ["1.25rem",{ lineHeight: "1.75rem", fontWeight: "600" }],
-        // Label (mono)
-        "label-md": ["0.875rem", { lineHeight: "1.25rem",  letterSpacing: "0.02em",  fontWeight: "500" }],
-        "label-sm": ["0.75rem",  { lineHeight: "1rem",     letterSpacing: "0.05em",  fontWeight: "500" }],
+        // Stitch type scale
+        "display-lg":        ["3rem",    { lineHeight: "3.5rem",   letterSpacing: "-0.02em", fontWeight: "600" }],
+        "headline-lg":       ["2rem",    { lineHeight: "2.5rem",   letterSpacing: "-0.02em", fontWeight: "600" }],
+        "headline-lg-mobile":["1.75rem", { lineHeight: "2.25rem",  fontWeight: "600" }],
+        "headline-md":       ["1.5rem",  { lineHeight: "2rem",     letterSpacing: "-0.01em", fontWeight: "600" }],
+        "headline-sm":       ["1.25rem", { lineHeight: "1.75rem",  fontWeight: "600" }],
+        "body-lg":           ["1.125rem",{ lineHeight: "1.75rem",  fontWeight: "400" }],
+        "body-md":           ["1rem",    { lineHeight: "1.5rem",   fontWeight: "400" }],
+        "body-sm":           ["0.875rem",{ lineHeight: "1.25rem",  fontWeight: "400" }],
+        "label-md":          ["0.75rem", { lineHeight: "1rem",     letterSpacing: "0.02em",  fontWeight: "500" }],
+        "currency-lg":       ["2rem",    { lineHeight: "2.5rem",   fontWeight: "700" }],
+        "currency-md":       ["1rem",    { lineHeight: "1.5rem",   fontWeight: "600" }],
       },
 
       borderRadius: {
-        sm:   "0.25rem",
+        sm:      "0.25rem",
         DEFAULT: "0.5rem",
-        md:   "0.75rem",
-        lg:   "1rem",
-        xl:   "1.5rem",
-        "2xl":"1.5rem",
+        lg:      "0.5rem",   // matches Stitch: rounded-lg = 0.5rem
+        xl:      "0.75rem",
+        "2xl":   "1rem",
+        "3xl":   "1.5rem",
+        full:    "9999px",
       },
 
       boxShadow: {
-        // Tonal depth instead of heavy shadows
-        card: "0 0 0 1px rgba(0,0,0,0.04)",
-        "card-hover": "0 4px 20px rgba(24,29,37,0.08)",
-        "modal": "0 8px 32px rgba(24,29,37,0.12)",
-      }
+        // Stitch "soft ambient" depth
+        card:        "0px 4px 20px rgba(0,0,0,0.05)",
+        "card-hover":"0px 8px 32px rgba(0,0,0,0.08)",
+        modal:       "0px 8px 32px rgba(0,0,0,0.12)",
+        sm:          "0 0 0 1px rgba(0,0,0,0.04)",
+      },
+
+      spacing: {
+        "stack-sm":       "8px",
+        "stack-md":       "16px",
+        "stack-lg":       "24px",
+        "gutter":         "24px",
+        "margin-mobile":  "16px",
+        "margin-desktop": "40px",
+        "container-max":  "1280px",
+      },
     }
   },
   plugins: []

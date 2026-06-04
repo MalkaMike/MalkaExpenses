@@ -61,17 +61,24 @@ export default async function InboxPage() {
   const accountsList = (accounts ?? []).map((a) => ({ id: a.id, name: a.name, bank: a.bank }));
 
   return (
-    <div className="px-4 pt-6 max-w-2xl mx-auto pb-24">
-      <header className="mb-5">
-        <Link href="/admin" className="inline-flex items-center text-sm text-muted hover:text-fg gap-1">
-          <ChevronLeft size={14} /> admin
+    <div className="px-4 pt-6 max-w-2xl mx-auto pb-28">
+      <header className="mb-6">
+        <Link href="/admin" className="inline-flex items-center text-xs text-on-surface-variant hover:text-on-surface gap-1 mb-3">
+          ← Admin
         </Link>
-        <h1 className="text-2xl font-semibold mt-2">Caixa de entrada</h1>
-        <p className="text-xs text-muted">
-          {out.length === 0
-            ? "Nada para revisar — tudo já decidido."
-            : `${formatInt(out.length)} ${out.length === 1 ? "movimento aguardando" : "movimentos aguardando"} sua decisão`}
-        </p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-on-surface tracking-tight">Caixa de entrada</h1>
+            <p className="text-sm text-on-surface-variant mt-0.5">
+              {out.length === 0
+                ? "Nada para revisar — tudo decidido."
+                : `${formatInt(out.length)} ${out.length === 1 ? "movimento aguardando" : "movimentos aguardando"} sua decisão`}
+            </p>
+          </div>
+          {out.length > 0 && (
+            <span className="badge-hidden mt-1">{formatInt(out.length)}</span>
+          )}
+        </div>
       </header>
 
       <InboxClient rows={out} accounts={accountsList} />
