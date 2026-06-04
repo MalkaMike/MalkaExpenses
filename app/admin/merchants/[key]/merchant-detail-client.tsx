@@ -27,6 +27,8 @@ type ReimbTag = {
   appliedCount: number;
 };
 
+type ClusterOption = { key: string; name: string };
+
 type Props = {
   canonicalKey: string;
   currentCategoryId: string | null;
@@ -36,6 +38,7 @@ type Props = {
   currentSharedTotal: number;
   currentName: string;
   tags: ReimbTag[];
+  allClusters: ClusterOption[];
 };
 
 export function MerchantDetailClient({
@@ -46,7 +49,8 @@ export function MerchantDetailClient({
   currentShareMode,
   currentSharedTotal,
   currentName,
-  tags
+  tags,
+  allClusters
 }: Props) {
   const router = useRouter();
   const [selectedCat, setSelectedCat] = useState<string>(currentCategoryId ?? "");
@@ -182,6 +186,8 @@ export function MerchantDetailClient({
     await applyShare("set", v);
   }
 
+  // Smart submit: if `nameDraft` exactly matches an existing cluster name,
+  // we MERGE this cluster into that one. Otherwise we RENAME.
   async function applyRename() {
     const trimmed = nameDraft.trim();
     if (!trimmed || trimmed === currentName) {
@@ -191,23 +197,59 @@ export function MerchantDetailClient({
     setRenameBusy(true);
     setRenameErr(null);
     try {
-      const r = await fetch("/api/admin/merchants/rename", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ canonical_key: canonicalKey, name: trimmed })
-      });
-      if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
-        throw new Error(j.error ?? `Erro ${r.status}`);
+      // Find exact case-insensitive match among existing clusters
+      const match = allClusters.find(
+        (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase()
+      );
+      let r: Response;
+      if (match) {
+        // MERGE this cluster into the matched target
+        r = await fetch("/api/admin/merchants/merge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_canonical_key: canonicalKey,
+            target_canonical_key: match.key
+          })
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(j.error ?? `Erro ${r.status}`);
+        }
+        // After merge, the URL changes — navigate to the target cluster
+        router.push(`/admin/merchants/${encodeURIComponent(match.key)}`);
+      } else {
+        // RENAME (display name change only)
+        r = await fetch("/api/admin/merchants/rename", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ canonical_key: canonicalKey, name: trimmed })
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(j.error ?? `Erro ${r.status}`);
+        }
+        setEditingName(false);
+        router.refresh();
       }
-      setEditingName(false);
-      router.refresh();
     } catch (e) {
       setRenameErr((e as Error).message);
     } finally {
       setRenameBusy(false);
     }
   }
+
+  // Live-filter clusters by typed text (case-insensitive) for the combobox dropdown
+  const matchingSuggestions = (() => {
+    const q = nameDraft.trim().toLowerCase();
+    if (!q || q === currentName.toLowerCase()) return [] as ClusterOption[];
+    return allClusters
+      .filter((c) => c.name.toLowerCase().includes(q))
+      .slice(0, 8);
+  })();
+  const exactMatch = matchingSuggestions.find(
+    (c) => c.name.trim().toLowerCase() === nameDraft.trim().toLowerCase()
+  );
 
   async function toggleRowHide(row: Row) {
     const effectiveShared = localShared[row.id] ?? row.sharedAmount;
@@ -267,7 +309,7 @@ export function MerchantDetailClient({
           </div>
         ) : (
           <div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 relative">
               <input
                 autoFocus
                 value={nameDraft}
@@ -276,6 +318,7 @@ export function MerchantDetailClient({
                   if (e.key === "Enter") applyRename();
                   if (e.key === "Escape") setEditingName(false);
                 }}
+                placeholder="Renomeie ou escolha um existente pra fundir"
                 maxLength={120}
                 className="flex-1 px-3 py-2 rounded-xl bg-bg border border-border text-sm outline-none focus:border-accent transition"
               />
@@ -285,10 +328,12 @@ export function MerchantDetailClient({
                 className={`px-3 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5
                   ${renameBusy || !nameDraft.trim()
                     ? "bg-fg/20 text-fg/40 cursor-not-allowed"
-                    : "bg-fg text-bg hover:bg-fg/90"}`}
+                    : exactMatch
+                      ? "bg-info text-bg hover:bg-info/90"
+                      : "bg-fg text-bg hover:bg-fg/90"}`}
               >
                 {renameBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                Salvar
+                {exactMatch ? "Fundir" : "Salvar"}
               </button>
               <button
                 onClick={() => setEditingName(false)}
@@ -298,10 +343,39 @@ export function MerchantDetailClient({
               >
                 <X size={14} />
               </button>
+
+              {/* Combobox dropdown with suggestions */}
+              {matchingSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-[88px] mt-1 z-10 rounded-xl bg-card border border-border shadow-lg overflow-hidden">
+                  <p className="text-[10px] uppercase tracking-wider text-muted px-3 pt-2 pb-1">
+                    Comerciantes existentes — clique para FUNDIR
+                  </p>
+                  <ul className="divide-y divide-border max-h-60 overflow-y-auto">
+                    {matchingSuggestions.map((c) => (
+                      <li key={c.key}>
+                        <button
+                          onClick={() => {
+                            setNameDraft(c.name);
+                            setTimeout(applyRename, 0);
+                          }}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-fg/[0.05] transition"
+                        >
+                          {c.name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
             <p className="text-[10px] text-muted mt-2">
-              Só muda o nome exibido — não afeta agrupamento. Próximos lançamentos da Pluggy
-              com a mesma descrição vão usar este nome automaticamente.
+              {exactMatch ? (
+                <>
+                  <span className="text-info font-medium">FUSÃO</span> — todas as transações deste cluster vão para "{exactMatch.name}".
+                </>
+              ) : (
+                <>Renomeia o cluster. Se o nome digitado for IDÊNTICO a um comerciante existente, vai FUNDIR os dois automaticamente.</>
+              )}
             </p>
             {renameErr && <p className="text-xs text-danger mt-1.5">{renameErr}</p>}
           </div>
