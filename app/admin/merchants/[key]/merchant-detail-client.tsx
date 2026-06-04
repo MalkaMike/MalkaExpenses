@@ -42,9 +42,11 @@ export function MerchantDetailClient({
   const [busy, setBusy] = useState(false);
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [shareBusy, setShareBusy] = useState<"hide" | "show" | null>(null);
+  const [shareBusy, setShareBusy] = useState<"hide" | "show" | "set" | null>(null);
   const [shareErr, setShareErr] = useState<string | null>(null);
   const [shareDone, setShareDone] = useState<string | null>(null);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  const [adjustValue, setAdjustValue] = useState("");
 
   // Rename state
   const [editingName, setEditingName] = useState(false);
@@ -85,7 +87,7 @@ export function MerchantDetailClient({
     }
   }
 
-  async function applyShare(mode: "hide" | "show") {
+  async function applyShare(mode: "hide" | "show" | "set", value?: number) {
     setShareBusy(mode);
     setShareErr(null);
     setShareDone(null);
@@ -93,7 +95,11 @@ export function MerchantDetailClient({
       const r = await fetch("/api/admin/merchants/share", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ canonical_key: canonicalKey, mode })
+        body: JSON.stringify({
+          canonical_key: canonicalKey,
+          mode,
+          ...(value !== undefined ? { value } : {})
+        })
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
@@ -103,15 +109,30 @@ export function MerchantDetailClient({
       setShareDone(
         mode === "hide"
           ? `${formatInt(j.updated)} ${j.updated === 1 ? "transação escondida" : "transações escondidas"} do portal`
-          : `${formatInt(j.updated)} ${j.updated === 1 ? "transação mostrada" : "transações mostradas"} no portal`
+          : mode === "show"
+            ? `${formatInt(j.updated)} ${j.updated === 1 ? "transação mostrada" : "transações mostradas"} no portal`
+            : `${formatInt(j.updated)} ${j.updated === 1 ? "transação ajustada para" : "transações ajustadas para"} ${formatBRL(value ?? 0)}`
       );
-      setLocalShared({}); // reset local overrides; server is source of truth
+      setLocalShared({});
+      if (mode === "set") {
+        setAdjustOpen(false);
+        setAdjustValue("");
+      }
       router.refresh();
     } catch (e) {
       setShareErr((e as Error).message);
     } finally {
       setShareBusy(null);
     }
+  }
+
+  async function applyAdjust() {
+    const v = parseFloat(adjustValue.replace(/\./g, "").replace(",", "."));
+    if (!Number.isFinite(v)) {
+      setShareErr("Valor inválido");
+      return;
+    }
+    await applyShare("set", v);
   }
 
   async function applyRename() {
@@ -310,36 +331,87 @@ export function MerchantDetailClient({
         <p className="text-xs text-muted mb-3">
           Atual no portal compartilhado: <span className="tabular-nums font-medium text-fg">{formatBRL(currentSharedTotal)}</span>
         </p>
-        <div className="flex gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <button
             onClick={() => applyShare("hide")}
             disabled={shareBusy !== null || currentShareMode === "hide"}
-            className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
+            className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
               ${shareBusy !== null || currentShareMode === "hide"
                 ? "border-border text-fg/40 cursor-not-allowed"
                 : "border-warning/40 text-warning hover:bg-warning/5 active:scale-[0.99]"}`}
           >
             {shareBusy === "hide" ? (
-              <><Loader2 size={14} className="animate-spin" /> Escondendo…</>
+              <><Loader2 size={14} className="animate-spin" /> ...</>
             ) : (
-              <><EyeOff size={14} /> Esconder do portal</>
+              <><EyeOff size={14} /> Esconder</>
             )}
           </button>
           <button
             onClick={() => applyShare("show")}
             disabled={shareBusy !== null || currentShareMode === "show"}
-            className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
+            className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
               ${shareBusy !== null || currentShareMode === "show"
                 ? "border-border text-fg/40 cursor-not-allowed"
                 : "border-accent/40 text-accent hover:bg-accent/5 active:scale-[0.99]"}`}
           >
             {shareBusy === "show" ? (
-              <><Loader2 size={14} className="animate-spin" /> Mostrando…</>
+              <><Loader2 size={14} className="animate-spin" /> ...</>
             ) : (
-              <><Eye size={14} /> Mostrar valor real</>
+              <><Eye size={14} /> Valor real</>
             )}
           </button>
+          <button
+            onClick={() => { setAdjustOpen(true); setShareErr(null); }}
+            disabled={shareBusy !== null}
+            className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
+              ${shareBusy !== null
+                ? "border-border text-fg/40 cursor-not-allowed"
+                : "border-border text-muted hover:text-fg hover:border-fg/30 active:scale-[0.99]"}`}
+          >
+            <Pencil size={14} /> Ajustar
+          </button>
         </div>
+
+        {adjustOpen && (
+          <div className="mt-3 p-3 rounded-xl bg-bg/40 border border-border">
+            <p className="text-xs text-muted mb-2">
+              Define o mesmo valor compartilhado para TODAS as {formatInt(rows.length)} transações (positivo = receita, negativo = despesa).
+            </p>
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                inputMode="decimal"
+                placeholder="ex: 5000,00 ou -250,00"
+                value={adjustValue}
+                onChange={(e) => setAdjustValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applyAdjust();
+                  if (e.key === "Escape") { setAdjustOpen(false); setAdjustValue(""); }
+                }}
+                className="flex-1 px-3 py-2 rounded-xl bg-card border border-border text-sm outline-none focus:border-accent transition tabular-nums"
+              />
+              <button
+                onClick={applyAdjust}
+                disabled={shareBusy === "set" || !adjustValue.trim()}
+                className={`px-4 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5
+                  ${shareBusy === "set" || !adjustValue.trim()
+                    ? "bg-fg/20 text-fg/40 cursor-not-allowed"
+                    : "bg-fg text-bg hover:bg-fg/90"}`}
+              >
+                {shareBusy === "set" ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                Aplicar
+              </button>
+              <button
+                onClick={() => { setAdjustOpen(false); setAdjustValue(""); }}
+                className="px-2 py-2 rounded-xl border border-border text-muted hover:text-fg transition"
+                aria-label="Cancelar"
+              >
+                <X size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+
         {shareDone && <p className="mt-2 text-xs text-accent">✅ {shareDone}</p>}
         {shareErr && <p className="mt-2 text-xs text-danger">{shareErr}</p>}
       </section>
