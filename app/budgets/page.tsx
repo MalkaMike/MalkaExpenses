@@ -2,7 +2,7 @@ import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { getCategoryMeta } from "@/lib/categories/meta";
-import { formatBRL, monthLabel } from "@/lib/format";
+import { formatBRL, formatInt, monthLabel } from "@/lib/format";
 import { getLang } from "@/lib/i18n/server";
 import { t } from "@/lib/i18n/translations";
 import { BudgetsClient, type BudgetRow } from "./budgets-client";
@@ -180,7 +180,7 @@ export default async function BudgetsPage() {
       <header className="mb-5">
         <h1 className="text-2xl font-semibold">{t("budget.title", lang)}</h1>
         <p className="text-xs text-muted">
-          {monthLabel(ym)} · {rows.length}{" "}
+          {monthLabel(ym)} · {formatInt(rows.length)}{" "}
           {rows.length === 1 ? t("budget.cat_one_with_budget", lang) : t("budget.cat_many_with_budget", lang)}
         </p>
       </header>

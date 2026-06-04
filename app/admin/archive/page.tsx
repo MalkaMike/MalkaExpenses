@@ -3,6 +3,7 @@ import { ChevronLeft, Archive as ArchiveIcon } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { ArchiveClient, type ArchivedRow } from "./archive-client";
+import { formatInt } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -66,7 +67,7 @@ export default async function ArchivePage() {
         <p className="text-xs text-muted">
           {out.length === 0
             ? "Nada removido — itens que você tirar do portal ficam guardados aqui."
-            : `${out.length} ${out.length === 1 ? "item removido" : "itens removidos"} do portal · pode trazer de volta`}
+            : `${formatInt(out.length)} ${out.length === 1 ? "item removido" : "itens removidos"} do portal · pode trazer de volta`}
         </p>
       </header>
 

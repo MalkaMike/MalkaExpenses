@@ -4,7 +4,7 @@ import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp } from "lucide-rea
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatInt } from "@/lib/format";
 import { ReconcileButton } from "./reconcile-button";
 import { PluggySyncButton } from "./pluggy-sync-button";
 
@@ -76,7 +76,7 @@ export default async function AdminLanding({
           title="Caixa de entrada"
           subtitle={
             (pending ?? 0) > 0
-              ? `${pending} aguardando sua decisão`
+              ? `${formatInt(pending ?? 0)} aguardando sua decisão`
               : "tudo decidido"
           }
           Icon={Inbox}
@@ -100,7 +100,7 @@ export default async function AdminLanding({
           title="Arquivo"
           subtitle={
             (hidden ?? 0) > 0
-              ? `${hidden} item(ns) removido(s) — pode restaurar`
+              ? `${formatInt(hidden ?? 0)} item(ns) removido(s) — pode restaurar`
               : "itens removidos do portal"
           }
           Icon={Archive}
@@ -119,7 +119,7 @@ export default async function AdminLanding({
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="p-3 rounded-xl bg-card border border-border">
-      <p className="text-2xl font-semibold tabular-nums">{value}</p>
+      <p className="text-2xl font-semibold tabular-nums">{formatInt(value)}</p>
       <p className="text-xs text-muted">{label}</p>
     </div>
   );

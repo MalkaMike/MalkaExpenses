@@ -4,7 +4,7 @@ import { getLang } from "@/lib/i18n/server";
 import { t } from "@/lib/i18n/translations";
 import { BankSquare } from "@/components/bank-square";
 import { PluggyConnectButton } from "@/components/pluggy-connect-button";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatInt } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -128,7 +128,7 @@ export default async function ImportPage() {
                         <p className="text-[10px] text-muted uppercase tracking-wide">Desde</p>
                       </div>
                       <div>
-                        <p className="text-base font-semibold tabular-nums">{cov.txCount}</p>
+                        <p className="text-base font-semibold tabular-nums">{formatInt(cov.txCount)}</p>
                         <p className="text-[10px] text-muted uppercase tracking-wide">Movimentos</p>
                       </div>
                     </div>

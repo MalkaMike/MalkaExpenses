@@ -3,7 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, rawDescriptionsForKey, preloadClusters } from "@/lib/merchants/clusters";
-import { formatBRL, formatDate } from "@/lib/format";
+import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { MerchantDetailClient } from "./merchant-detail-client";
 
 export const dynamic = "force-dynamic";
@@ -146,7 +146,7 @@ export default async function MerchantDetailPage({
         </Link>
         <h1 className="text-2xl font-semibold mt-2 truncate">{displayName}</h1>
         <p className="text-xs text-muted mt-1">
-          {txs.length} {txs.length === 1 ? "transação" : "transações"} ·{" "}
+          {formatInt(txs.length)} {txs.length === 1 ? "transação" : "transações"} ·{" "}
           {oldest && newest ? `${formatDate(oldest)} → ${formatDate(newest)}` : "—"}
         </p>
       </header>
@@ -170,7 +170,7 @@ export default async function MerchantDetailPage({
         <div className="p-3 rounded-xl bg-card border border-border">
           <p className="text-[10px] uppercase tracking-wider text-muted">Variações</p>
           <p className="text-lg font-semibold tabular-nums">
-            {new Set(txs.map((t) => t.description_raw)).size}
+            {formatInt(new Set(txs.map((t) => t.description_raw)).size)}
           </p>
         </div>
       </section>

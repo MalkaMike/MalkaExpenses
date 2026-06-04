@@ -5,6 +5,14 @@ export function formatBRL(value: number): string {
   }).format(value);
 }
 
+// Integer with pt-BR thousand separator (e.g. 6011 → "6.011").
+// Use everywhere counts/numbers > 999 are displayed.
+export function formatInt(value: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
 export function formatDate(iso: string): string {
   // YYYY-MM-DD -> DD/MM/YYYY
   const [y, m, d] = iso.split("-");

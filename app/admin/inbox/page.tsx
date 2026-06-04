@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { InboxClient, type InboxRow } from "./inbox-client";
+import { formatInt } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export default async function InboxPage() {
         <p className="text-xs text-muted">
           {out.length === 0
             ? "Nada para revisar — tudo já decidido."
-            : `${out.length} ${out.length === 1 ? "movimento aguardando" : "movimentos aguardando"} sua decisão`}
+            : `${formatInt(out.length)} ${out.length === 1 ? "movimento aguardando" : "movimentos aguardando"} sua decisão`}
         </p>
       </header>
 

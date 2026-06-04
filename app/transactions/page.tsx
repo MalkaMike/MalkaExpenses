@@ -4,6 +4,7 @@ import { sharedClient } from "@/lib/supabase/shared-client";
 import { getLang } from "@/lib/i18n/server";
 import { t } from "@/lib/i18n/translations";
 import { TransactionsClient } from "./transactions-client";
+import { formatInt } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -98,7 +99,7 @@ export default async function TransactionsPage({
     <div className="px-4 pt-6 max-w-2xl mx-auto">
       <header className="flex items-center justify-between mb-5">
         <h1 className="text-2xl font-semibold">{t("tx.title", lang)}</h1>
-        <span className="text-xs text-muted">{rows.length}</span>
+        <span className="text-xs text-muted tabular-nums">{formatInt(rows.length)}</span>
       </header>
       <TransactionsClient
         rows={rows}

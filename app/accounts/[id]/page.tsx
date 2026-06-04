@@ -6,7 +6,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { TransactionRow } from "@/components/transaction-row";
 import { BankSquare } from "@/components/bank-square";
-import { formatBRL, monthLabel } from "@/lib/format";
+import { formatBRL, formatInt, monthLabel } from "@/lib/format";
 import { getLang } from "@/lib/i18n/server";
 import { t, type Lang, type StringKey } from "@/lib/i18n/translations";
 import { AccountEditPanel } from "./account-edit-panel";
@@ -213,7 +213,7 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
         <h2 className="text-xs uppercase tracking-wider text-muted">{t("account.movements", lang)}</h2>
         {rows.length > 0 && (
           <span className="text-[11px] text-muted tabular-nums">
-            {Math.min(rows.length, 100)} {t("account.of", lang)} {rows.length}
+            {formatInt(Math.min(rows.length, 100))} {t("account.of", lang)} {formatInt(rows.length)}
             {rows.length === 300 ? "+" : ""}
           </span>
         )}

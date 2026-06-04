@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Loader2 } from "lucide-react";
-import { formatBRL, formatDate } from "@/lib/format";
+import { formatBRL, formatDate, formatInt } from "@/lib/format";
 
 type Row = {
   id: string;
@@ -70,7 +70,7 @@ export function MerchantDetailClient({
       {/* Categorize-all action */}
       <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
         <p className="text-xs uppercase tracking-wider text-muted mb-2">
-          Aplicar categoria a TODAS as {rows.length} transações
+          Aplicar categoria a TODAS as {formatInt(rows.length)} transações
         </p>
         <div className="flex gap-2">
           <select
@@ -106,7 +106,7 @@ export function MerchantDetailClient({
         </div>
         {doneCount !== null && (
           <p className="mt-2 text-xs text-accent">
-            ✅ {doneCount} {doneCount === 1 ? "transação atualizada" : "transações atualizadas"}
+            ✅ {formatInt(doneCount)} {doneCount === 1 ? "transação atualizada" : "transações atualizadas"}
           </p>
         )}
         {err && <p className="mt-2 text-xs text-danger">{err}</p>}

@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
-import { formatBRL } from "@/lib/format";
+import { formatBRL, formatInt } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -134,8 +134,8 @@ export default async function MerchantsPage({
         </Link>
         <h1 className="text-2xl font-semibold mt-2">{copy.title}</h1>
         <p className="text-xs text-muted mt-1">
-          {copy.subtitle} · {filtered.length} transações em{" "}
-          <span className="text-fg">{totalMerchants}</span> {copy.rowsLabel}. Volume:{" "}
+          {copy.subtitle} · {formatInt(filtered.length)} transações em{" "}
+          <span className="text-fg">{formatInt(totalMerchants)}</span> {copy.rowsLabel}. Volume:{" "}
           <span className="text-fg tabular-nums">{formatBRL(totalAbsAll)}</span>.
         </p>
       </header>
@@ -151,7 +151,7 @@ export default async function MerchantsPage({
         <div className="mb-4 p-3 rounded-xl border border-warning/30 bg-warning/5 flex items-center gap-2 text-sm">
           <AlertCircle size={16} className="text-warning shrink-0" />
           <span>
-            <span className="font-medium">{inOutros.length}</span> ainda em &quot;Outros&quot; — clique para categorizar todas as ocorrências de uma vez.
+            <span className="font-medium">{formatInt(inOutros.length)}</span> ainda em &quot;Outros&quot; — clique para categorizar todas as ocorrências de uma vez.
           </span>
         </div>
       )}
@@ -195,10 +195,10 @@ export default async function MerchantsPage({
                     </div>
                   </div>
                   <span className="text-right tabular-nums text-sm text-muted">
-                    {g.txCount}
+                    {formatInt(g.txCount)}
                   </span>
                   <span className="text-right tabular-nums text-sm text-muted">
-                    {g.uniqueDescriptions.size}
+                    {formatInt(g.uniqueDescriptions.size)}
                   </span>
                   <span
                     className={`text-right tabular-nums font-medium ${
