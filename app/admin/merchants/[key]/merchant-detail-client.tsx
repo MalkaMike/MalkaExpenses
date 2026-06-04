@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, X } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 
 type Row = {
@@ -25,6 +25,7 @@ type Props = {
   rows: Row[];
   currentShareMode: "hide" | "show" | "mixed";
   currentSharedTotal: number;
+  currentName: string;
 };
 
 export function MerchantDetailClient({
@@ -33,7 +34,8 @@ export function MerchantDetailClient({
   categories,
   rows,
   currentShareMode,
-  currentSharedTotal
+  currentSharedTotal,
+  currentName
 }: Props) {
   const router = useRouter();
   const [selectedCat, setSelectedCat] = useState<string>(currentCategoryId ?? "");
@@ -43,6 +45,17 @@ export function MerchantDetailClient({
   const [shareBusy, setShareBusy] = useState<"hide" | "show" | null>(null);
   const [shareErr, setShareErr] = useState<string | null>(null);
   const [shareDone, setShareDone] = useState<string | null>(null);
+
+  // Rename state
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState(currentName);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameErr, setRenameErr] = useState<string | null>(null);
+
+  // Per-row pending state (which tx is currently being toggled)
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  // Optimistic local override of sharedAmount per row id
+  const [localShared, setLocalShared] = useState<Record<string, number>>({});
 
   async function applyToAll() {
     if (!selectedCat) return;
@@ -92,6 +105,7 @@ export function MerchantDetailClient({
           ? `${formatInt(j.updated)} ${j.updated === 1 ? "transação escondida" : "transações escondidas"} do portal`
           : `${formatInt(j.updated)} ${j.updated === 1 ? "transação mostrada" : "transações mostradas"} no portal`
       );
+      setLocalShared({}); // reset local overrides; server is source of truth
       router.refresh();
     } catch (e) {
       setShareErr((e as Error).message);
@@ -100,8 +114,132 @@ export function MerchantDetailClient({
     }
   }
 
+  async function applyRename() {
+    const trimmed = nameDraft.trim();
+    if (!trimmed || trimmed === currentName) {
+      setEditingName(false);
+      return;
+    }
+    setRenameBusy(true);
+    setRenameErr(null);
+    try {
+      const r = await fetch("/api/admin/merchants/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_key: canonicalKey, name: trimmed })
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `Erro ${r.status}`);
+      }
+      setEditingName(false);
+      router.refresh();
+    } catch (e) {
+      setRenameErr((e as Error).message);
+    } finally {
+      setRenameBusy(false);
+    }
+  }
+
+  async function toggleRowHide(row: Row) {
+    const effectiveShared = localShared[row.id] ?? row.sharedAmount;
+    const willHide = effectiveShared !== 0;
+    setRowBusy(row.id);
+    // Optimistic update
+    setLocalShared((prev) => ({
+      ...prev,
+      [row.id]: willHide ? 0 : row.amount
+    }));
+    try {
+      const r = await fetch(`/api/transactions/${row.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hide: willHide })
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `Erro ${r.status}`);
+      }
+      // Don't refresh whole page — keep the local optimistic state until next
+      // navigation. Otherwise scrolling jumps and the user loses position.
+    } catch (e) {
+      // Revert optimistic update on failure
+      setLocalShared((prev) => {
+        const next = { ...prev };
+        delete next[row.id];
+        return next;
+      });
+      alert((e as Error).message);
+    } finally {
+      setRowBusy(null);
+    }
+  }
+
   return (
     <>
+      {/* Rename row (display name only — doesn't change clustering) */}
+      <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
+        <p className="text-xs uppercase tracking-wider text-muted mb-2">
+          Nome exibido
+        </p>
+        {!editingName ? (
+          <div className="flex items-center gap-3">
+            <p className="flex-1 text-base font-medium truncate">{currentName}</p>
+            <button
+              onClick={() => {
+                setNameDraft(currentName);
+                setRenameErr(null);
+                setEditingName(true);
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs border border-border text-muted hover:text-fg hover:border-fg/30 transition flex items-center gap-1.5"
+              title="Renomear (só muda o nome exibido, não afeta agrupamento)"
+            >
+              <Pencil size={12} /> Renomear
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div className="flex gap-2">
+              <input
+                autoFocus
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") applyRename();
+                  if (e.key === "Escape") setEditingName(false);
+                }}
+                maxLength={120}
+                className="flex-1 px-3 py-2 rounded-xl bg-bg border border-border text-sm outline-none focus:border-accent transition"
+              />
+              <button
+                onClick={applyRename}
+                disabled={renameBusy || !nameDraft.trim()}
+                className={`px-3 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5
+                  ${renameBusy || !nameDraft.trim()
+                    ? "bg-fg/20 text-fg/40 cursor-not-allowed"
+                    : "bg-fg text-bg hover:bg-fg/90"}`}
+              >
+                {renameBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                Salvar
+              </button>
+              <button
+                onClick={() => setEditingName(false)}
+                disabled={renameBusy}
+                className="px-2 py-2 rounded-xl border border-border text-muted hover:text-fg transition"
+                aria-label="Cancelar"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <p className="text-[10px] text-muted mt-2">
+              Só muda o nome exibido — não afeta agrupamento. Próximos lançamentos da Pluggy
+              com a mesma descrição vão usar este nome automaticamente.
+            </p>
+            {renameErr && <p className="text-xs text-danger mt-1.5">{renameErr}</p>}
+          </div>
+        )}
+      </section>
+
       {/* Categorize-all action */}
       <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
         <p className="text-xs uppercase tracking-wider text-muted mb-2">
@@ -206,44 +344,90 @@ export function MerchantDetailClient({
         {shareErr && <p className="mt-2 text-xs text-danger">{shareErr}</p>}
       </section>
 
-      {/* Transactions list */}
+      {/* Transactions list — per-row hide/show toggle */}
       <section>
-        <h2 className="text-xs uppercase tracking-wider text-muted mb-2 px-1">
-          Histórico
-        </h2>
+        <div className="flex items-center justify-between mb-2 px-1">
+          <h2 className="text-xs uppercase tracking-wider text-muted">Histórico</h2>
+          <p className="text-[10px] text-muted">
+            Clique no olho 👁 pra esconder/mostrar individualmente
+          </p>
+        </div>
         <div className="rounded-2xl bg-card border border-border overflow-hidden">
           <ul className="divide-y divide-border text-sm">
-            {rows.map((r) => (
-              <li key={r.id} className="px-4 py-3 flex items-center gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium truncate">{r.description}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] text-muted tabular-nums">
-                      {formatDate(r.date)}
-                    </span>
-                    <span className="text-[10px] text-muted">·</span>
-                    <span className="text-[10px] text-muted truncate">{r.accountName}</span>
-                    <span className="text-[10px] text-muted">·</span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                        r.categoryName === "Outros"
-                          ? "bg-warning/15 text-warning"
-                          : "bg-fg/5 text-muted"
-                      }`}
-                    >
-                      {r.categoryName}
-                    </span>
-                  </div>
-                </div>
-                <span
-                  className={`tabular-nums font-medium shrink-0 ${
-                    r.amount < 0 ? "text-danger" : "text-accent"
+            {rows.map((r) => {
+              const effShared = localShared[r.id] ?? r.sharedAmount;
+              const hidden = effShared === 0;
+              const isBusy = rowBusy === r.id;
+              return (
+                <li
+                  key={r.id}
+                  className={`px-4 py-3 flex items-center gap-3 transition ${
+                    hidden ? "opacity-50 bg-fg/[0.02]" : ""
                   }`}
                 >
-                  {formatBRL(r.amount)}
-                </span>
-              </li>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <p
+                      className={`font-medium truncate ${
+                        hidden ? "line-through" : ""
+                      }`}
+                    >
+                      {r.description}
+                    </p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-muted tabular-nums">
+                        {formatDate(r.date)}
+                      </span>
+                      <span className="text-[10px] text-muted">·</span>
+                      <span className="text-[10px] text-muted truncate">
+                        {r.accountName}
+                      </span>
+                      <span className="text-[10px] text-muted">·</span>
+                      <span
+                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          r.categoryName === "Outros"
+                            ? "bg-warning/15 text-warning"
+                            : "bg-fg/5 text-muted"
+                        }`}
+                      >
+                        {r.categoryName}
+                      </span>
+                      {hidden && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-warning/15 text-warning">
+                          ESCONDIDO
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span
+                    className={`tabular-nums font-medium shrink-0 ${
+                      r.amount < 0 ? "text-danger" : "text-accent"
+                    }`}
+                  >
+                    {formatBRL(r.amount)}
+                  </span>
+                  <button
+                    onClick={() => toggleRowHide(r)}
+                    disabled={isBusy}
+                    aria-label={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
+                    title={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
+                    className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center transition
+                      ${isBusy
+                        ? "border-border text-muted cursor-wait"
+                        : hidden
+                          ? "border-warning/30 text-warning hover:bg-warning/5"
+                          : "border-border text-muted hover:text-fg hover:border-fg/30"}`}
+                  >
+                    {isBusy ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : hidden ? (
+                      <EyeOff size={14} />
+                    ) : (
+                      <Eye size={14} />
+                    )}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           {rows.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-muted">

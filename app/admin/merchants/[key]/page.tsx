@@ -195,6 +195,7 @@ export default async function MerchantDetailPage({
         rows={rows}
         currentShareMode={shareMode}
         currentSharedTotal={totalShared}
+        currentName={displayName}
       />
     </div>
   );
