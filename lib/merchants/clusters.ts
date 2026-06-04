@@ -151,7 +151,11 @@ function clusterLookup(rawDescription: string, forceJson = false): ClusterEntry 
   return { key, name: rawDescription };
 }
 
-/** Returns ALL raw descriptions that map to a given canonical key. */
+/** Returns ALL raw descriptions that map to a given canonical key.
+ * Uses the in-memory cache — good for bulk lookups across many keys.
+ * For single-key lookups (e.g. merchant detail page), prefer
+ * rawDescriptionsForKeyDirect() which always queries the DB directly and
+ * is immune to cross-instance cache invalidation failures on Vercel. */
 export async function rawDescriptionsForKey(key: string): Promise<string[]> {
   await ensureLoaded();
   const out: string[] = [];
@@ -161,9 +165,31 @@ export async function rawDescriptionsForKey(key: string): Promise<string[]> {
   return out;
 }
 
-/** Force re-read from DB on next call. */
+/** Always queries the DB directly — immune to stale in-memory cache.
+ * Use this wherever freshness matters: merchant detail page, post-merge
+ * redirects, any place that needs to see the result of a recent write. */
+export async function rawDescriptionsForKeyDirect(key: string): Promise<string[]> {
+  const sb = serverClient();
+  const out: string[] = [];
+  let off = 0;
+  while (true) {
+    const { data, error } = await sb
+      .from("merchant_clusters")
+      .select("description_raw")
+      .eq("canonical_key", key)
+      .range(off, off + 999);
+    if (error || !data || !data.length) break;
+    out.push(...(data as { description_raw: string }[]).map((r) => r.description_raw));
+    if (data.length < 1000) break;
+    off += 1000;
+  }
+  return out;
+}
+
+/** Force re-read from DB on next call (all cache levels). */
 export function invalidateCache() {
   dbCache = null;
+  dbCachedAt = 0;   // reset TTL so loadFromDb() goes to DB immediately
   jsonCache = null;
   primary = {};
   primaryLoaded = false;

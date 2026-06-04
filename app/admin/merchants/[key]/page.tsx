@@ -1,7 +1,7 @@
 import { getRole } from "@/lib/auth/admin";
 import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
-import { clusterFor, rawDescriptionsForKey, preloadClusters } from "@/lib/merchants/clusters";
+import { clusterFor, rawDescriptionsForKeyDirect, preloadClusters } from "@/lib/merchants/clusters";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { MerchantDetailClient } from "./merchant-detail-client";
 
@@ -33,8 +33,9 @@ export default async function MerchantDetailPage({
   // Preload cluster mapping (DB → JSON fallback)
   await preloadClusters();
 
-  // Find all raw descriptions that map to this canonical key
-  const rawDescs = await rawDescriptionsForKey(key);
+  // Always query DB directly — immune to stale per-instance in-memory cache.
+  // This ensures post-merge renders see the updated mapping immediately.
+  const rawDescs = await rawDescriptionsForKeyDirect(key);
 
   // Pull transactions: either by description match (if we have the cluster map)
   // or by exact description if the key was a fallback
@@ -114,6 +115,10 @@ export default async function MerchantDetailPage({
   // Determine name from any transaction
   const displayName =
     txs.length > 0 ? clusterFor(txs[0].description_raw).name : key;
+
+  // Unique original descriptions — shown as "origens" on the page so user
+  // can see all constituent raw names after a merge (e.g. "St Paul's" + "Fundação Anglo").
+  const uniqueRawDescs = [...new Set(txs.map((t) => t.description_raw))].sort();
 
   const rows = txs.map((t) => ({
     id: t.id,
@@ -216,7 +221,7 @@ export default async function MerchantDetailPage({
       </p>
 
       {/* Stats */}
-      <section className="grid grid-cols-3 gap-3 mb-5">
+      <section className="grid grid-cols-3 gap-3 mb-4">
         <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
           <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Total absoluto</p>
           <p className="text-lg font-semibold tabular-nums text-on-surface">{formatBRL(totalAbs)}</p>
@@ -230,10 +235,29 @@ export default async function MerchantDetailPage({
         <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
           <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Variações</p>
           <p className="text-lg font-semibold tabular-nums text-on-surface">
-            {formatInt(new Set(txs.map((t) => t.description_raw)).size)}
+            {formatInt(uniqueRawDescs.length)}
           </p>
         </div>
       </section>
+
+      {/* Origens — shows all constituent raw descriptions after merges */}
+      {uniqueRawDescs.length > 0 && (
+        <section className="mb-5 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2.5">
+            Nomes originais agrupados ({formatInt(uniqueRawDescs.length)})
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {uniqueRawDescs.map((d) => (
+              <span
+                key={d}
+                className="text-xs px-2.5 py-1 rounded-full bg-surface-container border border-outline-variant text-on-surface-variant font-medium"
+              >
+                {d}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
 
       <MerchantDetailClient
         canonicalKey={key}
