@@ -20,39 +20,37 @@ export function TransactionRow(t: TxRowProps) {
   const showRealColumn =
     t.role === "admin" && t.amountReal !== undefined && t.amountReal !== t.amountShared;
   const isIncome = t.amountShared > 0;
-  const meta = getCategoryMeta(t.categorySlug);
-  // Show "Parent › Sub" for subcategories so it's clear in the list
   const categoryLabel = getCategoryDisplayName(t.categorySlug);
 
   return (
-    <div className="flex items-center gap-3 p-4 rounded-xl bg-card border border-border hover:border-accent/40 transition">
-      <CategoryIcon slug={t.categorySlug} size={18} />
+    <div className="flex items-center gap-3 px-4 py-3.5 bg-surface-container-lowest hover:bg-surface-container transition-colors">
+      <CategoryIcon slug={t.categorySlug} size={16} />
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate leading-tight">
-          {t.description || <span className="text-muted italic font-normal">sem descrição</span>}
+        <p className="font-semibold text-sm text-on-surface truncate leading-tight">
+          {t.description || <span className="text-on-surface-variant italic font-normal">sem descrição</span>}
           {t.role === "admin" && t.isFake && (
-            <span className="ml-2 text-[10px] uppercase tracking-wider text-danger">fake</span>
+            <span className="ml-2 text-[10px] uppercase tracking-wider text-error">fake</span>
           )}
           {t.isTransfer && (
-            <span className="ml-2 text-[10px] uppercase tracking-wider text-muted">transfer</span>
+            <span className="ml-2 text-[10px] uppercase tracking-wider text-on-surface-variant">transfer</span>
           )}
         </p>
-        <p className="text-xs text-muted truncate mt-0.5">
+        <p className="text-xs text-on-surface-variant truncate mt-0.5">
           {categoryLabel}
           {t.showDate !== false && <span className="ml-2">· {formatDate(t.date)}</span>}
         </p>
       </div>
       <div className="text-right shrink-0">
         <p
-          className={`font-semibold tabular-nums ${
-            isIncome ? "text-accent" : t.isTransfer ? "text-fg/50" : ""
+          className={`font-semibold text-sm tabular-nums ${
+            isIncome ? "text-secondary" : t.isTransfer ? "text-on-surface-variant" : "text-on-tertiary-container"
           }`}
         >
           {isIncome ? "+" : t.isTransfer ? "" : "−"}
           {formatBRL(Math.abs(t.amountShared))}
         </p>
         {showRealColumn && (
-          <p className="text-[11px] text-muted tabular-nums">
+          <p className="text-[11px] text-on-surface-variant tabular-nums">
             real {formatBRL(t.amountReal!)}
           </p>
         )}

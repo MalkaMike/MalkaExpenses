@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+
+<html lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "inverse-on-surface": "#f1f1ef",
+                "on-secondary-container": "#4c6956",
+                "on-tertiary-container": "#bf8f79",
+                "surface-container-highest": "#e3e2e0",
+                "on-tertiary-fixed-variant": "#623e2c",
+                "surface-bright": "#faf9f7",
+                "tertiary-fixed-dim": "#f0bba3",
+                "inverse-primary": "#c2c6d1",
+                "surface": "#faf9f7",
+                "on-secondary-fixed-variant": "#314d3b",
+                "secondary-fixed": "#caead2",
+                "surface-container-high": "#e9e8e6",
+                "on-surface": "#1a1c1b",
+                "on-primary-fixed": "#171c23",
+                "error-container": "#ffdad6",
+                "surface-container-low": "#f4f3f1",
+                "primary-fixed-dim": "#c2c6d1",
+                "tertiary-container": "#4a2919",
+                "surface-dim": "#dadad8",
+                "primary": "#181d25",
+                "outline-variant": "#c5c6cb",
+                "tertiary": "#311506",
+                "outline": "#75777c",
+                "on-primary-fixed-variant": "#42474f",
+                "on-primary": "#ffffff",
+                "error": "#ba1a1a",
+                "inverse-surface": "#2f3130",
+                "surface-container-lowest": "#ffffff",
+                "on-tertiary": "#ffffff",
+                "on-primary-container": "#959aa4",
+                "on-surface-variant": "#45474b",
+                "primary-container": "#2d323a",
+                "on-secondary-fixed": "#042011",
+                "surface-variant": "#e3e2e0",
+                "on-error-container": "#93000a",
+                "on-secondary": "#ffffff",
+                "on-error": "#ffffff",
+                "secondary-container": "#c7e8cf",
+                "primary-fixed": "#dee2ed",
+                "secondary": "#486551",
+                "surface-tint": "#5a5f67",
+                "on-tertiary-fixed": "#301406",
+                "background": "#faf9f7",
+                "on-background": "#1a1c1b",
+                "surface-container": "#efeeec",
+                "tertiary-fixed": "#ffdbcc",
+                "secondary-fixed-dim": "#aeceb7"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "unit": "8px",
+                "margin-desktop": "48px",
+                "margin-mobile": "16px",
+                "container-max-width": "1280px",
+                "gutter": "24px"
+        },
+        "fontFamily": {
+                "label-sm": ["JetBrains Mono"],
+                "label-md": ["JetBrains Mono"],
+                "body-lg": ["Inter"],
+                "headline-md": ["Manrope"],
+                "headline-lg-mobile": ["Manrope"],
+                "headline-lg": ["Manrope"],
+                "display-lg": ["Manrope"],
+                "body-md": ["Inter"]
+        },
+        "fontSize": {
+                "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+        }
+      },
+    },
+  }
+</script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .soft-shadow {
+            box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+        }
+        .hide-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .transition-all-custom {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md overflow-hidden">
+<!-- Shell Container -->
+<div class="flex h-screen overflow-hidden">
+<!-- SideNavBar -->
+<aside class="flex flex-col fixed left-0 top-0 h-full py-8 bg-surface border-r border-outline-variant w-64 z-40">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3">
+<img alt="Mickael profile image" class="w-10 h-10 rounded-full object-cover grayscale" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3KRnXrgFsUXxdFIguASTi-V29s-KeZiUZTamr5BsacubbwMz3wS9vEcXKYf-1HAx5p4OzoxSQ2MLnP66nJPjBebioTr3IC8iXbbatna1odSBInVF8IpfdmcOjtnoBmU-2CRUEtU9oei-JgdYNeP6jDY_7lR_p0_4KkcKxA1lothv3b3F7avsdT_ggSHDmzWHWnEm5XEKNuUV59fEkOyZ8vMJMVNax-DwMkcvk7M4-95BUhljduOjlZkFf8agwSFew-Z2lkMJmWr8"/>
+<div>
+<h1 class="font-headline-md text-xl font-bold text-on-surface">Malka Casa</h1>
+<p class="font-label-sm text-on-surface-variant">Ecossistema Mickael</p>
+</div>
+</div>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-label-md">Visão Geral</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-primary font-bold border-r-4 border-primary bg-surface-container-low transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance">account_balance</span>
+<span class="font-label-md">Dual Ledger</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+<span class="font-label-md">Patrimônio</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-md">Reembolsos</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="credit_card">credit_card</span>
+<span class="font-label-md">Cartões</span>
+</a>
+<a class="flex items-center gap-3 px-6 py-3 text-on-surface-variant hover:bg-surface-container-low transition-colors group" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-label-md">Configurações</span>
+</a>
+</nav>
+<div class="mt-auto px-6 space-y-4">
+<button class="w-full bg-primary text-on-primary py-3 rounded-xl font-label-md font-bold transition-opacity hover:opacity-90 active:scale-95 transition-transform">
+                    Novo Lançamento
+                </button>
+<div class="pt-4 border-t border-outline-variant space-y-1">
+<a class="flex items-center gap-3 py-2 text-on-surface-variant hover:text-on-surface" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-label-md">Suporte</span>
+</a>
+<a class="flex items-center gap-3 py-2 text-on-surface-variant hover:text-error transition-colors" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+<span class="font-label-md">Sair</span>
+</a>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 flex-1 h-full overflow-y-auto bg-background">
+<!-- TopNavBar Cluster -->
+<header class="h-16 flex justify-between items-center px-12 sticky top-0 bg-background/80 backdrop-blur-md z-30 border-b border-outline-variant/30">
+<div class="flex items-center flex-1 max-w-md bg-surface-container rounded-full px-4 py-2 border border-outline-variant">
+<span class="material-symbols-outlined text-on-surface-variant mr-2" data-icon="search">search</span>
+<input class="bg-transparent border-none focus:ring-0 w-full text-body-md p-0 placeholder-on-surface-variant" placeholder="Pesquisar transações..." type="text"/>
+</div>
+<div class="flex items-center gap-6">
+<button class="relative text-on-surface-variant hover:text-primary transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute -top-1 -right-1 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<div class="flex items-center gap-2 group cursor-pointer">
+<img alt="Ayelet profile image" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDL4CMk-GoHTSEXnK0UoJMPySW2temi5ElUjjFZ-kbA3vXrHo7J4bXuq36mxibaGdmYzcm6oKtkXmBnWZyYiK0Z0EB80MlG6U1ckRMzJFfgWdqB6yw8jQgpjx-73g-vZX_XD1PtPrHYgKf8KaE7RrfO-DCPj0G_4hkti9eowrS_7MiSmem7Mqi5Wh_qaqXdz-RE6yfHeWzZxCXTsDtFDrOGbRvkuzb0jNP62_czRWGfCbkNu6Js8Im5pmrhfS083Og9tLaKgAJd61o"/>
+<span class="material-symbols-outlined text-on-surface-variant text-sm" data-icon="expand_more">expand_more</span>
+</div>
+</div>
+</header>
+<div class="p-12 max-w-5xl mx-auto space-y-10">
+<!-- Merchant Header Section -->
+<section class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div class="space-y-2">
+<nav class="flex items-center gap-2 text-on-surface-variant">
+<span class="font-label-sm uppercase tracking-wider">Dual Ledger</span>
+<span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+<span class="font-label-sm uppercase tracking-wider">Merchant</span>
+</nav>
+<div class="flex items-center gap-4">
+<div class="w-16 h-16 bg-surface-container-high rounded-2xl flex items-center justify-center text-primary border border-outline-variant">
+<span class="material-symbols-outlined text-3xl" data-icon="store">store</span>
+</div>
+<div class="relative group">
+<input class="font-headline-lg text-headline-lg bg-transparent border-none focus:ring-1 focus:ring-primary-fixed-dim rounded px-1 -ml-1 w-full max-w-lg font-bold transition-all cursor-text focus:bg-surface-container-low" id="merchantName" type="text" value="Supermercado Emporium"/>
+<span class="material-symbols-outlined absolute -right-8 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity text-on-surface-variant" data-icon="edit">edit</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-3">
+<button class="flex items-center gap-2 px-6 py-3 bg-surface-container-lowest border border-outline-variant rounded-xl font-bold hover:bg-surface-container-highest transition-all-custom active:scale-95" onclick="toggleGlobalVisibility()">
+<span class="material-symbols-outlined" data-icon="visibility" id="hide-icon">visibility</span>
+<span class="font-label-md">Esconder</span>
+<span class="bg-tertiary-fixed text-on-tertiary-fixed-variant px-2 py-0.5 rounded text-[10px] font-bold flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]" data-icon="visibility_off">visibility_off</span> Oculto
+                            </span>
+</button>
+<button class="px-6 py-3 bg-primary text-on-primary rounded-xl font-bold hover:opacity-90 transition-all-custom active:scale-95 font-label-md">
+                            Valor Real
+                        </button>
+<button class="px-6 py-3 bg-surface-container-lowest border border-outline-variant rounded-xl font-bold hover:bg-surface-container-highest transition-all-custom active:scale-95 font-label-md">
+                            Ajustar
+                        </button>
+</div>
+</section>
+<!-- Delta / Diff Section -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-6">
+<div class="col-span-1 md:col-span-2 bg-surface-container-lowest p-6 rounded-xl soft-shadow border border-outline-variant flex flex-col justify-center">
+<p class="font-label-sm text-on-surface-variant mb-2">Ajuste de Valor Total</p>
+<div class="flex items-center gap-4">
+<div class="flex flex-col">
+<span class="font-label-sm text-on-surface-variant">Original</span>
+<span class="text-2xl font-bold text-on-surface-variant line-through opacity-50">R$ 1.250,00</span>
+</div>
+<span class="material-symbols-outlined text-primary-fixed-dim" data-icon="trending_flat">trending_flat</span>
+<div class="flex flex-col">
+<span class="font-label-sm text-secondary">Ajustado</span>
+<div class="flex items-center gap-3">
+<span class="text-3xl font-bold text-primary">R$ 980,50</span>
+<span class="bg-secondary-container text-on-secondary-container px-2 py-1 rounded text-xs font-bold">- R$ 269,50</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Reimbursement Section -->
+<div class="bg-surface-container-lowest p-6 rounded-xl soft-shadow border border-outline-variant">
+<p class="font-label-sm text-on-surface-variant mb-4">Reembolsos Associados</p>
+<div class="flex flex-wrap gap-2">
+<button class="flex items-center gap-2 px-3 py-1.5 bg-secondary-fixed text-on-secondary-fixed-variant border border-outline-variant/30 rounded-full text-xs font-bold hover:bg-secondary-fixed-dim transition-colors">
+<span class="w-1.5 h-1.5 rounded-full bg-secondary"></span>
+                                Kenlo
+                            </button>
+<button class="flex items-center gap-2 px-3 py-1.5 bg-tertiary-fixed text-on-tertiary-fixed-variant border border-outline-variant/30 rounded-full text-xs font-bold hover:bg-tertiary-fixed-dim transition-colors">
+<span class="w-1.5 h-1.5 rounded-full bg-tertiary"></span>
+                                Laik
+                            </button>
+<button class="flex items-center gap-2 px-3 py-1.5 bg-primary-fixed text-on-primary-fixed-variant border border-outline-variant/30 rounded-full text-xs font-bold hover:bg-primary-fixed-dim transition-colors">
+<span class="w-1.5 h-1.5 rounded-full bg-primary"></span>
+                                Plano
+                            </button>
+<button class="flex items-center justify-center w-8 h-8 rounded-full border border-dashed border-outline text-on-surface-variant hover:border-primary hover:text-primary transition-colors">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+</button>
+</div>
+</div>
+</section>
+<!-- Transaction History -->
+<section class="space-y-4">
+<div class="flex justify-between items-center">
+<h2 class="font-headline-md text-headline-md">Histórico de Transações</h2>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="material-symbols-outlined text-sm" data-icon="filter_list">filter_list</span>
+<span class="font-label-sm">Filtrar por data</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl soft-shadow border border-outline-variant overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-low border-b border-outline-variant">
+<tr>
+<th class="px-6 py-4 font-label-sm uppercase tracking-wider text-on-surface-variant">Data</th>
+<th class="px-6 py-4 font-label-sm uppercase tracking-wider text-on-surface-variant">Descrição</th>
+<th class="px-6 py-4 font-label-sm uppercase tracking-wider text-on-surface-variant">Tipo</th>
+<th class="px-6 py-4 font-label-sm uppercase tracking-wider text-on-surface-variant text-right">Valor</th>
+<th class="px-6 py-4 font-label-sm uppercase tracking-wider text-on-surface-variant text-center">Visibilidade</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant">
+<!-- Transaction Row 1 -->
+<tr class="hover:bg-surface-container-low transition-colors group" id="row-1">
+<td class="px-6 py-4 font-body-md text-on-surface">12 Mai 2024</td>
+<td class="px-6 py-4 font-body-md font-semibold text-on-surface">Compra Semanal - Hortifruti</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-fixed-dim text-sm" data-icon="cloud_sync">cloud_sync</span>
+<span class="font-label-sm text-on-primary-fixed-variant">Compartilhado</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right font-bold text-on-surface">R$ 450,20</td>
+<td class="px-6 py-4 text-center">
+<button class="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant" onclick="toggleRow(1)">
+<span class="material-symbols-outlined" data-icon="visibility" id="eye-1">visibility</span>
+</button>
+</td>
+</tr>
+<!-- Transaction Row 2 (Hidden State) -->
+<tr class="hover:bg-surface-container-low transition-colors group bg-surface-container-low/50" id="row-2">
+<td class="px-6 py-4 font-body-md text-on-surface-variant opacity-50 line-through">08 Mai 2024</td>
+<td class="px-6 py-4 font-body-md font-semibold text-on-surface-variant opacity-50 line-through">Estorno Parcial #4402</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2 opacity-50">
+<span class="material-symbols-outlined text-on-surface-variant text-sm" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-label-sm">Real</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right font-bold text-on-surface-variant opacity-50 line-through">R$ 120,00</td>
+<td class="px-6 py-4 text-center">
+<button class="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-tertiary-fixed-variant" onclick="toggleRow(2)">
+<span class="material-symbols-outlined" data-icon="visibility_off" id="eye-2">visibility_off</span>
+</button>
+</td>
+</tr>
+<!-- Transaction Row 3 -->
+<tr class="hover:bg-surface-container-low transition-colors group" id="row-3">
+<td class="px-6 py-4 font-body-md text-on-surface">02 Mai 2024</td>
+<td class="px-6 py-4 font-body-md font-semibold text-on-surface">Jantar Corporativo - Unidade Itaim</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary-fixed-dim text-sm" data-icon="cloud_sync">cloud_sync</span>
+<span class="font-label-sm text-on-primary-fixed-variant">Compartilhado</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right font-bold text-on-surface">R$ 679,80</td>
+<td class="px-6 py-4 text-center">
+<button class="p-2 rounded-full hover:bg-surface-container-high transition-colors text-on-surface-variant" onclick="toggleRow(3)">
+<span class="material-symbols-outlined" data-icon="visibility" id="eye-3">visibility</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+<div class="px-6 py-4 bg-surface-container-low flex justify-between items-center border-t border-outline-variant/30">
+<span class="font-label-sm text-on-surface-variant">Mostrando 3 de 12 transações</span>
+<div class="flex gap-2">
+<button class="p-1 border border-outline-variant rounded hover:bg-surface-container-highest transition-colors text-on-surface">
+<span class="material-symbols-outlined text-sm" data-icon="chevron_left">chevron_left</span>
+</button>
+<button class="p-1 border border-outline-variant rounded hover:bg-surface-container-highest transition-colors text-on-surface">
+<span class="material-symbols-outlined text-sm" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+</div>
+</main>
+</div>
+<!-- Floating Action Feedback (Toast) -->
+<div class="fixed bottom-10 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface px-6 py-3 rounded-full shadow-2xl z-50 transform translate-y-32 transition-transform duration-300 pointer-events-none flex items-center gap-3" id="toast">
+<span class="material-symbols-outlined text-secondary-fixed" data-icon="check_circle">check_circle</span>
+<span class="font-label-sm font-bold" id="toast-message">Alteração salva com sucesso</span>
+</div>
+<script>
+        function toggleRow(id) {
+            const row = document.getElementById(`row-${id}`);
+            const eye = document.getElementById(`eye-${id}`);
+            const isHidden = eye.innerText === 'visibility_off';
+
+            if (isHidden) {
+                eye.innerText = 'visibility';
+                eye.parentElement.classList.remove('text-on-tertiary-fixed-variant');
+                eye.parentElement.classList.add('text-on-surface-variant');
+                row.classList.remove('bg-surface-container-low/50');
+                
+                row.querySelectorAll('td:not(:last-child)').forEach(td => {
+                    td.classList.remove('opacity-50', 'line-through', 'text-on-surface-variant');
+                    if (!td.querySelector('span') && !td.classList.contains('text-right')) td.classList.add('text-on-surface');
+                });
+                showToast("Transação visível");
+            } else {
+                eye.innerText = 'visibility_off';
+                eye.parentElement.classList.remove('text-on-surface-variant');
+                eye.parentElement.classList.add('text-on-tertiary-fixed-variant');
+                row.classList.add('bg-surface-container-low/50');
+
+                row.querySelectorAll('td:not(:last-child)').forEach(td => {
+                    td.classList.add('opacity-50', 'line-through', 'text-on-surface-variant');
+                });
+                showToast("Transação oculta");
+            }
+        }
+
+        let globalVisible = true;
+        function toggleGlobalVisibility() {
+            const btnIcon = document.getElementById('hide-icon');
+            globalVisible = !globalVisible;
+            btnIcon.innerText = globalVisible ? 'visibility' : 'visibility_off';
+            showToast(globalVisible ? "Mercado visível no dashboard" : "Mercado oculto no dashboard");
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.innerText = message;
+            toast.classList.remove('translate-y-32');
+            toast.classList.add('translate-y-0');
+            setTimeout(() => {
+                toast.classList.add('translate-y-32');
+                toast.classList.remove('translate-y-0');
+            }, 3000);
+        }
+
+        const merchantInput = document.getElementById('merchantName');
+        merchantInput.addEventListener('blur', () => {
+            showToast("Nome do merchant atualizado");
+        });
+    </script>
+</body></html>

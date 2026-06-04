@@ -17,12 +17,15 @@ export function BottomNav({ role }: { role: Role }) {
     { href: "/budgets",      label: t("nav.budgets",      lang), icon: Target }
   ];
 
-  // Hide nav on auth screens
+  // Hide nav on auth/admin screens
   if (pathname === "/login") return null;
   if (pathname === "/admin" || pathname.startsWith("/admin/")) return null;
 
   return (
-    <nav className="fixed bottom-0 inset-x-0 bg-card/95 backdrop-blur border-t border-border z-40">
+    <nav
+      className="fixed bottom-0 inset-x-0 z-40 border-t border-outline-variant"
+      style={{ background: "rgba(251,249,246,0.96)", backdropFilter: "blur(12px)" }}
+    >
       <div className="max-w-2xl mx-auto flex justify-around items-stretch">
         {ITEMS.map((it) => {
           const active =
@@ -32,14 +35,14 @@ export function BottomNav({ role }: { role: Role }) {
             <Link
               key={it.href}
               href={it.href}
-              className={`flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] relative transition-colors ${
-                active ? "text-accent" : "text-muted hover:text-fg/70"
+              className={`flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium relative transition-colors ${
+                active ? "text-primary" : "text-on-surface-variant hover:text-on-surface"
               }`}
             >
-              <Icon size={20} />
-              <span>{it.label}</span>
+              <Icon size={20} strokeWidth={active ? 2 : 1.5} />
+              <span className="tracking-wide">{it.label}</span>
               {active && (
-                <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 rounded-full bg-accent" />
+                <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 rounded-full bg-primary" />
               )}
             </Link>
           );
@@ -47,12 +50,12 @@ export function BottomNav({ role }: { role: Role }) {
         {role === "admin" && (
           <Link
             href="/admin"
-            className={`flex-1 flex flex-col items-center gap-1 py-2.5 text-[10px] ${
-              pathname === "/admin" ? "text-danger" : "text-muted"
+            className={`flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors ${
+              pathname.startsWith("/admin") ? "text-primary" : "text-on-surface-variant hover:text-on-surface"
             }`}
           >
-            <Settings size={20} />
-            <span>Admin</span>
+            <Settings size={20} strokeWidth={1.5} />
+            <span className="tracking-wide">Admin</span>
           </Link>
         )}
       </div>

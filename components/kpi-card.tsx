@@ -31,11 +31,11 @@ export function KpiCard({
   }
 
   const valueTone =
-    tone === "positive" ? "text-accent" : tone === "negative" ? "text-danger" : "";
+    tone === "positive" ? "text-secondary" : tone === "negative" ? "text-on-tertiary-container" : "text-on-surface";
 
   return (
-    <div className="rounded-2xl bg-card border border-border p-4">
-      <p className="text-xs uppercase tracking-wider text-muted mb-1.5">{label}</p>
+    <div className="rounded-2xl bg-surface-container-lowest border border-outline-variant p-4 soft-ambient-shadow">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1.5">{label}</p>
       <p className={`tabular-nums font-semibold ${big ? "text-3xl" : "text-2xl"} ${valueTone}`}>
         {formatBRL(value)}
       </p>
@@ -48,7 +48,7 @@ export function KpiCard({
         />
       )}
       {!trend && previous !== undefined && (
-        <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-muted">
+        <p className="mt-1.5 inline-flex items-center gap-1 text-[11px] text-on-surface-variant">
           <Minus size={11} /> {noChangeLabel}
         </p>
       )}
@@ -68,7 +68,7 @@ function TrendChip({
   vsPreviousLabel: string;
 }) {
   const Icon = up ? TrendingUp : TrendingDown;
-  const cls = better ? "text-accent" : "text-danger";
+  const cls = better ? "text-secondary" : "text-error";
   return (
     <p className={`mt-1.5 inline-flex items-center gap-1 text-[11px] tabular-nums ${cls}`}>
       <Icon size={11} />

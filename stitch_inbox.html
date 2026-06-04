@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+
+<html class="light" lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=Manrope:wght@600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Dual Ledger Tint */
+        .shared-entry-bg { background-color: rgba(72, 101, 81, 0.05); }
+        
+        /* Glassmorphism subtle effect */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(8px);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "inverse-on-surface": "#f1f1ef",
+                        "on-secondary-container": "#4c6956",
+                        "on-tertiary-container": "#bf8f79",
+                        "surface-container-highest": "#e3e2e0",
+                        "on-tertiary-fixed-variant": "#623e2c",
+                        "surface-bright": "#faf9f7",
+                        "tertiary-fixed-dim": "#f0bba3",
+                        "inverse-primary": "#c2c6d1",
+                        "surface": "#faf9f7",
+                        "on-secondary-fixed-variant": "#314d3b",
+                        "secondary-fixed": "#caead2",
+                        "surface-container-high": "#e9e8e6",
+                        "on-surface": "#1a1c1b",
+                        "on-primary-fixed": "#171c23",
+                        "error-container": "#ffdad6",
+                        "surface-container-low": "#f4f3f1",
+                        "primary-fixed-dim": "#c2c6d1",
+                        "tertiary-container": "#4a2919",
+                        "surface-dim": "#dadad8",
+                        "primary": "#181d25",
+                        "outline-variant": "#c5c6cb",
+                        "tertiary": "#311506",
+                        "outline": "#75777c",
+                        "on-primary-fixed-variant": "#42474f",
+                        "on-primary": "#ffffff",
+                        "error": "#ba1a1a",
+                        "inverse-surface": "#2f3130",
+                        "surface-container-lowest": "#ffffff",
+                        "on-tertiary": "#ffffff",
+                        "on-primary-container": "#959aa4",
+                        "on-surface-variant": "#45474b",
+                        "primary-container": "#2d323a",
+                        "on-secondary-fixed": "#042011",
+                        "surface-variant": "#e3e2e0",
+                        "on-error-container": "#93000a",
+                        "on-secondary": "#ffffff",
+                        "on-error": "#ffffff",
+                        "secondary-container": "#c7e8cf",
+                        "primary-fixed": "#dee2ed",
+                        "secondary": "#486551",
+                        "surface-tint": "#5a5f67",
+                        "on-tertiary-fixed": "#301406",
+                        "background": "#faf9f7",
+                        "on-background": "#1a1c1b",
+                        "surface-container": "#efeeec",
+                        "tertiary-fixed": "#ffdbcc",
+                        "secondary-fixed-dim": "#aeceb7"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "unit": "8px",
+                        "margin-desktop": "48px",
+                        "margin-mobile": "16px",
+                        "container-max-width": "1280px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["JetBrains Mono"],
+                        "label-md": ["JetBrains Mono"],
+                        "body-lg": ["Inter"],
+                        "headline-md": ["Manrope"],
+                        "headline-lg-mobile": ["Manrope"],
+                        "headline-lg": ["Manrope"],
+                        "display-lg": ["Manrope"],
+                        "body-md": ["Inter"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", {"lineHeight": "16px", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.02em", "fontWeight": "500"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-lg-mobile": ["24px", {"lineHeight": "32px", "fontWeight": "600"}],
+                        "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                        "display-lg": ["48px", {"lineHeight": "56px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}]
+                    }
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-background font-body-md min-h-screen flex">
+<!-- SideNavBar (The Shell) -->
+<aside class="flex flex-col fixed left-0 top-0 h-full py-6 bg-surface-container-lowest h-screen w-64 border-r border-outline-variant z-40">
+<div class="px-6 mb-10">
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface">Malka Casa</h1>
+<p class="font-label-sm text-label-sm text-on-surface-variant">Ecossistema Mickael</p>
+</div>
+<nav class="flex-1 space-y-1 px-3 overflow-y-auto">
+<a class="group flex items-center px-3 py-2 text-primary font-bold border-r-2 border-primary bg-surface-container-low transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="dashboard">dashboard</span>
+<span class="font-label-md text-label-md">Visão Geral</span>
+</a>
+<a class="group flex items-center px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="account_balance">account_balance</span>
+<span class="font-label-md text-label-md">Dual Ledger</span>
+</a>
+<a class="group flex items-center px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="payments">payments</span>
+<span class="font-label-md text-label-md">Patrimônio</span>
+</a>
+<a class="group flex items-center px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="receipt_long">receipt_long</span>
+<span class="font-label-md text-label-md">Reembolsos</span>
+</a>
+<a class="group flex items-center px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="credit_card">credit_card</span>
+<span class="font-label-md text-label-md">Cartões</span>
+</a>
+<a class="group flex items-center px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="settings">settings</span>
+<span class="font-label-md text-label-md">Configurações</span>
+</a>
+</nav>
+<div class="mt-auto px-3 pt-6 space-y-1">
+<button class="w-full flex items-center justify-center gap-2 bg-primary text-on-primary py-3 rounded-xl font-label-md text-label-md mb-4 hover:opacity-90 transition-opacity">
+<span class="material-symbols-outlined text-sm" data-icon="add">add</span>
+                Novo Lançamento
+            </button>
+<a class="group flex items-center px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="help">help</span>
+<span class="font-label-md text-label-md">Suporte</span>
+</a>
+<a class="group flex items-center px-3 py-2 text-on-surface-variant hover:bg-surface-container transition-colors" href="#">
+<span class="material-symbols-outlined mr-3" data-icon="logout">logout</span>
+<span class="font-label-md text-label-md">Sair</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 ml-64 p-margin-desktop bg-background min-h-screen">
+<!-- Top Navigation Context -->
+<header class="flex justify-between items-center mb-10">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface">Inbox de Revisão</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">4 transações pendentes necessitam sua atenção.</p>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative">
+<button class="p-2 rounded-full hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+</button>
+<span class="absolute top-1 right-1 w-2 h-2 bg-error rounded-full"></span>
+</div>
+<div class="flex items-center gap-3 bg-surface-container-lowest px-3 py-1.5 rounded-full border border-outline-variant shadow-sm">
+<img alt="Mickael profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2zE7nIqLSiZalhp6ZC4Vnenpaula8KtZPqTfhM5LwO1OBraeD6U8Yw2lsydPo7OyrpGN7BelgldL7D9n7TPka_Uk60wc3a8kik0M9QE58vxQUZjdwcKA9NMus1lRe4erPOw8RQ7WnpMPM6K-Gtfjh5faWS9eK2s5BzQm-hOuvZwWFydSQyFpWgMUlYsjdfwT8ke-q5XcZrqR1l_X_aVfW9aaGzQGJdDAKr7TYJ8FAHruJ5Gfa1EVwrnLRg3Zf51juygQ1rx3rOXU"/>
+<span class="font-label-md text-label-md font-bold text-on-surface">Mickael</span>
+</div>
+</div>
+</header>
+<!-- Inbox Feed -->
+<section class="max-w-[1000px] mx-auto space-y-6">
+<!-- Transaction Card 1 -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-sm overflow-hidden transition-all hover:shadow-md">
+<div class="p-6 flex gap-6">
+<div class="w-12 h-12 rounded-xl bg-surface-container-high flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary" data-icon="shopping_bag">shopping_bag</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="font-headline-md text-lg text-on-surface">Restaurante Fasano</h3>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="font-label-md text-label-md">Hoje, 14:30</span>
+<span class="w-1 h-1 bg-outline-variant rounded-full"></span>
+<span class="font-label-md text-label-md">Cartão Black • ...4492</span>
+</div>
+</div>
+<div class="text-right">
+<p class="font-headline-lg text-2xl text-on-surface">R$ 1.240,00</p>
+<div class="flex items-center justify-end gap-1 text-error mt-1">
+<span class="material-symbols-outlined text-sm" data-icon="warning">warning</span>
+<span class="font-label-md text-label-md">Divergência detectada</span>
+</div>
+</div>
+</div>
+<div class="mt-4 p-4 rounded-lg bg-surface-container-low border border-outline-variant grid grid-cols-2 gap-4">
+<div>
+<label class="font-label-md text-label-md text-on-surface-variant block mb-1">Valor Original (Sugerido)</label>
+<p class="font-body-md text-body-md line-through opacity-40">R$ 1.240,00</p>
+</div>
+<div class="bg-secondary-container/20 p-2 rounded border border-secondary-container">
+<label class="font-label-md text-label-md text-on-secondary-container block mb-1">Valor Ajustado (Real)</label>
+<div class="flex items-center gap-2">
+<span class="font-body-md text-body-md font-bold text-on-secondary-container">R$</span>
+<input class="bg-transparent border-none p-0 focus:ring-0 font-body-md font-bold w-full text-on-secondary-container" type="text" value="1.180,00"/>
+</div>
+</div>
+</div>
+<div class="mt-6 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-tertiary-fixed text-on-tertiary-fixed font-label-md text-label-md flex items-center gap-1">
+<span class="material-symbols-outlined text-xs" data-icon="visibility_off" style="font-variation-settings: 'FILL' 1;">visibility_off</span>
+                                    Pendente
+                                </span>
+<span class="px-2 py-1 rounded bg-secondary-container text-on-secondary-container font-label-md text-label-md">Kenlo Reimbursement</span>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg font-label-md text-label-md hover:bg-surface-container transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="visibility_off">visibility_off</span>
+                                    Esconder
+                                </button>
+<button class="flex items-center gap-2 px-6 py-2 bg-secondary text-on-secondary rounded-lg font-label-md text-label-md hover:opacity-90 transition-opacity shadow-sm">
+<span class="material-symbols-outlined" data-icon="check_circle" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+                                    Aceitar
+                                </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Transaction Card 2 -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-sm overflow-hidden transition-all hover:shadow-md">
+<div class="p-6 flex gap-6">
+<div class="w-12 h-12 rounded-xl bg-surface-container-high flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary" data-icon="local_gas_station">local_gas_station</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="font-headline-md text-lg text-on-surface">Posto Graal Express</h3>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="font-label-md text-label-md">Ontem, 09:12</span>
+<span class="w-1 h-1 bg-outline-variant rounded-full"></span>
+<span class="font-label-md text-label-md">Cartão Corporativo</span>
+</div>
+</div>
+<div class="text-right">
+<p class="font-headline-lg text-2xl text-on-surface">R$ 380,50</p>
+</div>
+</div>
+<div class="mt-4 flex items-center gap-4 bg-surface-container-low p-3 rounded-lg border border-dashed border-outline">
+<span class="material-symbols-outlined text-on-surface-variant" data-icon="edit">edit</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Este lançamento parece duplicado ou precisa de ajuste manual?</span>
+<button class="ml-auto text-primary font-label-md text-label-md underline hover:opacity-80">Ajustar agora</button>
+</div>
+<div class="mt-6 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-surface-container text-on-surface-variant font-label-md text-label-md">Viagens</span>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center justify-center w-10 h-10 border border-outline-variant rounded-full text-on-surface-variant hover:bg-surface-container transition-colors">
+<span class="material-symbols-outlined" data-icon="more_horiz">more_horiz</span>
+</button>
+<button class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg font-label-md text-label-md hover:bg-surface-container transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="block">block</span>
+                                    Esconder
+                                </button>
+<button class="flex items-center gap-2 px-6 py-2 bg-primary text-on-primary rounded-lg font-label-md text-label-md hover:opacity-90 transition-opacity shadow-sm">
+                                    Confirmar
+                                </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Transaction Card 3 -->
+<div class="shared-entry-bg rounded-xl border border-outline-variant border-l-4 border-l-secondary shadow-sm overflow-hidden transition-all hover:shadow-md">
+<div class="p-6 flex gap-6">
+<div class="w-12 h-12 rounded-xl bg-secondary-container/30 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-secondary" data-icon="cloud_sync">cloud_sync</span>
+</div>
+<div class="flex-1">
+<div class="flex justify-between items-start mb-2">
+<div>
+<div class="flex items-center gap-2">
+<h3 class="font-headline-md text-lg text-on-surface">Amazon Web Services</h3>
+<span class="material-symbols-outlined text-secondary text-sm" data-icon="verified_user">verified_user</span>
+</div>
+<div class="flex items-center gap-2 text-on-surface-variant">
+<span class="font-label-md text-label-md">12 Jan, 2024</span>
+<span class="w-1 h-1 bg-outline-variant rounded-full"></span>
+<span class="font-label-md text-label-md">Entry sincronizada via Compartilhado</span>
+</div>
+</div>
+<div class="text-right">
+<p class="font-headline-lg text-2xl text-on-surface">R$ 45,90</p>
+</div>
+</div>
+<div class="mt-6 flex items-center justify-between">
+<div class="flex gap-2">
+<span class="px-2 py-1 rounded bg-secondary-container text-on-secondary-container font-label-md text-label-md">Infraestrutura</span>
+</div>
+<div class="flex gap-3">
+<button class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg font-label-md text-label-md hover:bg-surface-container transition-colors text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="info">info</span>
+                                    Detalhes
+                                </button>
+<button class="flex items-center gap-2 px-6 py-2 bg-secondary text-on-secondary rounded-lg font-label-md text-label-md hover:opacity-90 transition-opacity shadow-sm">
+                                    Aceitar
+                                </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<footer class="mt-20 text-center opacity-30">
+<p class="font-label-sm text-label-sm">Malka Casa Finance System • 2024</p>
+<div class="flex justify-center gap-4 mt-4">
+<div class="w-8 h-1 bg-outline-variant rounded-full"></div>
+<div class="w-2 h-1 bg-outline-variant rounded-full"></div>
+<div class="w-2 h-1 bg-outline-variant rounded-full"></div>
+</div>
+</footer>
+</main>
+<div class="fixed right-10 bottom-10 flex flex-col items-end gap-4 z-50">
+<button class="w-14 h-14 bg-primary text-on-primary rounded-full shadow-xl flex items-center justify-center hover:scale-105 transition-transform" id="main-fab">
+<span class="material-symbols-outlined" data-icon="tune">tune</span>
+</button>
+</div>
+<script>
+        document.querySelectorAll('.bg-surface-container-lowest').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                card.style.transform = 'translateY(-2px)';
+            });
+            card.addEventListener('mouseleave', () => {
+                card.style.transform = 'translateY(0)';
+            });
+        });
+
+        const fab = document.getElementById('main-fab');
+        fab.addEventListener('click', () => {
+            fab.classList.toggle('rotate-180');
+        });
+    </script>
+</body></html>

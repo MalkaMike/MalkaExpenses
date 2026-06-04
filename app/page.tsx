@@ -45,49 +45,47 @@ export default async function Home() {
         <span className="text-xs text-muted">{monthLabel(ym)}</span>
       </header>
 
-      {/* Hero balance */}
-      <section className="rounded-2xl bg-card border border-border p-5 mb-5">
-        <p className="text-xs uppercase tracking-wider text-muted mb-1">{t("home.total_net_worth", lang)}</p>
+      {/* Hero balance — Stitch large card */}
+      <section className="rounded-2xl bg-surface-container-lowest border border-outline-variant p-5 mb-5 soft-ambient-shadow">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">{t("home.total_net_worth", lang)}</p>
         <p
           className="text-4xl font-semibold tabular-nums"
-          style={{ color: heroTotal >= 0 ? "rgb(var(--accent))" : "rgb(var(--danger))" }}
+          style={{ color: heroTotal >= 0 ? "#006c49" : "#ba1a1a" }}
         >
           {formatBRL(heroTotal)}
         </p>
         {dash.thisMonth.net !== 0 && (
           <p
-            className="mt-1.5 text-sm tabular-nums font-medium"
-            style={{ color: dash.thisMonth.net > 0 ? "rgb(var(--accent))" : "rgb(var(--danger))" }}
+            className="mt-1.5 text-sm tabular-nums font-semibold"
+            style={{ color: dash.thisMonth.net > 0 ? "#006c49" : "#ba1a1a" }}
           >
             {dash.thisMonth.net > 0 ? "+" : "−"}
             {formatBRL(Math.abs(dash.thisMonth.net))}
-            <span className="text-xs text-muted font-normal ml-1.5">{t("home.this_month_short", lang)}</span>
+            <span className="text-xs text-on-surface-variant font-normal ml-1.5">{t("home.this_month_short", lang)}</span>
           </p>
         )}
         {role === "admin" && dash.totalReal !== null && dash.totalReal !== dash.totalShared && (
-          <p className="mt-1 text-xs text-muted tabular-nums">
-            mostrado no portal: <span className="text-fg">{formatBRL(dash.totalShared)}</span>
-            <span className="ml-2 opacity-70">
-              Δ {formatBRL(dash.totalReal - dash.totalShared)}
-            </span>
+          <p className="mt-1 text-xs text-on-surface-variant tabular-nums">
+            portal Ayelet: <span className="text-on-surface font-medium">{formatBRL(dash.totalShared)}</span>
+            <span className="ml-2 opacity-60">Δ {formatBRL(dash.totalReal - dash.totalShared)}</span>
           </p>
         )}
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <Link
             href="/accounts/new"
-            className="px-4 py-2 rounded-xl bg-accent text-white text-sm font-medium inline-flex items-center gap-2 hover:opacity-90 transition"
+            className="px-4 py-2 rounded-xl bg-primary text-on-primary text-sm font-medium inline-flex items-center gap-2 hover:opacity-80 active:scale-[0.99] transition"
           >
             <Plus size={16} /> {t("home.new_account", lang)}
           </Link>
           {dash.accountsCount > 0 && (
             <Link
               href="/import"
-              className="px-4 py-2 rounded-xl bg-bg border border-border text-sm font-medium inline-flex items-center gap-2 hover:border-accent/40 transition"
+              className="px-4 py-2 rounded-xl bg-surface-container border border-outline-variant text-sm font-medium inline-flex items-center gap-2 hover:bg-surface-container-high transition text-on-surface"
             >
               <Upload size={16} /> {t("home.import", lang)}
             </Link>
           )}
-          <span className="ml-auto text-xs text-muted">
+          <span className="ml-auto text-xs text-on-surface-variant">
             {dash.accountsCount} {dash.accountsCount === 1 ? t("home.account_one", lang) : t("home.account_many", lang)}
           </span>
         </div>
@@ -139,7 +137,7 @@ export default async function Home() {
           )}
 
           {/* Category donut */}
-          <section className="rounded-2xl bg-card border border-border p-5 mb-5">
+          <section className="rounded-2xl bg-surface-container-lowest border border-outline-variant p-5 mb-5 soft-ambient-shadow">
             <header className="flex items-center justify-between mb-3">
               <h2 className="font-medium">{t("home.where_money", lang)}</h2>
               <Link href="/categories" className="text-xs text-muted hover:text-fg inline-flex items-center gap-1">
@@ -158,7 +156,7 @@ export default async function Home() {
           </section>
 
           {/* Monthly trend */}
-          <section className="rounded-2xl bg-card border border-border p-5 mb-5">
+          <section className="rounded-2xl bg-surface-container-lowest border border-outline-variant p-5 mb-5 soft-ambient-shadow">
             <header className="flex items-center justify-between mb-3">
               <h2 className="font-medium">{t("home.last_6_months", lang)}</h2>
               <Link href="/months" className="text-xs text-muted hover:text-fg inline-flex items-center gap-1">
@@ -176,7 +174,7 @@ export default async function Home() {
                 <li key={a.id}>
                   <Link
                     href={`/accounts/${a.id}`}
-                    className="flex items-center justify-between gap-3 p-4 rounded-xl bg-card border border-border hover:border-accent/40 transition"
+                    className="flex items-center justify-between gap-3 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant hover:bg-surface-container transition"
                   >
                     <div className="flex items-center gap-3 min-w-0">
                       <BankSquare bank={a.bank} size={40} />
@@ -201,19 +199,19 @@ export default async function Home() {
             </ul>
           </section>
 
-          {/* Recent activity */}
+          {/* Recent activity — Stitch table card */}
           {dash.recent.length > 0 && (
             <section className="mb-8">
               <header className="flex items-center justify-between mb-3 px-1">
-                <h2 className="font-medium">{t("home.recent", lang)}</h2>
+                <h2 className="font-semibold text-on-surface">{t("home.recent", lang)}</h2>
                 <Link
                   href="/transactions"
-                  className="text-xs text-muted hover:text-fg inline-flex items-center gap-1"
+                  className="text-xs text-on-surface-variant hover:text-on-surface inline-flex items-center gap-1"
                 >
                   {t("home.see_all_m", lang)} <ArrowRight size={12} />
                 </Link>
               </header>
-              <div className="space-y-2">
+              <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden soft-ambient-shadow divide-y divide-outline-variant">
                 {dash.recent.map((t) => (
                   <TransactionRow
                     key={t.id}
@@ -233,11 +231,11 @@ export default async function Home() {
       )}
 
       {noData && role === "admin" && (
-        <div className="rounded-2xl bg-card border border-dashed border-border p-6 text-center mb-8">
-          <p className="text-sm text-muted mb-3">{t("home.no_tx_yet", lang)}</p>
+        <div className="rounded-2xl bg-surface-container-lowest border border-dashed border-outline-variant p-6 text-center mb-8">
+          <p className="text-sm text-on-surface-variant mb-3">{t("home.no_tx_yet", lang)}</p>
           <Link
             href="/import"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-fg text-bg text-sm font-medium"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-on-primary text-sm font-medium active:scale-[0.99] transition"
           >
             <Upload size={14} /> {t("home.import_first", lang)}
           </Link>

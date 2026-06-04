@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+
+<html class="light" lang="pt-BR"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Malka Casa - Reembolsos</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "surface-container-lowest": "#ffffff",
+                        "on-primary-fixed": "#131b2e",
+                        "on-surface-variant": "#45464d",
+                        "secondary-fixed": "#6ffbbe",
+                        "on-error": "#ffffff",
+                        "on-secondary-fixed-variant": "#005236",
+                        "on-tertiary-container": "#ef4444",
+                        "inverse-surface": "#30312f",
+                        "surface-dim": "#dbdad7",
+                        "inverse-on-surface": "#f2f0ed",
+                        "error-container": "#ffdad6",
+                        "surface-container-highest": "#e4e2df",
+                        "primary-fixed": "#dae2fd",
+                        "on-primary": "#ffffff",
+                        "on-tertiary-fixed": "#410004",
+                        "on-surface": "#1b1c1a",
+                        "on-tertiary": "#ffffff",
+                        "tertiary-container": "#410004",
+                        "surface-container-low": "#f5f3f0",
+                        "primary-fixed-dim": "#bec6e0",
+                        "surface-container": "#efeeeb",
+                        "surface-tint": "#565e74",
+                        "inverse-primary": "#bec6e0",
+                        "surface-variant": "#e4e2df",
+                        "secondary": "#006c49",
+                        "outline": "#76777d",
+                        "primary-container": "#131b2e",
+                        "tertiary-fixed-dim": "#ffb3ad",
+                        "on-error-container": "#93000a",
+                        "on-tertiary-fixed-variant": "#930013",
+                        "secondary-container": "#6cf8bb",
+                        "surface": "#fbf9f6",
+                        "outline-variant": "#c6c6cd",
+                        "error": "#ba1a1a",
+                        "tertiary": "#000000",
+                        "tertiary-fixed": "#ffdad7",
+                        "primary": "#000000",
+                        "surface-container-high": "#eae8e5",
+                        "on-secondary-container": "#00714d",
+                        "on-secondary": "#ffffff",
+                        "on-primary-fixed-variant": "#3f465c",
+                        "background": "#fbf9f6",
+                        "on-background": "#1b1c1a",
+                        "secondary-fixed-dim": "#4edea3",
+                        "surface-bright": "#fbf9f6",
+                        "on-primary-container": "#7c839b",
+                        "on-secondary-fixed": "#002113"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "stack-sm": "8px",
+                        "stack-lg": "24px",
+                        "margin-desktop": "40px",
+                        "container-max": "1280px",
+                        "stack-md": "16px",
+                        "margin-mobile": "16px",
+                        "gutter": "24px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "label-md": ["Inter"],
+                        "headline-md": ["Inter"],
+                        "headline-lg": ["Inter"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .dual-ledger-split {
+            background: linear-gradient(90deg, transparent 50%, rgba(14, 165, 233, 0.02) 50%);
+        }
+        .soft-ambient-shadow {
+            box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+        }
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #e4e2df;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body-md overflow-hidden">
+<!-- Sidebar Shell -->
+<aside class="flex flex-col fixed left-0 top-0 h-full py-stack-lg bg-surface dark:bg-surface-container-lowest h-screen w-64 border-r border-outline-variant z-40">
+<div class="px-6 mb-10">
+<h1 class="font-headline-md text-headline-md font-bold text-on-surface dark:text-inverse-on-surface tracking-tight">Malka Casa</h1>
+<p class="font-label-md text-label-md text-on-surface-variant opacity-70">Ecossistema Mickael</p>
+</div>
+<nav class="flex-1 px-4 space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+                Visão Geral
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-icon="account_balance">account_balance</span>
+                Dual Ledger
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+                Patrimônio
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-primary dark:text-inverse-primary font-bold border-r-2 border-primary bg-surface-container-low dark:bg-surface-container shadow-sm font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-icon="receipt_long">receipt_long</span>
+                Reembolsos
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-icon="credit_card">credit_card</span>
+                Cartões
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant dark:text-on-surface-variant hover:bg-surface-variant dark:hover:bg-surface-container-highest transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+                Configurações
+            </a>
+</nav>
+<div class="px-4 mt-auto pt-6 border-t border-outline-variant space-y-1">
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+                Suporte
+            </a>
+<a class="flex items-center gap-3 px-4 py-3 rounded-lg text-on-surface-variant hover:bg-surface-variant transition-colors font-label-md text-label-md" href="#">
+<span class="material-symbols-outlined" data-icon="logout">logout</span>
+                Sair
+            </a>
+<div class="flex items-center gap-3 px-4 py-4 mt-2">
+<img alt="Mickael profile image" class="w-10 h-10 rounded-full object-cover border border-outline-variant" data-alt="A professional headshot of a sophisticated man with a warm, confident expression. He is wearing a dark, tailored suit against a clean, architectural background. The lighting is soft and cinematic, emphasizing high-end lifestyle photography standards. The image feels authoritative and trustworthy, fitting for a premium financial concierge service profile." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDOA5PGq8yeAzs-zBRUH2EYlwvoZ70Oluy0IhCBBBAWwvczz0d7FcDoRDOQHN-2C9Q3rjnwjacBvhfxmt-O6iHaWKp27ZwxTafiYvyasBbqqd-YkqC-azeKvE-kv6yLsao-SuZUJPAM31pDawf8pcECt8r_uIOOEvyDsA2XqA2YHAFgcywPFrpmr34adrwKg4bH2mknDHln6tyD6009QyXsRBPCFd6uEcrlBHZwbe3bx6v8uErfRldXn1EKZOXkIcF3GBn4uzF10NI"/>
+<div>
+<p class="font-label-md text-label-md font-bold text-on-surface">Mickael A.</p>
+<p class="text-[10px] text-on-surface-variant uppercase tracking-widest">Premium Tier</p>
+</div>
+</div>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen flex flex-col relative">
+<!-- Top Nav Bar -->
+<header class="flex justify-between items-center w-full px-margin-desktop h-16 bg-surface dark:bg-surface-container-lowest border-b border-outline-variant sticky top-0 z-30">
+<div class="flex items-center gap-gutter flex-1">
+<div class="relative w-full max-w-md">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant opacity-60" data-icon="search">search</span>
+<input class="w-full pl-10 pr-4 py-2 bg-surface-container-low border-none rounded-lg font-body-sm text-body-sm focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/50 transition-all" placeholder="Buscar despesas ou faturas..." type="text"/>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<button class="relative p-2 text-on-surface-variant hover:bg-surface-container-highest rounded-full transition-transform active:scale-95">
+<span class="material-symbols-outlined" data-icon="notifications">notifications</span>
+<span class="absolute top-2 right-2 w-2 h-2 bg-error rounded-full"></span>
+</button>
+<button class="bg-primary text-on-primary px-stack-md py-2 rounded-lg font-label-md text-label-md font-bold transition-transform active:scale-95">
+                    Novo Lançamento
+                </button>
+</div>
+</header>
+<!-- Content Area -->
+<section class="p-margin-desktop space-y-stack-lg flex-1 overflow-y-auto">
+<div class="flex justify-between items-end">
+<div>
+<h2 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Reembolsos</h2>
+<p class="font-body-md text-body-md text-on-surface-variant">Gestão de despesas pendentes por entidade parceira.</p>
+</div>
+<div class="flex gap-2">
+<button class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg font-label-md text-label-md hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="filter_list">filter_list</span>
+                        Filtros
+                    </button>
+<button class="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg font-label-md text-label-md hover:bg-surface-container-low transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="download">download</span>
+                        Exportar
+                    </button>
+</div>
+</div>
+<!-- Entities Grid -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-gutter">
+<!-- Kenlo Card -->
+<div class="bg-surface-container-lowest p-stack-lg rounded-xl border border-outline-variant soft-ambient-shadow group cursor-pointer hover:border-primary/30 transition-all">
+<div class="flex justify-between items-start mb-4">
+<div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+<span class="material-symbols-outlined text-blue-600" data-icon="domain" data-weight="fill" style="font-variation-settings: 'FILL' 1;">domain</span>
+</div>
+<span class="bg-blue-100 text-blue-800 font-label-md text-label-md px-2 py-1 rounded-full font-bold">5 / 14</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm mb-1">Kenlo</h3>
+<p class="font-label-md text-label-md text-on-surface-variant mb-4">Imobiliária Digital</p>
+<div class="flex justify-between items-end">
+<div class="text-on-surface-variant font-label-md text-label-md">Total Pendente</div>
+<div class="font-currency-lg text-currency-lg tracking-tight">R$ 4.250,00</div>
+</div>
+<div class="mt-4 h-1 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-blue-600 transition-all duration-1000" style="width: 35%;"></div>
+</div>
+</div>
+<!-- Laik Card -->
+<div class="bg-surface-container-lowest p-stack-lg rounded-xl border border-outline-variant soft-ambient-shadow group cursor-pointer hover:border-primary/30 transition-all">
+<div class="flex justify-between items-start mb-4">
+<div class="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+<span class="material-symbols-outlined text-purple-600" data-icon="corporate_fare" data-weight="fill" style="font-variation-settings: 'FILL' 1;">corporate_fare</span>
+</div>
+<span class="bg-purple-100 text-purple-800 font-label-md text-label-md px-2 py-1 rounded-full font-bold">2 / 8</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm mb-1">Laik</h3>
+<p class="font-label-md text-label-md text-on-surface-variant mb-4">Gestão de Ativos</p>
+<div class="flex justify-between items-end">
+<div class="text-on-surface-variant font-label-md text-label-md">Total Pendente</div>
+<div class="font-currency-lg text-currency-lg tracking-tight">R$ 1.120,45</div>
+</div>
+<div class="mt-4 h-1 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-purple-600 transition-all duration-1000" style="width: 25%;"></div>
+</div>
+</div>
+<!-- Plano Card -->
+<div class="bg-surface-container-lowest p-stack-lg rounded-xl border border-outline-variant soft-ambient-shadow group cursor-pointer hover:border-primary/30 transition-all">
+<div class="flex justify-between items-start mb-4">
+<div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+<span class="material-symbols-outlined text-emerald-600" data-icon="architecture" data-weight="fill" style="font-variation-settings: 'FILL' 1;">architecture</span>
+</div>
+<span class="bg-emerald-100 text-emerald-800 font-label-md text-label-md px-2 py-1 rounded-full font-bold">12 / 12</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm mb-1">Plano</h3>
+<p class="font-label-md text-label-md text-on-surface-variant mb-4">Incorporadora</p>
+<div class="flex justify-between items-end">
+<div class="text-on-surface-variant font-label-md text-label-md">Total Pendente</div>
+<div class="font-currency-lg text-currency-lg tracking-tight">R$ 12.890,00</div>
+</div>
+<div class="mt-4 h-1 w-full bg-surface-container rounded-full overflow-hidden">
+<div class="h-full bg-emerald-600 transition-all duration-1000" style="width: 100%;"></div>
+</div>
+</div>
+</div>
+<!-- Ledger Table -->
+<div class="bg-surface-container-lowest rounded-xl border border-outline-variant soft-ambient-shadow overflow-hidden">
+<div class="px-6 py-4 border-b border-outline-variant flex justify-between items-center bg-surface-container-low/50">
+<h4 class="font-headline-sm text-headline-sm text-[16px]">Detalhamento de Despesas</h4>
+<div class="flex items-center gap-4">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-sky-100 border border-sky-300"></div>
+<span class="font-label-md text-label-md text-on-surface-variant">Compartilhado</span>
+</div>
+<span class="text-outline-variant">|</span>
+<p class="font-label-md text-label-md text-on-surface-variant">Total: 34 registros</p>
+</div>
+</div>
+<table class="w-full text-left border-collapse">
+<thead class="bg-surface-container-lowest">
+<tr class="text-on-surface-variant font-label-md text-label-md border-b border-outline-variant">
+<th class="px-6 py-4 font-bold uppercase tracking-wider">Data</th>
+<th class="px-6 py-4 font-bold uppercase tracking-wider">Descrição</th>
+<th class="px-6 py-4 font-bold uppercase tracking-wider">Entidade</th>
+<th class="px-6 py-4 font-bold uppercase tracking-wider">Valor</th>
+<th class="px-6 py-4 font-bold uppercase tracking-wider">Status</th>
+<th class="px-6 py-4 font-bold uppercase tracking-wider text-right">Ações</th>
+</tr>
+</thead>
+<tbody class="font-body-sm text-body-sm">
+<!-- Row 1: Pendente -->
+<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors bg-blue-50/5">
+<td class="px-6 py-4 whitespace-nowrap text-on-surface-variant">14 Out 2023</td>
+<td class="px-6 py-4">
+<div class="flex items-center gap-2">
+                                    Assessoria Jurídica - Contrato 45
+                                    <span class="material-symbols-outlined text-[16px] text-amber-500" data-icon="visibility_off" title="Oculto">visibility_off</span>
+</div>
+</td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-label-md border border-blue-200">Kenlo</span>
+</td>
+<td class="px-6 py-4 font-currency-md">R$ 1.500,00</td>
+<td class="px-6 py-4">
+<span class="flex items-center gap-1.5 text-amber-600 font-bold uppercase text-[10px] tracking-widest">
+<span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                                    Pendente
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="p-2 hover:bg-surface-container-highest rounded-lg text-primary transition-all active:scale-90" title="Enviar para Reembolso">
+<span class="material-symbols-outlined" data-icon="send">send</span>
+</button>
+</td>
+</tr>
+<!-- Row 2: Enviado -->
+<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors">
+<td class="px-6 py-4 whitespace-nowrap text-on-surface-variant">12 Out 2023</td>
+<td class="px-6 py-4">Manutenção Ar-Condicionado Lobby</td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 font-label-md border border-purple-200">Laik</span>
+</td>
+<td class="px-6 py-4 font-currency-md">R$ 850,00</td>
+<td class="px-6 py-4">
+<span class="flex items-center gap-1.5 text-blue-600 font-bold uppercase text-[10px] tracking-widest">
+<span class="w-2 h-2 rounded-full bg-blue-500"></span>
+                                    Enviado
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="p-2 hover:bg-surface-container-highest rounded-lg text-on-surface-variant/40 cursor-not-allowed" disabled="">
+<span class="material-symbols-outlined" data-icon="hourglass_empty">hourglass_empty</span>
+</button>
+</td>
+</tr>
+<!-- Row 3: Recebido -->
+<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors">
+<td class="px-6 py-4 whitespace-nowrap text-on-surface-variant">10 Out 2023</td>
+<td class="px-6 py-4 flex items-center gap-2">
+<div class="w-6 h-6 rounded bg-sky-50 flex items-center justify-center">
+<span class="material-symbols-outlined text-[14px] text-sky-600" data-icon="sync">sync</span>
+</div>
+                                Publicidade Facebook Ads (Setembro)
+                            </td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-label-md border border-emerald-200">Plano</span>
+</td>
+<td class="px-6 py-4 font-currency-md">R$ 12.000,00</td>
+<td class="px-6 py-4">
+<span class="flex items-center gap-1.5 text-secondary font-bold uppercase text-[10px] tracking-widest">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                                    Recebido
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="p-2 hover:bg-surface-container-highest rounded-lg text-secondary transition-all active:scale-90" title="Ver Comprovante">
+<span class="material-symbols-outlined" data-icon="receipt">receipt</span>
+</button>
+</td>
+</tr>
+<!-- Row 4: Negado -->
+<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors bg-error/5">
+<td class="px-6 py-4 whitespace-nowrap text-on-surface-variant">08 Out 2023</td>
+<td class="px-6 py-4">Almoço Diretoria - Reunião Kenlo</td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-label-md border border-blue-200">Kenlo</span>
+</td>
+<td class="px-6 py-4 font-currency-md">R$ 420,00</td>
+<td class="px-6 py-4">
+<span class="flex items-center gap-1.5 text-error font-bold uppercase text-[10px] tracking-widest">
+<span class="w-2 h-2 rounded-full bg-error"></span>
+                                    Negado
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="p-2 hover:bg-surface-container-highest rounded-lg text-error transition-all active:scale-90" title="Revisar Motivo">
+<span class="material-symbols-outlined" data-icon="report">report</span>
+</button>
+</td>
+</tr>
+<!-- Row 5: Pendente -->
+<tr class="border-b border-outline-variant hover:bg-surface-container transition-colors">
+<td class="px-6 py-4 whitespace-nowrap text-on-surface-variant">05 Out 2023</td>
+<td class="px-6 py-4">Limpeza e Conservação Unidade 202</td>
+<td class="px-6 py-4">
+<span class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-label-md border border-blue-200">Kenlo</span>
+</td>
+<td class="px-6 py-4 font-currency-md">R$ 250,00</td>
+<td class="px-6 py-4">
+<span class="flex items-center gap-1.5 text-amber-600 font-bold uppercase text-[10px] tracking-widest">
+<span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                                    Pendente
+                                </span>
+</td>
+<td class="px-6 py-4 text-right">
+<button class="p-2 hover:bg-surface-container-highest rounded-lg text-primary transition-all active:scale-90" title="Enviar para Reembolso">
+<span class="material-symbols-outlined" data-icon="send">send</span>
+</button>
+</td>
+</tr>
+</tbody>
+</table>
+<!-- Pagination -->
+<div class="px-6 py-4 flex items-center justify-between bg-surface-container-low/30">
+<span class="font-label-md text-label-md text-on-surface-variant">Mostrando 5 de 34 despesas</span>
+<div class="flex gap-2">
+<button class="p-2 rounded border border-outline-variant hover:bg-surface transition-colors disabled:opacity-30" disabled="">
+<span class="material-symbols-outlined text-[18px]" data-icon="chevron_left">chevron_left</span>
+</button>
+<button class="px-3 py-1 rounded bg-primary text-on-primary font-label-md">1</button>
+<button class="px-3 py-1 rounded hover:bg-surface transition-colors font-label-md">2</button>
+<button class="px-3 py-1 rounded hover:bg-surface transition-colors font-label-md">3</button>
+<button class="p-2 rounded border border-outline-variant hover:bg-surface transition-colors">
+<span class="material-symbols-outlined text-[18px]" data-icon="chevron_right">chevron_right</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<!-- Fixed Footer Status -->
+<footer class="mt-auto px-margin-desktop py-4 bg-surface-container-lowest border-t border-outline-variant flex justify-between items-center text-on-surface-variant font-label-md text-label-md">
+<div class="flex gap-6">
+<span class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-secondary"></span>
+                    Sincronização em tempo real ativa
+                </span>
+<span class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px]" data-icon="update">update</span>
+                    Última atualização: Hoje, 14:32
+                </span>
+</div>
+<div class="flex gap-4">
+<span class="text-on-surface-variant/50">Malka Casa v2.4.0</span>
+</div>
+</footer>
+</main>
+<!-- Modal Overlay (Hidden) -->
+<div class="hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-6" id="reimbursement-modal">
+<div class="bg-surface-container-lowest w-full max-w-lg rounded-2xl soft-ambient-shadow border border-outline-variant overflow-hidden">
+<div class="p-6 border-b border-outline-variant flex justify-between items-center">
+<h3 class="font-headline-sm text-headline-sm">Detalhes da Despesa</h3>
+<button class="p-1 hover:bg-surface-variant rounded-full transition-colors" onclick="document.getElementById('reimbursement-modal').classList.add('hidden')">
+<span class="material-symbols-outlined" data-icon="close">close</span>
+</button>
+</div>
+<div class="p-6 space-y-4">
+<div class="grid grid-cols-2 gap-4">
+<div>
+<label class="font-label-md text-label-md text-on-surface-variant block mb-1">Entidade</label>
+<p class="font-body-md text-body-md font-bold">Kenlo Imobiliária</p>
+</div>
+<div>
+<label class="font-label-md text-label-md text-on-surface-variant block mb-1">Data</label>
+<p class="font-body-md text-body-md">14 de Outubro, 2023</p>
+</div>
+</div>
+<div>
+<label class="font-label-md text-label-md text-on-surface-variant block mb-1">Valor</label>
+<p class="text-[32px] font-bold tracking-tight">R$ 1.500,00</p>
+</div>
+<div class="p-4 bg-surface-container-low rounded-xl border border-outline-variant border-dashed">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-[40px] text-on-surface-variant/30" data-icon="description">description</span>
+<div>
+<p class="font-label-md text-label-md font-bold">comprovante_servicos.pdf</p>
+<p class="font-label-md text-label-md text-on-surface-variant">2.4 MB • PDF Document</p>
+</div>
+<button class="ml-auto p-2 bg-surface rounded-lg hover:shadow-sm transition-all">
+<span class="material-symbols-outlined text-[20px]" data-icon="visibility">visibility</span>
+</button>
+</div>
+</div>
+</div>
+<div class="p-6 bg-surface-container-low flex gap-3">
+<button class="flex-1 py-3 border border-outline-variant rounded-xl font-label-md text-label-md font-bold hover:bg-surface transition-colors" onclick="document.getElementById('reimbursement-modal').classList.add('hidden')">Fechar</button>
+<button class="flex-1 py-3 bg-primary text-on-primary rounded-xl font-label-md text-label-md font-bold transition-transform active:scale-95">Aprovar Envio</button>
+</div>
+</div>
+</div>
+<script>
+        // Micro-interaction for table rows
+        document.querySelectorAll('tbody tr').forEach(row => {
+            row.addEventListener('click', (e) => {
+                if(!e.target.closest('button')) {
+                    const modal = document.getElementById('reimbursement-modal');
+                    modal.classList.remove('hidden');
+                }
+            });
+        });
+
+        // Atmospheric animation for Entity Cards
+        document.querySelectorAll('.group').forEach(card => {
+            card.addEventListener('mouseenter', () => {
+                const bar = card.querySelector('.h-full');
+                bar.style.opacity = '0.8';
+            });
+            card.addEventListener('mouseleave', () => {
+                const bar = card.querySelector('.h-full');
+                bar.style.opacity = '1';
+            });
+        });
+    </script>
+</body></html>
