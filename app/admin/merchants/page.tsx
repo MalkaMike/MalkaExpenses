@@ -11,6 +11,7 @@ type TxRow = {
   id: string;
   description_raw: string;
   real_amount: number;
+  shared_amount: number;
   category_id: string | null;
   date: string;
   source: string;
@@ -25,6 +26,9 @@ type MerchantGroup = {
   totalSigned: number;
   categoryIds: Map<string, number>;
   uniqueDescriptions: Set<string>;
+  hiddenCount: number;     // shared_amount === 0
+  shownCount: number;      // shared_amount === real_amount
+  adjustedCount: number;   // shared_amount ≠ 0 AND ≠ real_amount
 };
 
 type Direction = "out" | "in" | "all";
@@ -69,7 +73,7 @@ export default async function MerchantsPage({
   while (true) {
     const { data, error } = await sb
       .from("transactions")
-      .select("id, description_raw, real_amount, category_id, date, source, is_transfer")
+      .select("id, description_raw, real_amount, shared_amount, category_id, date, source, is_transfer")
       .order("id", { ascending: true })
       .range(off, off + 999);
     if (error) {
@@ -109,17 +113,24 @@ export default async function MerchantsPage({
         totalAbs: 0,
         totalSigned: 0,
         categoryIds: new Map(),
-        uniqueDescriptions: new Set()
+        uniqueDescriptions: new Set(),
+        hiddenCount: 0,
+        shownCount: 0,
+        adjustedCount: 0
       });
     }
     const g = groups.get(c.key)!;
     g.txCount++;
     const amt = Number(t.real_amount);
+    const sharedAmt = Number(t.shared_amount);
     g.totalAbs += Math.abs(amt);
     g.totalSigned += amt;
     g.uniqueDescriptions.add(t.description_raw);
     const catKey = t.category_id ?? "__none__";
     g.categoryIds.set(catKey, (g.categoryIds.get(catKey) ?? 0) + 1);
+    if (sharedAmt === 0) g.hiddenCount++;
+    else if (sharedAmt === amt) g.shownCount++;
+    else g.adjustedCount++;
   }
 
   const sorted = [...groups.values()].sort((a, b) => b.totalAbs - a.totalAbs);
@@ -201,7 +212,7 @@ export default async function MerchantsPage({
                 >
                   <div className="min-w-0">
                     <p className="font-medium truncate">{g.name}</p>
-                    <div className="flex items-center gap-2 mt-0.5">
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                       <span
                         className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                           isOutros
@@ -212,6 +223,21 @@ export default async function MerchantsPage({
                         {catName}
                         {mixedCat ? " +" : ""}
                       </span>
+                      {g.hiddenCount === g.txCount && g.txCount > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-warning/15 text-warning">
+                          🙈 ESCONDIDO
+                        </span>
+                      )}
+                      {g.hiddenCount > 0 && g.hiddenCount < g.txCount && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-warning/10 text-warning">
+                          🙈 {g.hiddenCount}/{g.txCount} ocultas
+                        </span>
+                      )}
+                      {g.adjustedCount > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-fg/10 text-fg">
+                          ⚖️ {g.adjustedCount} ajustadas
+                        </span>
+                      )}
                     </div>
                   </div>
                   <span className="text-right tabular-nums text-sm text-muted">
