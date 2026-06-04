@@ -14,6 +14,7 @@ type TxRow = {
   category_id: string | null;
   date: string;
   source: string;
+  is_transfer: boolean;
 };
 
 type MerchantGroup = {
@@ -37,7 +38,7 @@ const COPY: Record<Direction, { title: string; subtitle: string; emptyLabel: str
 export default async function MerchantsPage({
   searchParams
 }: {
-  searchParams: Promise<{ direction?: string }>;
+  searchParams: Promise<{ direction?: string; transfers?: string }>;
 }) {
   if ((await getRole()) !== "admin") {
     return (
@@ -49,6 +50,10 @@ export default async function MerchantsPage({
 
   const sp = await searchParams;
   const direction: Direction = sp.direction === "in" ? "in" : sp.direction === "all" ? "all" : "out";
+  // Transfers (CC payments, PIX between own accounts) are excluded by default
+  // — including them double-counts the actual purchases that already sit on
+  // the credit card account. Toggle "transfers=1" to inspect them.
+  const includeTransfers = sp.transfers === "1";
   const copy = COPY[direction];
 
   const sb = serverClient();
@@ -64,7 +69,7 @@ export default async function MerchantsPage({
   while (true) {
     const { data, error } = await sb
       .from("transactions")
-      .select("id, description_raw, real_amount, category_id, date, source")
+      .select("id, description_raw, real_amount, category_id, date, source, is_transfer")
       .order("id", { ascending: true })
       .range(off, off + 999);
     if (error) {
@@ -76,8 +81,10 @@ export default async function MerchantsPage({
     off += 1000;
   }
 
-  // Filter by direction
+  // Filter by direction. Exclude transfers by default (CC payments + own-
+  // account PIX would double-count actual purchases already on the CC).
   const filtered = all.filter((t) => {
+    if (!includeTransfers && t.is_transfer) return false;
     const amt = Number(t.real_amount);
     if (direction === "out") return amt < 0;
     if (direction === "in") return amt > 0;
@@ -141,11 +148,24 @@ export default async function MerchantsPage({
       </header>
 
       {/* Toggle */}
-      <nav className="inline-flex p-1 mb-4 rounded-xl bg-fg/[0.06] border border-border text-sm">
-        <DirLink current={direction} value="out" label="Despesas" />
-        <DirLink current={direction} value="in" label="Receitas" />
-        <DirLink current={direction} value="all" label="Tudo" />
-      </nav>
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <nav className="inline-flex p-1 rounded-xl bg-fg/[0.06] border border-border text-sm">
+          <DirLink current={direction} value="out" includeTransfers={includeTransfers} label="Despesas" />
+          <DirLink current={direction} value="in" includeTransfers={includeTransfers} label="Receitas" />
+          <DirLink current={direction} value="all" includeTransfers={includeTransfers} label="Tudo" />
+        </nav>
+        <Link
+          href={`/admin/merchants?direction=${direction}${includeTransfers ? "" : "&transfers=1"}`}
+          className={`px-3 py-1.5 rounded-xl text-xs border transition ${
+            includeTransfers
+              ? "bg-fg/[0.06] border-border text-fg"
+              : "border-border text-muted hover:text-fg"
+          }`}
+          title="Inclui pagamentos de cartão e PIX entre contas próprias — dobra contagem"
+        >
+          {includeTransfers ? "Ocultar" : "Mostrar"} transferências
+        </Link>
+      </div>
 
       {inOutros.length > 0 && direction === "out" && (
         <div className="mb-4 p-3 rounded-xl border border-warning/30 bg-warning/5 flex items-center gap-2 text-sm">
@@ -176,7 +196,7 @@ export default async function MerchantsPage({
             return (
               <li key={g.key}>
                 <Link
-                  href={`/admin/merchants/${encodeURIComponent(g.key)}?direction=${direction}`}
+                  href={`/admin/merchants/${encodeURIComponent(g.key)}?direction=${direction}${includeTransfers ? "&transfers=1" : ""}`}
                   className="grid grid-cols-[1fr_80px_100px_140px_24px] gap-3 px-4 py-3 items-center hover:bg-fg/[0.03] active:bg-fg/[0.06] transition"
                 >
                   <div className="min-w-0">
@@ -224,16 +244,18 @@ export default async function MerchantsPage({
 function DirLink({
   current,
   value,
-  label
+  label,
+  includeTransfers
 }: {
   current: Direction;
   value: Direction;
   label: string;
+  includeTransfers: boolean;
 }) {
   const active = current === value;
   return (
     <Link
-      href={`/admin/merchants?direction=${value}`}
+      href={`/admin/merchants?direction=${value}${includeTransfers ? "&transfers=1" : ""}`}
       className={`px-3 py-1.5 rounded-lg transition font-medium ${
         active ? "bg-fg text-bg" : "text-muted hover:text-fg"
       }`}

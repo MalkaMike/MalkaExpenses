@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 
 type Row = {
@@ -23,19 +23,26 @@ type Props = {
   currentCategoryId: string | null;
   categories: Category[];
   rows: Row[];
+  currentShareMode: "hide" | "show" | "mixed";
+  currentSharedTotal: number;
 };
 
 export function MerchantDetailClient({
   canonicalKey,
   currentCategoryId,
   categories,
-  rows
+  rows,
+  currentShareMode,
+  currentSharedTotal
 }: Props) {
   const router = useRouter();
   const [selectedCat, setSelectedCat] = useState<string>(currentCategoryId ?? "");
   const [busy, setBusy] = useState(false);
   const [doneCount, setDoneCount] = useState<number | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState<"hide" | "show" | null>(null);
+  const [shareErr, setShareErr] = useState<string | null>(null);
+  const [shareDone, setShareDone] = useState<string | null>(null);
 
   async function applyToAll() {
     if (!selectedCat) return;
@@ -62,6 +69,34 @@ export function MerchantDetailClient({
       setErr((e as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function applyShare(mode: "hide" | "show") {
+    setShareBusy(mode);
+    setShareErr(null);
+    setShareDone(null);
+    try {
+      const r = await fetch("/api/admin/merchants/share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_key: canonicalKey, mode })
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `Erro ${r.status}`);
+      }
+      const j = await r.json();
+      setShareDone(
+        mode === "hide"
+          ? `${formatInt(j.updated)} ${j.updated === 1 ? "transação escondida" : "transações escondidas"} do portal`
+          : `${formatInt(j.updated)} ${j.updated === 1 ? "transação mostrada" : "transações mostradas"} no portal`
+      );
+      router.refresh();
+    } catch (e) {
+      setShareErr((e as Error).message);
+    } finally {
+      setShareBusy(null);
     }
   }
 
@@ -110,6 +145,65 @@ export function MerchantDetailClient({
           </p>
         )}
         {err && <p className="mt-2 text-xs text-danger">{err}</p>}
+      </section>
+
+      {/* Compartilhar com Ayelet (dual ledger control at cluster level) */}
+      <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs uppercase tracking-wider text-muted">
+            Compartilhar com Ayelet
+          </p>
+          <span
+            className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+              currentShareMode === "hide"
+                ? "bg-warning/15 text-warning"
+                : currentShareMode === "show"
+                  ? "bg-accent/10 text-accent"
+                  : "bg-fg/10 text-muted"
+            }`}
+          >
+            {currentShareMode === "hide"
+              ? "ESCONDIDO"
+              : currentShareMode === "show"
+                ? "MOSTRANDO"
+                : "MISTO"}
+          </span>
+        </div>
+        <p className="text-xs text-muted mb-3">
+          Atual no portal compartilhado: <span className="tabular-nums font-medium text-fg">{formatBRL(currentSharedTotal)}</span>
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={() => applyShare("hide")}
+            disabled={shareBusy !== null || currentShareMode === "hide"}
+            className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
+              ${shareBusy !== null || currentShareMode === "hide"
+                ? "border-border text-fg/40 cursor-not-allowed"
+                : "border-warning/40 text-warning hover:bg-warning/5 active:scale-[0.99]"}`}
+          >
+            {shareBusy === "hide" ? (
+              <><Loader2 size={14} className="animate-spin" /> Escondendo…</>
+            ) : (
+              <><EyeOff size={14} /> Esconder do portal</>
+            )}
+          </button>
+          <button
+            onClick={() => applyShare("show")}
+            disabled={shareBusy !== null || currentShareMode === "show"}
+            className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
+              ${shareBusy !== null || currentShareMode === "show"
+                ? "border-border text-fg/40 cursor-not-allowed"
+                : "border-accent/40 text-accent hover:bg-accent/5 active:scale-[0.99]"}`}
+          >
+            {shareBusy === "show" ? (
+              <><Loader2 size={14} className="animate-spin" /> Mostrando…</>
+            ) : (
+              <><Eye size={14} /> Mostrar valor real</>
+            )}
+          </button>
+        </div>
+        {shareDone && <p className="mt-2 text-xs text-accent">✅ {shareDone}</p>}
+        {shareErr && <p className="mt-2 text-xs text-danger">{shareErr}</p>}
       </section>
 
       {/* Transactions list */}

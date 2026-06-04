@@ -129,6 +129,19 @@ export default async function MerchantDetailPage({
     aiReasoning: t.ai_reasoning
   }));
 
+  // Aggregate the current shared state across the cluster — used to seed the
+  // "Compartilhar com Ayelet" panel default selection.
+  const totalShared = txs.reduce((s, t) => s + Number(t.shared_amount), 0);
+  const allHidden = txs.every((t) => Number(t.shared_amount) === 0);
+  const allShown = txs.every(
+    (t) => Number(t.shared_amount) === Number(t.real_amount)
+  );
+  const shareMode: "hide" | "show" | "mixed" = allHidden
+    ? "hide"
+    : allShown
+      ? "show"
+      : "mixed";
+
   const categories = (cats ?? []).map((c) => ({
     id: c.id as string,
     slug: c.slug as string,
@@ -180,6 +193,8 @@ export default async function MerchantDetailPage({
         currentCategoryId={currentCategoryId}
         categories={categories}
         rows={rows}
+        currentShareMode={shareMode}
+        currentSharedTotal={totalShared}
       />
     </div>
   );
