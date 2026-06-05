@@ -89,10 +89,29 @@ html, body {
   letter-spacing: 0.03em;
 }
 
-/* Stitch scrollbar */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #e4e2df; border-radius: 10px; }
+/* Stitch scrollbar — visible enough to use, subtle enough to ignore */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(27, 28, 26, 0.12);
+  border-radius: 10px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background 0.15s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(27, 28, 26, 0.28);
+  background-clip: content-box;
+}
+::-webkit-scrollbar-corner { background: transparent; }
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(27, 28, 26, 0.18) transparent;
+}
 
 /* Backwards-compat helpers */
 .font-display   { font-family: var(--font-manrope, ui-sans-serif); }
