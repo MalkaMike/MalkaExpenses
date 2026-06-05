@@ -39,7 +39,7 @@ export function GmailBatchButton() {
     const r = await fetch("/api/admin/gmail/batch-find", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ limit: 30 })
+      body: JSON.stringify({ limit: 10 })
     });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
