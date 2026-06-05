@@ -50,6 +50,8 @@ export default async function MerchantDetailPage({
     account_id: string;
     source: string;
     ai_reasoning: string | null;
+    gmail_searched_at: string | null;
+    gmail_match_count: number;
   }> = [];
 
   // Pull transactions matching ANY raw description in the cluster.
@@ -68,7 +70,7 @@ export default async function MerchantDetailPage({
         const { data, error } = await sb
           .from("transactions")
           .select(
-            "id, date, description_raw, description_clean, real_amount, shared_amount, category_id, account_id, source, ai_reasoning"
+            "id, date, description_raw, description_clean, real_amount, shared_amount, category_id, account_id, source, ai_reasoning, gmail_searched_at, gmail_match_count"
           )
           .in("description_raw", slice)
           .order("date", { ascending: false })
@@ -130,7 +132,9 @@ export default async function MerchantDetailPage({
     accountName: accountNameById.get(t.account_id) ?? "—",
     categoryName: t.category_id ? catNameById.get(t.category_id) ?? "—" : "—",
     source: t.source,
-    aiReasoning: t.ai_reasoning
+    aiReasoning: t.ai_reasoning,
+    gmailSearched: t.gmail_searched_at !== null,
+    gmailMatchCount: Number(t.gmail_match_count) || 0
   }));
 
   // Aggregate the current shared state across the cluster — used to seed the

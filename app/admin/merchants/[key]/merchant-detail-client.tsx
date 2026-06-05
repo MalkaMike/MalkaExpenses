@@ -16,6 +16,8 @@ type Row = {
   categoryName: string;
   source: string;
   aiReasoning: string | null;
+  gmailSearched: boolean;
+  gmailMatchCount: number;
 };
 type Category = { id: string; slug: string; name: string };
 
@@ -878,6 +880,8 @@ export function MerchantDetailClient({
                   <ReceiptFinderButton
                     transactionId={r.id}
                     merchantName={currentName}
+                    searched={r.gmailSearched}
+                    matchCount={r.gmailMatchCount}
                   />
                   <button
                     onClick={() => toggleRowHide(r)}

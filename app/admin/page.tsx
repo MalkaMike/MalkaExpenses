@@ -9,6 +9,7 @@ import { ReconcileButton } from "./reconcile-button";
 import { PluggySyncButton } from "./pluggy-sync-button";
 import { PageHeader } from "@/components/page-header";
 import { getConnectionStatus } from "@/lib/gmail/oauth";
+import { GmailBatchButton } from "@/components/gmail-batch-button";
 
 export const dynamic = "force-dynamic";
 
@@ -130,13 +131,17 @@ export default async function AdminLanding({
         />
         {/* Gmail connection — admin-only */}
         {gmail.connected ? (
-          <AdminLink
-            href="/api/auth/gmail/connect"
-            title="Gmail conectado"
-            subtitle={gmail.email ?? "buscar notas fiscais automaticamente"}
-            Icon={CheckCircle2}
-            badge="✓"
-          />
+          <>
+            <AdminLink
+              href="/api/auth/gmail/connect"
+              title="Gmail conectado"
+              subtitle={gmail.email ?? "buscar notas fiscais automaticamente"}
+              Icon={CheckCircle2}
+              badge="✓"
+            />
+            {/* Batch search controller */}
+            <GmailBatchButton />
+          </>
         ) : (
           <AdminLink
             href="/api/auth/gmail/connect"

@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Paperclip, Loader2, ExternalLink, Search, X, Check, RefreshCw } from "lucide-react";
+import { Paperclip, Loader2, ExternalLink, Search, X, Check, RefreshCw, FileSearch } from "lucide-react";
 import { formatDate } from "@/lib/format";
 
 type Match = {
@@ -22,18 +22,28 @@ type Match = {
 type Props = {
   transactionId: string;
   merchantName: string;
-  /** If we already have cached matches, hand them in to avoid the initial fetch */
-  initialMatches?: Match[];
+  /** Has the batch job already searched this transaction? */
+  searched: boolean;
+  /** How many matches were found in the cached search */
+  matchCount: number;
 };
 
-// Per-transaction button that searches Gmail for matching nota fiscal /
-// invoice emails, shows them in a popover, and opens the link in Gmail.
-export function ReceiptFinderButton({ transactionId, merchantName, initialMatches }: Props) {
+// Per-transaction receipt button with 4 states:
+//   - never searched (default): neutral icon, no badge — click to search
+//   - searched but empty: muted icon ("no nota fiscal found", discreet)
+//   - searched with matches: colored icon + count badge
+//   - currently searching: spinner
+export function ReceiptFinderButton({ transactionId, merchantName, searched, matchCount }: Props) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [matches, setMatches] = useState<Match[] | null>(initialMatches ?? null);
+  const [matches, setMatches] = useState<Match[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const hasInitialMatches = !!initialMatches?.length;
+
+  // Effective state: prefer freshly-loaded matches over cached count
+  const effectiveCount = matches?.length ?? matchCount;
+  const isEmpty = searched && effectiveCount === 0 && matches === null;
+  const hasMatches = effectiveCount > 0;
+  const confirmedCount = matches?.filter((m) => m.confirmed === true).length ?? 0;
 
   async function search(refresh = false) {
     setBusy(true);
@@ -46,9 +56,7 @@ export function ReceiptFinderButton({ transactionId, merchantName, initialMatche
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
-        if (r.status === 412) {
-          throw new Error("Gmail não conectado. Vá em /admin para conectar.");
-        }
+        if (r.status === 412) throw new Error("Gmail não conectado");
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       const j = await r.json();
@@ -71,54 +79,78 @@ export function ReceiptFinderButton({ transactionId, merchantName, initialMatche
         prev?.map((m) => (m.id === receiptId ? { ...m, confirmed } : m)) ?? null
       );
     } catch {
-      /* ignore — UI optimistic */
+      /* optimistic */
     }
   }
 
-  const topMatch = matches?.[0];
-  const confirmedCount = matches?.filter((m) => m.confirmed === true).length ?? 0;
+  function handleClick() {
+    setOpen((o) => !o);
+    if (!open && hasMatches && matches === null) {
+      // Load cached matches on first open
+      search(false);
+    }
+  }
+
+  // Render the icon based on state
+  const iconCls = busy
+    ? "border-outline-variant text-on-surface-variant cursor-wait"
+    : confirmedCount > 0
+      ? "border-secondary/40 bg-secondary/5 text-secondary hover:bg-secondary/10"
+      : hasMatches
+        ? "border-primary/30 bg-primary/5 text-primary hover:bg-primary/10"
+        : isEmpty
+          ? "border-outline-variant/40 text-on-surface-variant/40 hover:text-on-surface-variant"
+          : "border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30";
+
+  const iconTitle = busy
+    ? "Buscando…"
+    : confirmedCount > 0
+      ? `${confirmedCount} nota fiscal confirmada`
+      : hasMatches
+        ? `${effectiveCount} possível(is) nota fiscal — clique para ver`
+        : isEmpty
+          ? "Nenhuma nota fiscal encontrada (já buscamos)"
+          : "Buscar nota fiscal no Gmail";
 
   return (
     <div className="relative">
       <button
-        onClick={() => {
-          setOpen((o) => !o);
-          if (!matches && !open) search(false);
-        }}
+        onClick={handleClick}
         disabled={busy}
-        aria-label="Buscar nota fiscal no Gmail"
-        title={hasInitialMatches ? `${matches?.length} resultado(s) — clique para abrir` : "Buscar nota fiscal no Gmail"}
-        className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center transition
-          ${busy
-            ? "border-outline-variant text-on-surface-variant cursor-wait"
-            : confirmedCount > 0
-              ? "border-secondary/40 text-secondary hover:bg-secondary/5"
-              : hasInitialMatches
-                ? "border-primary/30 text-primary hover:bg-primary/5"
-                : "border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30"}`}
+        aria-label={iconTitle}
+        title={iconTitle}
+        className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center transition relative ${iconCls}`}
       >
         {busy ? (
           <Loader2 size={14} className="animate-spin" />
+        ) : isEmpty ? (
+          <FileSearch size={13} strokeWidth={1.5} />
         ) : confirmedCount > 0 ? (
           <Paperclip size={14} fill="currentColor" />
         ) : (
           <Paperclip size={14} />
         )}
+        {/* Count badge */}
+        {hasMatches && !busy && (
+          <span
+            className={`absolute -top-1 -right-1 min-w-[14px] h-[14px] px-1 rounded-full text-[9px] font-bold flex items-center justify-center tabular-nums ${
+              confirmedCount > 0
+                ? "bg-secondary text-on-secondary"
+                : "bg-primary text-on-primary"
+            }`}
+          >
+            {effectiveCount}
+          </span>
+        )}
       </button>
 
       {open && (
         <>
-          {/* Backdrop */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-          />
-          {/* Popover */}
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="absolute right-0 top-full mt-1 z-50 w-80 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow overflow-hidden">
-            {/* Header */}
             <div className="px-4 py-2.5 bg-surface-container-low border-b border-outline-variant flex items-center justify-between">
               <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
-                Notas fiscais no Gmail
+                {isEmpty ? "Nenhuma nota encontrada" : "Notas fiscais no Gmail"}
               </p>
               <div className="flex items-center gap-1">
                 <button
@@ -138,7 +170,6 @@ export function ReceiptFinderButton({ transactionId, merchantName, initialMatche
               </div>
             </div>
 
-            {/* Content */}
             <div className="max-h-96 overflow-y-auto">
               {busy && !matches && (
                 <div className="p-6 text-center">
@@ -151,22 +182,27 @@ export function ReceiptFinderButton({ transactionId, merchantName, initialMatche
                   <p className="text-xs text-on-error-container">{err}</p>
                 </div>
               )}
-              {!busy && matches && matches.length === 0 && (
+              {!busy && (matches?.length === 0 || isEmpty) && (
                 <div className="p-6 text-center">
-                  <Search size={20} className="mx-auto text-on-surface-variant opacity-50" />
-                  <p className="text-xs text-on-surface-variant mt-2">
-                    Nenhuma nota fiscal encontrada
+                  <FileSearch size={24} className="mx-auto text-on-surface-variant/40" strokeWidth={1.5} />
+                  <p className="text-sm font-medium text-on-surface-variant mt-2">
+                    Nenhuma nota fiscal
                   </p>
-                  <p className="text-[10px] text-on-surface-variant mt-1 opacity-70">
-                    Buscamos ±3 dias da data desta transação
+                  <p className="text-[10px] text-on-surface-variant/70 mt-1">
+                    Buscamos ±3 dias por &quot;nota fiscal&quot;, &quot;invoice&quot;, &quot;recibo&quot;
                   </p>
+                  <button
+                    onClick={() => search(true)}
+                    className="mt-3 text-[10px] text-primary hover:underline inline-flex items-center gap-1"
+                  >
+                    <RefreshCw size={10} /> Buscar novamente
+                  </button>
                 </div>
               )}
               {matches && matches.length > 0 && (
                 <ul className="divide-y divide-outline-variant">
                   {matches.map((m) => (
                     <li key={m.gmailMessageId} className="p-3 hover:bg-surface-container transition">
-                      {/* Score + score reason */}
                       <div className="flex items-center justify-between gap-2 mb-1.5">
                         <span
                           className={`text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${
@@ -186,13 +222,10 @@ export function ReceiptFinderButton({ transactionId, merchantName, initialMatche
                           </span>
                         )}
                       </div>
-                      {/* Subject */}
                       <p className="text-sm font-medium text-on-surface line-clamp-2 mb-1">{m.subject}</p>
-                      {/* From + date */}
                       <p className="text-[11px] text-on-surface-variant truncate">
                         {m.fromName || m.fromEmail} · {formatDate(m.sentAt.slice(0, 10))}
                       </p>
-                      {/* Actions */}
                       <div className="flex items-center gap-2 mt-2">
                         <a
                           href={m.gmailUrl}
