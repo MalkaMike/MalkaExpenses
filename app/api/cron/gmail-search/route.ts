@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { getValidAccessToken } from "@/lib/gmail/oauth";
-import { findReceiptsForTransaction } from "@/lib/gmail/search";
+import { findReceiptsForTransactionV2 } from "@/lib/gmail/find-receipt-v2";
 import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
 
 export const runtime = "nodejs";
@@ -42,25 +42,27 @@ export async function GET(req: NextRequest) {
   while (Date.now() - startedAt < HARD_DEADLINE_MS) {
     const { data: txs } = await sb
       .from("transactions")
-      .select("id, date, description_raw")
+      .select("id, date, description_raw, real_amount")
       .is("gmail_searched_at", null)
       .eq("is_transfer", false)
       .lt("real_amount", 0)
       .order("date", { ascending: false })
-      .limit(30);
+      .limit(10);  // v2 is slower — smaller batches
 
     if (!txs || txs.length === 0) break;
 
     for (const tx of txs) {
       if (Date.now() - startedAt >= HARD_DEADLINE_MS) break;
       processed++;
+      const absAmount = Math.abs(Number(tx.real_amount));
       try {
         const cluster = clusterFor(tx.description_raw as string);
-        const matches = await findReceiptsForTransaction({
+        const matches = await findReceiptsForTransactionV2({
           accessToken: cred.accessToken,
           merchantName: cluster.name,
           date: tx.date as string,
-          dayWindow: 3,
+          amount: absAmount,
+          dayWindow: 7,
           max: 5
         });
         if (matches.length > 0) {
@@ -76,8 +78,12 @@ export async function GET(req: NextRequest) {
               sent_at: m.sentAt,
               has_attachment: m.hasAttachment,
               attachment_count: m.attachmentCount,
-              match_score: m.matchScore,
-              match_reason: m.matchReason
+              match_score: m.confidence === "verified" ? 1.0 : 0.75,
+              match_reason: m.matchReason,
+              confidence: m.confidence,
+              match_source: m.matchSource,
+              match_snippet: m.matchSnippet,
+              amount_brl: absAmount
             })),
             { onConflict: "transaction_id,gmail_message_id" }
           );

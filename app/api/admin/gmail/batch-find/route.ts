@@ -3,15 +3,15 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getValidAccessToken } from "@/lib/gmail/oauth";
-import { findReceiptsForTransaction } from "@/lib/gmail/search";
+import { findReceiptsForTransactionV2 } from "@/lib/gmail/find-receipt-v2";
 import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const Body = z.object({
-  /** Max transactions to process this call. Keep small to fit in maxDuration. */
-  limit: z.number().int().min(1).max(50).optional()
+  /** Max transactions to process this call. v2 is slower (PDF + OCR) so default smaller. */
+  limit: z.number().int().min(1).max(20).optional()
 });
 
 // POST /api/admin/gmail/batch-find
@@ -36,7 +36,9 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "bad input" }, { status: 400 });
   }
-  const limit = parsed.data.limit ?? 30;
+  // v2 search downloads PDFs + runs OCR → ~5-10s per transaction.
+  // 10 transactions per 60s call leaves room for slow PDFs.
+  const limit = parsed.data.limit ?? 10;
 
   const cred = await getValidAccessToken();
   if (!cred) {
@@ -47,15 +49,11 @@ export async function POST(req: NextRequest) {
   await preloadClusters();
 
   // Pull the next chunk of unsearched transactions.
-  // Order by date DESC so the most recent (most likely to have receipts) get
-  // processed first — better UX for the admin scrolling recent activity.
   const { data: txs } = await sb
     .from("transactions")
     .select("id, date, description_raw, real_amount, is_transfer")
     .is("gmail_searched_at", null)
-    // Skip transfers — CC payments, PIX between own accounts don't have receipts
     .eq("is_transfer", false)
-    // Skip income (receipts only matter for expenses)
     .lt("real_amount", 0)
     .order("date", { ascending: false })
     .limit(limit);
@@ -70,17 +68,18 @@ export async function POST(req: NextRequest) {
 
   for (const tx of txs) {
     processed++;
+    const absAmount = Math.abs(Number(tx.real_amount));
     try {
       const cluster = clusterFor(tx.description_raw as string);
-      const matches = await findReceiptsForTransaction({
+      const matches = await findReceiptsForTransactionV2({
         accessToken: cred.accessToken,
         merchantName: cluster.name,
         date: tx.date as string,
-        dayWindow: 3,
+        amount: absAmount,
+        dayWindow: 7,
         max: 5
       });
 
-      // Persist matches (if any)
       if (matches.length > 0) {
         found++;
         await sb.from("transaction_receipts").upsert(
@@ -94,14 +93,17 @@ export async function POST(req: NextRequest) {
             sent_at: m.sentAt,
             has_attachment: m.hasAttachment,
             attachment_count: m.attachmentCount,
-            match_score: m.matchScore,
-            match_reason: m.matchReason
+            match_score: m.confidence === "verified" ? 1.0 : 0.75,
+            match_reason: m.matchReason,
+            confidence: m.confidence,
+            match_source: m.matchSource,
+            match_snippet: m.matchSnippet,
+            amount_brl: absAmount
           })),
           { onConflict: "transaction_id,gmail_message_id" }
         );
       }
 
-      // Mark as searched regardless of result
       await sb
         .from("transactions")
         .update({
