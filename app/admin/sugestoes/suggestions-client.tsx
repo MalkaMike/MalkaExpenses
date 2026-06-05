@@ -25,6 +25,7 @@ export function SuggestionsClient() {
   const [err, setErr] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -87,6 +88,50 @@ export function SuggestionsClient() {
     setDismissed((prev) => new Set(prev).add(id));
   }
 
+  async function mergeAll100() {
+    const targets = visible.filter((s) => s.similarity >= 1.0);
+    if (!targets.length) return;
+    setBulkProgress({ done: 0, total: targets.length });
+    for (let i = 0; i < targets.length; i++) {
+      const s = targets[i];
+      const pairId = `${s.cluster_a.key}::${s.cluster_b.key}`;
+      setBusyKey(pairId);
+      try {
+        const r = await fetch("/api/admin/merchants/merge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source_canonical_key: s.cluster_b.key,
+            target_canonical_key: s.cluster_a.key
+          })
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          console.error(`Erro ao fundir ${s.cluster_b.name}: ${j.error ?? r.status}`);
+        } else {
+          setData((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  suggestions: prev.suggestions.filter(
+                    (x) =>
+                      x.cluster_a.key !== s.cluster_b.key &&
+                      x.cluster_b.key !== s.cluster_b.key
+                  )
+                }
+              : null
+          );
+        }
+      } catch (e) {
+        console.error(`Erro ao fundir ${s.cluster_b.name}:`, e);
+      }
+      setBulkProgress({ done: i + 1, total: targets.length });
+    }
+    setBusyKey(null);
+    setBulkProgress(null);
+    router.refresh();
+  }
+
   const visible = data?.suggestions.filter(
     (s) => !dismissed.has(`${s.cluster_a.key}::${s.cluster_b.key}`)
   ) ?? [];
@@ -139,6 +184,33 @@ export function SuggestionsClient() {
           <p className="text-sm text-on-surface-variant mt-1">
             {dismissed.size > 0 && `${formatInt(dismissed.size)} sugestões ignoradas nesta sessão.`}
           </p>
+        </div>
+      )}
+
+      {/* Bulk merge button — 100% pairs only */}
+      {visible.some((s) => s.similarity >= 1.0) && (
+        <div className="mb-4 p-4 rounded-xl bg-secondary-container/20 border border-secondary-container flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-on-surface">
+              {visible.filter((s) => s.similarity >= 1.0).length} pares com 100% de similaridade
+            </p>
+            <p className="text-xs text-on-surface-variant mt-0.5">
+              {bulkProgress
+                ? `Fundindo… ${bulkProgress.done}/${bulkProgress.total}`
+                : "Revise os pares abaixo antes de fundir em lote"}
+            </p>
+          </div>
+          <button
+            onClick={mergeAll100}
+            disabled={bulkProgress !== null || busyKey !== null}
+            className="shrink-0 px-4 py-2 rounded-lg bg-secondary text-on-secondary text-sm font-semibold flex items-center gap-2 hover:opacity-80 transition disabled:opacity-40 active:scale-95"
+          >
+            {bulkProgress ? (
+              <><Loader2 size={14} className="animate-spin" /> {bulkProgress.done}/{bulkProgress.total}</>
+            ) : (
+              <><GitMerge size={14} /> Fundir todos 100%</>
+            )}
+          </button>
         </div>
       )}
 
