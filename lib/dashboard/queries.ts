@@ -82,6 +82,7 @@ export async function getDashboardData(role: Role): Promise<DashboardData> {
       .select(
         "id, account_id, date, description_raw, description_clean, real_amount, shared_amount, category_id, is_transfer"
       )
+      .eq("is_fake", false)
       .order("date", { ascending: false })
       .limit(5000);
 

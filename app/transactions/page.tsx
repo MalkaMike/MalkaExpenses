@@ -64,6 +64,7 @@ export default async function TransactionsPage({
       .select(
         "id, account_id, date, description_raw, description_clean, real_amount, shared_amount, category_id, is_fake, is_transfer, categories(slug)"
       )
+      .eq("is_fake", false)
       .order("date", { ascending: false })
       .limit(500);
     rows = (data ?? []).map((r: {

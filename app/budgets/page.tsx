@@ -43,6 +43,7 @@ export default async function BudgetsPage() {
       .from("transactions")
       .select("shared_amount, is_transfer, categories(slug)")
       .gte("date", start)
+      .eq("is_fake", false)
       .eq("is_transfer", false);
     for (const r of (data ?? []) as {
       shared_amount: number;

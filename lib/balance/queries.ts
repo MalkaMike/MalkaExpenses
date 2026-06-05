@@ -42,7 +42,8 @@ export async function getAccountsWithBalances(role: Role): Promise<AccountWithBa
   if (role === "admin") {
     const { data: realRows, error: rErr } = await sb
       .from("transactions")
-      .select("account_id, real_amount");
+      .select("account_id, real_amount")
+      .eq("is_fake", false);
     if (rErr) throw rErr;
     for (const r of realRows ?? []) {
       realSum.set(r.account_id, (realSum.get(r.account_id) ?? 0) + Number(r.real_amount));

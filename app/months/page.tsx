@@ -49,6 +49,7 @@ export default async function MonthsPage() {
     const { data } = await sb
       .from("transactions")
       .select("date, real_amount, shared_amount, is_transfer")
+      .eq("is_fake", false)
       .eq("is_transfer", false)
       .order("date", { ascending: false });
     for (const r of data ?? []) {
