@@ -74,6 +74,66 @@ function parseFrom(from: string): { name: string | null; email: string } {
   return { name: null, email: from.trim() };
 }
 
+// Decode Gmail's URL-safe base64
+function decodeBody(data: string): string {
+  const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  try {
+    return Buffer.from(b64, "base64").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+// Strip HTML tags, decode entities, collapse whitespace
+function stripHtml(html: string): string {
+  return html
+    // Remove script/style blocks entirely
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    // Add newlines around block elements so content doesn't run together
+    .replace(/<\/(p|div|tr|td|th|li|h[1-6]|br|hr)[^>]*>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    // Strip remaining tags
+    .replace(/<[^>]+>/g, " ")
+    // Decode common HTML entities
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    // Collapse whitespace
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n\s*\n/g, "\n")
+    .trim();
+}
+
+// Walk all body parts and extract the full text content (HTML + plain).
+// Returns concatenated text — value-match runs over this combined string.
+function extractEmailBody(payload: GmailMessage["payload"]): string {
+  const chunks: string[] = [];
+
+  const walk = (part: { mimeType?: string; body?: { data?: string }; parts?: unknown[] }) => {
+    const mime = part.mimeType ?? "";
+    if (part.body?.data) {
+      if (mime.startsWith("text/plain")) {
+        chunks.push(decodeBody(part.body.data));
+      } else if (mime.startsWith("text/html")) {
+        chunks.push(stripHtml(decodeBody(part.body.data)));
+      }
+    }
+    if (Array.isArray(part.parts)) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const child of part.parts as any[]) walk(child);
+    }
+  };
+
+  walk(payload as unknown as { mimeType?: string; body?: { data?: string }; parts?: unknown[] });
+  return chunks.join("\n");
+}
+
 // Walk all parts (recursive) yielding attachments
 function* walkAttachments(payload: GmailMessage["payload"]): Generator<GmailPart> {
   const walk = function* (parts: GmailPart[] | undefined): Generator<GmailPart> {
@@ -123,7 +183,7 @@ export type ReceiptMatchV2 = {
   /** "verified" = found in attached PDF/image | "high" = found in email body/subject */
   confidence: "verified" | "high";
   /** Where the value match came from */
-  matchSource: "subject" | "snippet" | "pdf-text" | "vision-ocr" | "raw-text";
+  matchSource: "subject" | "snippet" | "email-body" | "pdf-text" | "vision-ocr" | "raw-text";
   /** Free-form reason for UI */
   matchReason: string;
   /** Context snippet around the matched value */
@@ -239,7 +299,35 @@ export async function findReceiptsForTransactionV2(args: {
         continue;
       }
 
-      // ── Layer 2: attachments — download + extract + check value ─────────
+      // ── Layer 2: FULL email body (HTML + plain text) ────────────────────
+      // Most Brazilian invoice emails put the value in the HTML body, not in
+      // the snippet/preview. An email with the matching value IS proof —
+      // a PDF attachment is just additional confirmation.
+      const bodyText = extractEmailBody(msg.payload);
+      if (bodyText) {
+        const bodyMatch = textContainsAmount(bodyText, absAmount);
+        if (bodyMatch.found && bodyMatch.match) {
+          const attachmentCount = Array.from(walkAttachments(msg.payload)).length;
+          matches.push({
+            gmailMessageId: msg.id,
+            gmailThreadId: msg.threadId,
+            subject,
+            fromEmail: from.email,
+            fromName: from.name,
+            sentAt,
+            hasAttachment: attachmentCount > 0,
+            attachmentCount,
+            confidence: "high",
+            matchSource: "email-body",
+            matchReason: `Valor encontrado no corpo do email`,
+            matchSnippet: snippet(bodyText, bodyMatch.match.pos, 70),
+            gmailUrl: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
+          });
+          continue;
+        }
+      }
+
+      // ── Layer 3: attachments — download + extract + check value ─────────
       const attachments = Array.from(walkAttachments(msg.payload));
       let attachmentMatchFound = false;
       for (const att of attachments) {

@@ -14,7 +14,7 @@ type Match = {
   hasAttachment: boolean;
   attachmentCount: number;
   confidence: "verified" | "high";
-  matchSource: "subject" | "snippet" | "pdf-text" | "vision-ocr" | "raw-text";
+  matchSource: "subject" | "snippet" | "email-body" | "pdf-text" | "vision-ocr" | "raw-text";
   matchReason: string;
   matchSnippet: string;
   confirmed?: boolean | null;
