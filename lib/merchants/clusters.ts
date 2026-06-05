@@ -140,8 +140,31 @@ export function clusterFor(rawDescription: string): ClusterEntry {
 
 function clusterLookup(rawDescription: string, forceJson = false): ClusterEntry {
   const source = forceJson ? loadJsonFallback() : primary;
+
+  // 1. Exact match (fast path)
   const hit = source[rawDescription];
   if (hit) return hit;
+
+  // 2. Fuzzy match (only when using the loaded DB source, not JSON fallback)
+  if (!forceJson && Object.keys(primary).length > 0) {
+    const tokens = tokenize(rawDescription);
+    if (tokens.length > 0) {
+      let bestScore = 0;
+      let bestEntry: ClusterEntry | null = null;
+      for (const [desc, entry] of Object.entries(primary)) {
+        const score = jaccardSimilarity(tokens, tokenize(desc));
+        if (score > bestScore) {
+          bestScore = score;
+          bestEntry = entry;
+        }
+      }
+      if (bestScore >= FUZZY_THRESHOLD && bestEntry) {
+        return bestEntry;
+      }
+    }
+  }
+
+  // 3. Slug fallback
   const key =
     rawDescription
       .toLowerCase()
@@ -184,6 +207,90 @@ export async function rawDescriptionsForKeyDirect(key: string): Promise<string[]
     off += 1000;
   }
   return out;
+}
+
+// ─── AI fuzzy auto-clustering ────────────────────────────────────────────────
+//
+// When a new transaction description doesn't exactly match anything in
+// merchant_clusters, we try to find a similar existing cluster automatically.
+//
+// Algorithm: token-based Jaccard similarity
+//   1. Strip legal suffixes (LTDA, SA, ME, EIRELI…) and punctuation
+//   2. Tokenise into words ≥ 3 chars
+//   3. For each existing description in the cluster cache, compute Jaccard
+//      similarity (intersection / union of token sets)
+//   4. If best score ≥ FUZZY_THRESHOLD, return that cluster entry
+//
+// Used in:
+//  - clusterLookup (fallback before slug-generation)
+//  - suggestClusterForDescription (explicit call from inbox/accept flow)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const FUZZY_THRESHOLD = 0.5; // ≥ 50% token overlap → same merchant
+
+// Legal entity suffixes common in Brazilian bank descriptions
+const LEGAL_SUFFIX_RE =
+  /\b(LTDA|S\.?A\.?|ME|EIRELI|EPP|SS|SRL|CIA|INC|LLC|CORP|FILIAL|MATRIZ|UNID|LOJA|RJ|SP|MG|PR|RS|SC|BA|CE|GO|PE|AM|PA|DF)\b/g;
+
+function tokenize(s: string): string[] {
+  return s
+    .toUpperCase()
+    .replace(LEGAL_SUFFIX_RE, " ")
+    .replace(/[^A-Z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((t) => t.length >= 3);
+}
+
+function jaccardSimilarity(a: string[], b: string[]): number {
+  if (a.length === 0 || b.length === 0) return 0;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  let intersection = 0;
+  for (const t of setA) if (setB.has(t)) intersection++;
+  const union = setA.size + setB.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+/** Find the best-matching cluster for a description using token similarity.
+ * Returns null if no match exceeds FUZZY_THRESHOLD (0.5).
+ * Caller must have called preloadClusters() first. */
+export function findFuzzyCluster(rawDescription: string): ClusterEntry | null {
+  const tokens = tokenize(rawDescription);
+  if (tokens.length === 0) return null;
+
+  let bestScore = 0;
+  let bestEntry: ClusterEntry | null = null;
+
+  for (const [desc, entry] of Object.entries(primary)) {
+    const score = jaccardSimilarity(tokens, tokenize(desc));
+    if (score > bestScore) {
+      bestScore = score;
+      bestEntry = entry;
+    }
+  }
+
+  return bestScore >= FUZZY_THRESHOLD ? bestEntry : null;
+}
+
+/** Auto-cluster a description: exact match → fuzzy match → slug fallback.
+ * Exported for use in the accept/inbox flow and Pluggy sync. */
+export function clusterForWithFuzzy(rawDescription: string): ClusterEntry & { fuzzy?: boolean } {
+  // 1. Exact match
+  const exact = primary[rawDescription];
+  if (exact) return exact;
+
+  // 2. Fuzzy match
+  const fuzzy = findFuzzyCluster(rawDescription);
+  if (fuzzy) return { ...fuzzy, fuzzy: true };
+
+  // 3. Slug fallback
+  const key =
+    rawDescription
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "")
+      .slice(0, 40) || "unknown";
+  return { key, name: rawDescription };
 }
 
 /** Force re-read from DB on next call (all cache levels). */

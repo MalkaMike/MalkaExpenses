@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 
 type Row = {
@@ -68,6 +68,16 @@ export function MerchantDetailClient({
   const [nameDraft, setNameDraft] = useState(currentName);
   const [renameBusy, setRenameBusy] = useState(false);
   const [renameErr, setRenameErr] = useState<string | null>(null);
+
+  // Multi-select merge state
+  // selectedForMerge: canonical_key → ClusterOption for each checked merchant
+  const [selectedForMerge, setSelectedForMerge] = useState<Map<string, ClusterOption>>(new Map());
+  const [finalName, setFinalName] = useState(currentName);
+  const [multiMergeBusy, setMultiMergeBusy] = useState(false);
+  const [multiMergeErr, setMultiMergeErr] = useState<string | null>(null);
+  const [multiMergeDone, setMultiMergeDone] = useState<string | null>(null);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   // Per-row pending state (which tx is currently being toggled)
   const [rowBusy, setRowBusy] = useState<string | null>(null);
@@ -249,13 +259,72 @@ export function MerchantDetailClient({
     }
   }
 
+  // Toggle a merchant in/out of the multi-merge selection
+  function toggleMerge(c: ClusterOption) {
+    setSelectedForMerge((prev) => {
+      const next = new Map(prev);
+      if (next.has(c.key)) next.delete(c.key);
+      else next.set(c.key, c);
+      return next;
+    });
+  }
+
+  // Execute multi-merge: pull all selected INTO current, then rename current
+  async function executeMultiMerge() {
+    if (selectedForMerge.size === 0) return;
+    setMultiMergeBusy(true);
+    setMultiMergeErr(null);
+    setMultiMergeDone(null);
+    try {
+      for (const [key] of selectedForMerge) {
+        const r = await fetch("/api/admin/merchants/merge", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // selected merchant is the SOURCE (gets absorbed), current is the TARGET (survives)
+          body: JSON.stringify({
+            source_canonical_key: key,
+            target_canonical_key: canonicalKey
+          })
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          const name = selectedForMerge.get(key)?.name ?? key;
+          throw new Error(`Erro ao fundir "${name}": ${j.error ?? r.status}`);
+        }
+      }
+      // Rename current to finalName if changed
+      const trimmed = finalName.trim();
+      if (trimmed && trimmed !== currentName) {
+        const r = await fetch("/api/admin/merchants/rename", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ canonical_key: canonicalKey, name: trimmed })
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(`Erro ao renomear: ${j.error ?? r.status}`);
+        }
+      }
+      const count = selectedForMerge.size;
+      setSelectedForMerge(new Map());
+      setEditingName(false);
+      setDropdownOpen(false);
+      setMultiMergeDone(`${count + 1} merchant${count > 0 ? "s" : ""} fundidos com sucesso`);
+      router.refresh();
+    } catch (e) {
+      setMultiMergeErr((e as Error).message);
+    } finally {
+      setMultiMergeBusy(false);
+    }
+  }
+
   // Live-filter clusters by typed text (case-insensitive) for the combobox dropdown
   const matchingSuggestions = (() => {
     const q = nameDraft.trim().toLowerCase();
-    if (!q || q === currentName.toLowerCase()) return [] as ClusterOption[];
+    if (!q || q === currentName.toLowerCase()) return allClusters.slice(0, 12);
     return allClusters
       .filter((c) => c.name.toLowerCase().includes(q))
-      .slice(0, 8);
+      .slice(0, 15);
   })();
   const exactMatch = matchingSuggestions.find(
     (c) => c.name.trim().toLowerCase() === nameDraft.trim().toLowerCase()
@@ -297,102 +366,228 @@ export function MerchantDetailClient({
 
   return (
     <>
-      {/* Rename row (display name only — doesn't change clustering) */}
-      <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
-        <p className="text-xs uppercase tracking-wider text-muted mb-2">
+      {/* ── Nome exibido + Fundir com outros ─────────────────────────────── */}
+      <section className="mb-5 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3">
           Nome exibido
         </p>
+
+        {/* View mode */}
         {!editingName ? (
           <div className="flex items-center gap-3">
-            <p className="flex-1 text-base font-medium truncate">{currentName}</p>
+            <p className="flex-1 text-base font-semibold text-on-surface truncate">{currentName}</p>
             <button
               onClick={() => {
-                setNameDraft(currentName);
+                setNameDraft("");
+                setFinalName(currentName);
                 setRenameErr(null);
+                setMultiMergeErr(null);
+                setMultiMergeDone(null);
+                setSelectedForMerge(new Map());
+                setDropdownOpen(false);
                 setEditingName(true);
+                setTimeout(() => searchRef.current?.focus(), 50);
               }}
-              className="px-3 py-1.5 rounded-lg text-xs border border-border text-muted hover:text-fg hover:border-fg/30 transition flex items-center gap-1.5"
-              title="Renomear (só muda o nome exibido, não afeta agrupamento)"
+              className="px-3 py-1.5 rounded-lg text-xs border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30 transition flex items-center gap-1.5"
             >
               <Pencil size={12} /> Renomear
+            </button>
+            <button
+              onClick={() => {
+                setNameDraft("");
+                setFinalName(currentName);
+                setRenameErr(null);
+                setMultiMergeErr(null);
+                setMultiMergeDone(null);
+                setSelectedForMerge(new Map());
+                setEditingName(true);
+                setDropdownOpen(true);
+                setTimeout(() => searchRef.current?.focus(), 50);
+              }}
+              className="px-3 py-1.5 rounded-lg text-xs border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30 transition flex items-center gap-1.5"
+            >
+              <GitMerge size={12} /> Fundir com outros
             </button>
           </div>
         ) : (
           <div>
-            <div className="flex gap-2 relative">
-              <input
-                autoFocus
-                value={nameDraft}
-                onChange={(e) => setNameDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") applyRename();
-                  if (e.key === "Escape") setEditingName(false);
-                }}
-                placeholder="Renomeie ou escolha um existente pra fundir"
-                maxLength={120}
-                className="flex-1 px-3 py-2 rounded-xl bg-bg border border-border text-sm outline-none focus:border-accent transition"
-              />
-              <button
-                onClick={applyRename}
-                disabled={renameBusy || !nameDraft.trim()}
-                className={`px-3 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5
-                  ${renameBusy || !nameDraft.trim()
-                    ? "bg-fg/20 text-fg/40 cursor-not-allowed"
-                    : exactMatch
-                      ? "bg-info text-bg hover:bg-info/90"
-                      : "bg-fg text-bg hover:bg-fg/90"}`}
-              >
-                {renameBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                {exactMatch ? "Fundir" : "Salvar"}
-              </button>
-              <button
-                onClick={() => setEditingName(false)}
-                disabled={renameBusy}
-                className="px-2 py-2 rounded-xl border border-border text-muted hover:text-fg transition"
-                aria-label="Cancelar"
-              >
-                <X size={14} />
-              </button>
-
-              {/* Combobox dropdown — clicking triggers immediate merge (no stale state) */}
-              {matchingSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-[88px] mt-1 z-10 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow overflow-hidden">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant px-3 pt-2.5 pb-1.5">
-                    Fundir com existente
-                  </p>
-                  <ul className="divide-y divide-outline-variant max-h-60 overflow-y-auto">
-                    {matchingSuggestions.map((c) => (
-                      <li key={c.key}>
-                        <button
-                          onMouseDown={(e) => {
-                            // onMouseDown fires before input onBlur — prevents dropdown closing
-                            e.preventDefault();
-                            setNameDraft(c.name);
-                            mergeInto(c); // direct call — no stale closure
-                          }}
-                          disabled={renameBusy}
-                          className="w-full text-left px-3 py-2.5 text-sm text-on-surface hover:bg-surface-container transition flex items-center justify-between gap-2"
-                        >
-                          <span className="font-medium">{c.name}</span>
-                          <span className="text-[10px] font-bold text-[#0ea5e9] uppercase shrink-0">Fundir →</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+            {/* Search input */}
+            <div className="flex gap-2 mb-2">
+              <div className="relative flex-1">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant" />
+                <input
+                  ref={searchRef}
+                  autoFocus
+                  value={nameDraft}
+                  onChange={(e) => { setNameDraft(e.target.value); setDropdownOpen(true); }}
+                  onFocus={() => setDropdownOpen(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { setEditingName(false); setSelectedForMerge(new Map()); }
+                    if (e.key === "Enter" && selectedForMerge.size === 0) applyRename();
+                  }}
+                  placeholder="Buscar merchants para selecionar e fundir…"
+                  maxLength={120}
+                  className="w-full pl-8 pr-3 py-2 rounded-xl bg-surface-container border border-outline-variant text-sm outline-none focus:border-primary transition text-on-surface"
+                />
+              </div>
+              {selectedForMerge.size === 0 && (
+                <>
+                  <button
+                    onClick={applyRename}
+                    disabled={renameBusy || !nameDraft.trim() || nameDraft.trim() === currentName}
+                    className="px-3 py-2 rounded-xl text-sm font-medium transition flex items-center gap-1.5 bg-primary text-on-primary hover:opacity-80 disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                    {renameBusy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                    Renomear
+                  </button>
+                  <button
+                    onClick={() => { setEditingName(false); setSelectedForMerge(new Map()); setDropdownOpen(false); }}
+                    className="px-2 py-2 rounded-xl border border-outline-variant text-on-surface-variant hover:text-on-surface transition"
+                  >
+                    <X size={14} />
+                  </button>
+                </>
               )}
             </div>
-            <p className="text-[10px] text-muted mt-2">
-              {exactMatch ? (
-                <>
-                  <span className="text-info font-medium">FUSÃO</span> — todas as transações deste cluster vão para "{exactMatch.name}".
-                </>
-              ) : (
-                <>Renomeia o cluster. Se o nome digitado for IDÊNTICO a um comerciante existente, vai FUNDIR os dois automaticamente.</>
-              )}
-            </p>
-            {renameErr && <p className="text-xs text-danger mt-1.5">{renameErr}</p>}
+
+            {/* Dropdown with checkboxes */}
+            {dropdownOpen && matchingSuggestions.length > 0 && (
+              <div className="relative z-20 mb-2">
+                <div className="rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow overflow-hidden">
+                  <div className="px-3 py-2 bg-surface-container-low border-b border-outline-variant flex items-center justify-between">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                      Selecione para fundir (múltiplos)
+                    </p>
+                    <button
+                      onMouseDown={(e) => { e.preventDefault(); setDropdownOpen(false); }}
+                      className="text-on-surface-variant hover:text-on-surface p-0.5"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                  <ul className="max-h-56 overflow-y-auto divide-y divide-outline-variant">
+                    {matchingSuggestions.map((c) => {
+                      const checked = selectedForMerge.has(c.key);
+                      return (
+                        <li key={c.key}>
+                          <label
+                            className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer transition ${
+                              checked ? "bg-primary/5" : "hover:bg-surface-container"
+                            }`}
+                            onMouseDown={(e) => e.preventDefault()} // keep input focused
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                toggleMerge(c);
+                                // Pre-fill finalName with current page name if first selection
+                                if (!checked && selectedForMerge.size === 0) {
+                                  setFinalName(currentName);
+                                }
+                              }}
+                              className="accent-primary w-4 h-4 shrink-0 rounded"
+                            />
+                            <span className={`text-sm flex-1 truncate ${checked ? "font-semibold text-on-surface" : "text-on-surface"}`}>
+                              {c.name}
+                            </span>
+                            {checked && (
+                              <span className="text-[10px] font-bold text-primary uppercase shrink-0">✓ selecionado</span>
+                            )}
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {nameDraft.trim() && matchingSuggestions.length >= 15 && (
+                    <p className="px-3 py-1.5 text-[10px] text-on-surface-variant border-t border-outline-variant">
+                      Mostrando 15 primeiros — continue digitando para filtrar
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Confirmation panel — appears when ≥1 selected */}
+            {selectedForMerge.size > 0 && (
+              <div className="rounded-xl border border-primary/20 bg-primary/[0.03] p-4 space-y-3">
+                {/* Selected chips */}
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+                    {selectedForMerge.size + 1} merchant{selectedForMerge.size > 0 ? "s" : ""} para fundir:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {/* Current merchant (always included, can't be deselected) */}
+                    <span className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full bg-primary text-on-primary font-medium">
+                      {currentName}
+                      <span className="opacity-60 text-[10px]">(este)</span>
+                    </span>
+                    {/* Selected merchants */}
+                    {[...selectedForMerge.values()].map((c) => (
+                      <span key={c.key} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-surface-container border border-outline-variant text-on-surface font-medium">
+                        {c.name}
+                        <button
+                          onClick={() => toggleMerge(c)}
+                          className="text-on-surface-variant hover:text-error ml-0.5"
+                        >
+                          <X size={11} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Final name input */}
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant block mb-1.5">
+                    Nome final (todos vão usar este nome)
+                  </label>
+                  <input
+                    value={finalName}
+                    onChange={(e) => setFinalName(e.target.value)}
+                    placeholder="Ex: St Paul's School"
+                    maxLength={120}
+                    className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant text-sm outline-none focus:border-primary transition text-on-surface"
+                  />
+                </div>
+
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={executeMultiMerge}
+                    disabled={multiMergeBusy || !finalName.trim()}
+                    className="flex-1 py-2.5 rounded-xl bg-primary text-on-primary text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99] transition"
+                  >
+                    {multiMergeBusy
+                      ? <><Loader2 size={14} className="animate-spin" /> Fundindo…</>
+                      : <><GitMerge size={14} /> Fundir {selectedForMerge.size + 1} → &quot;{finalName.trim() || "…"}&quot;</>
+                    }
+                  </button>
+                  <button
+                    onClick={() => { setSelectedForMerge(new Map()); setEditingName(false); setDropdownOpen(false); }}
+                    disabled={multiMergeBusy}
+                    className="px-3 py-2.5 rounded-xl border border-outline-variant text-on-surface-variant hover:text-on-surface text-sm transition"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+
+                {multiMergeErr && (
+                  <p className="text-xs text-error">{multiMergeErr}</p>
+                )}
+              </div>
+            )}
+
+            {/* Rename-only error */}
+            {renameErr && <p className="text-xs text-error mt-1.5">{renameErr}</p>}
           </div>
+        )}
+
+        {/* Success message */}
+        {multiMergeDone && (
+          <p className="mt-3 text-xs text-secondary font-medium flex items-center gap-1.5">
+            <Check size={13} /> {multiMergeDone}
+          </p>
         )}
       </section>
 
