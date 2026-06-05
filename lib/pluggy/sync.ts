@@ -70,9 +70,12 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     // 1) Find or create the Casa account for this Pluggy account.
     const { data: existing } = await sb
       .from("accounts")
-      .select("id, pluggy_last_sync")
+      .select("id, pluggy_last_sync, is_archived")
       .eq("pluggy_account_id", pa.id)
       .maybeSingle();
+
+    // Skip archived accounts — they were retired deliberately (e.g. duplicate Pluggy item).
+    if (existing?.is_archived) continue;
 
     let accountId: string;
     let isNew = false;
