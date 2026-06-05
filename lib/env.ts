@@ -10,6 +10,9 @@ const schema = z.object({
   ADMIN_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(480), // 8 hours
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_GENAI_API_KEY: z.string().optional(),
+  // Gmail OAuth for nota fiscal lookup (admin only)
+  GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
   NEXT_PUBLIC_APP_NAME: z.string().default("Casa")
 });
 
@@ -23,6 +26,8 @@ export const env = schema.parse({
   ADMIN_TIMEOUT_MINUTES: process.env.ADMIN_TIMEOUT_MINUTES,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   GOOGLE_GENAI_API_KEY: process.env.GOOGLE_GENAI_API_KEY,
+  GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
+  GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME
 });
 

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers } from "lucide-react";
+import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers, Mail, CheckCircle2 } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -8,13 +8,14 @@ import { formatBRL, formatInt } from "@/lib/format";
 import { ReconcileButton } from "./reconcile-button";
 import { PluggySyncButton } from "./pluggy-sync-button";
 import { PageHeader } from "@/components/page-header";
+import { getConnectionStatus } from "@/lib/gmail/oauth";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminLanding({
   searchParams
 }: {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; gmail?: string; reason?: string }>;
 }) {
   const role = await getRole();
   const sp = await searchParams;
@@ -22,6 +23,9 @@ export default async function AdminLanding({
   if (role !== "admin") {
     redirect(`/login?next=${encodeURIComponent(sp.next ?? "/admin")}`);
   }
+
+  // Gmail connection status (admin-only)
+  const gmail = await getConnectionStatus();
 
   const accounts = await getAccountsWithBalances("admin");
   const totalReal = accounts.reduce((s, a) => s + (a.realBalance ?? 0), 0);
@@ -42,6 +46,20 @@ export default async function AdminLanding({
     <>
     <PageHeader title="Admin" />
     <div className="px-4 pt-5 max-w-2xl mx-auto pb-28">
+
+      {/* Gmail connection banner */}
+      {sp.gmail === "connected" && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-secondary-container/40 border border-secondary text-sm flex items-center gap-2">
+          <CheckCircle2 size={16} className="text-secondary shrink-0" />
+          <span className="text-on-surface">Gmail conectado com sucesso. Agora você pode buscar notas fiscais nas transações.</span>
+        </div>
+      )}
+      {sp.gmail === "error" && (
+        <div className="mb-4 px-4 py-3 rounded-xl bg-error-container/40 border border-error text-sm">
+          <p className="text-on-error-container font-medium">Erro ao conectar Gmail</p>
+          {sp.reason && <p className="text-xs text-on-surface-variant mt-0.5">{sp.reason}</p>}
+        </div>
+      )}
 
       {/* Dual-ledger balance cards — both clickable */}
       <section className="grid grid-cols-2 gap-3 mb-4">
@@ -110,6 +128,23 @@ export default async function AdminLanding({
           subtitle="o que você alterou vs o que a Ayelet vê"
           Icon={History}
         />
+        {/* Gmail connection — admin-only */}
+        {gmail.connected ? (
+          <AdminLink
+            href="/api/auth/gmail/connect"
+            title="Gmail conectado"
+            subtitle={gmail.email ?? "buscar notas fiscais automaticamente"}
+            Icon={CheckCircle2}
+            badge="✓"
+          />
+        ) : (
+          <AdminLink
+            href="/api/auth/gmail/connect"
+            title="Conectar Gmail"
+            subtitle="buscar notas fiscais e invoices automaticamente"
+            Icon={Mail}
+          />
+        )}
         <div className="rounded-xl border border-outline-variant overflow-hidden bg-surface-container-lowest">
           <div className="px-4 pt-3 pb-1">
             <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Sincronização</p>

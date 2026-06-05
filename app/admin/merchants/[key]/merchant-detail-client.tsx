@@ -3,6 +3,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
+import { ReceiptFinderButton } from "@/components/receipt-finder-button";
 
 type Row = {
   id: string;
@@ -873,6 +874,11 @@ export function MerchantDetailClient({
                   >
                     {formatBRL(r.amount)}
                   </span>
+                  {/* Gmail receipt finder */}
+                  <ReceiptFinderButton
+                    transactionId={r.id}
+                    merchantName={currentName}
+                  />
                   <button
                     onClick={() => toggleRowHide(r)}
                     disabled={isBusy}
