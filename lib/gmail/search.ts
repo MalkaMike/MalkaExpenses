@@ -26,13 +26,23 @@ const RECEIPT_KEYWORDS = [
 const LEGAL_SUFFIX_RE =
   /\b(LTDA|S\.?A\.?|ME|EIRELI|EPP|SS|SRL|CIA|INC|LLC|CORP|FILIAL|MATRIZ|UNID|LOJA|RJ|SP|MG|PR|RS|SC|BA|CE|GO|PE|AM|PA|DF)\b/gi;
 
+const NOISE_TOKENS = new Set([
+  "PIX","PIXQR","QRS","QRD","QRDIN","CODE","CODIGO","PAGAMENTO","PAGTO","PG","PAG",
+  "TRANSF","TRANSFERENCIA","TRF","TED","DOC","DEB","DEBITO","CRED","CREDITO",
+  "BOLETO","COMPRA","SAQUE","DEPOSITO","DEP","FATURA","AUT","AUTOMATICO",
+  "DE","DA","DO","DAS","DOS","PARA","PRA","REF","REFERENTE","VENDA"
+]);
+
 function cleanMerchant(name: string): string[] {
   return name
     .toUpperCase()
     .replace(LEGAL_SUFFIX_RE, " ")
+    .replace(/([A-Z])(\d)/g, "$1 $2")
+    .replace(/(\d)([A-Z])/g, "$1 $2")
     .replace(/[^A-Z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((t) => t.length >= 3);
+    .filter((t) => t.length >= 3 && /[A-Z]/.test(t))
+    .filter((t) => !NOISE_TOKENS.has(t));
 }
 
 function jaccard(a: string[], b: string[]): number {

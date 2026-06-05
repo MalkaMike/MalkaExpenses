@@ -228,17 +228,45 @@ export async function rawDescriptionsForKeyDirect(key: string): Promise<string[]
 
 const FUZZY_THRESHOLD = 0.5; // ≥ 50% token overlap → same merchant
 
-// Legal entity suffixes common in Brazilian bank descriptions
+// Legal entity suffixes + geo abbreviations common in Brazilian bank descriptions
 const LEGAL_SUFFIX_RE =
   /\b(LTDA|S\.?A\.?|ME|EIRELI|EPP|SS|SRL|CIA|INC|LLC|CORP|FILIAL|MATRIZ|UNID|LOJA|RJ|SP|MG|PR|RS|SC|BA|CE|GO|PE|AM|PA|DF)\b/g;
+
+// Brazilian banking noise words — present in many transactions but tell us
+// nothing about WHO got paid. Strip them so the merchant name dominates.
+const NOISE_TOKENS = new Set([
+  "PIX", "PIXQR", "QRS", "QRD", "QRDIN", "CODE", "CODIGO",
+  "PAGAMENTO", "PAGTO", "PG", "PAG",
+  "TRANSF", "TRANSFERENCIA", "TRF",
+  "TED", "DOC", "DEB", "DEBITO", "CRED", "CREDITO",
+  "BOLETO", "COMPRA", "SAQUE", "DEPOSITO", "DEP",
+  "FATURA", "AUT", "AUTOMATICO",
+  "DE", "DA", "DO", "DAS", "DOS", "PARA", "PRA",
+  "REF", "REFERENTE", "VENDA"
+]);
+
+// Months in PT-BR — appear in PIX descriptions like "MENSALIDADE JANEIRO"
+const MONTHS = new Set([
+  "JANEIRO", "FEVEREIRO", "MARCO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
+  "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
+  "JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"
+]);
 
 function tokenize(s: string): string[] {
   return s
     .toUpperCase()
     .replace(LEGAL_SUFFIX_RE, " ")
+    // Split letter-digit boundaries so "SLEEP03/05" becomes "SLEEP 03 05"
+    // (otherwise the day-of-month contaminates the merchant name token)
+    .replace(/([A-Z])(\d)/g, "$1 $2")
+    .replace(/(\d)([A-Z])/g, "$1 $2")
     .replace(/[^A-Z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((t) => t.length >= 3);
+    // Keep only words ≥ 3 chars that contain at least one letter — drops
+    // pure-digit tokens like "03", "05", "2026", credit-card last-4s, etc.
+    .filter((t) => t.length >= 3 && /[A-Z]/.test(t))
+    // Drop bank-protocol noise + month names
+    .filter((t) => !NOISE_TOKENS.has(t) && !MONTHS.has(t));
 }
 
 function jaccardSimilarity(a: string[], b: string[]): number {
