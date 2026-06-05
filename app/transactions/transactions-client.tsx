@@ -50,6 +50,10 @@ export function TransactionsClient({
 }) {
   const { lang } = useLang();
   const router = useRouter();
+  const accountMap = useMemo(
+    () => new Map(accounts.map((a) => [a.id, a.name])),
+    [accounts]
+  );
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<string>(initialCat);
   const [accId, setAccId] = useState<string>(initialAccId);
@@ -246,6 +250,7 @@ export function TransactionsClient({
                       isTransfer={r.isTransfer}
                       role={role}
                       showDate={false}
+                      accountName={accountMap.get(r.account_id)}
                     />
                   </button>
                   {role === "admin" && (

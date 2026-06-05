@@ -14,6 +14,7 @@ export type TxRowProps = {
   isTransfer?: boolean;
   role: Role;
   showDate?: boolean;
+  accountName?: string | null;
 };
 
 export function TransactionRow(t: TxRowProps) {
@@ -38,6 +39,11 @@ export function TransactionRow(t: TxRowProps) {
         <p className="text-xs text-on-surface-variant truncate mt-0.5">
           {categoryLabel}
           {t.showDate !== false && <span className="ml-2">· {formatDate(t.date)}</span>}
+          {t.accountName && (
+            <span className="ml-2 inline-flex items-center px-1.5 py-px rounded text-[10px] font-medium bg-surface-container text-on-surface-variant border border-outline-variant/50">
+              {t.accountName}
+            </span>
+          )}
         </p>
       </div>
       <div className="text-right shrink-0">
