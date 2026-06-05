@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { ReceiptFinderButton } from "@/components/receipt-finder-button";
+import { MoveDescriptionButton } from "@/components/move-description-button";
 
 type Row = {
   id: string;
@@ -876,6 +877,12 @@ export function MerchantDetailClient({
                   >
                     {formatBRL(r.amount)}
                   </span>
+                  {/* Move to another merchant */}
+                  <MoveDescriptionButton
+                    descriptionRaw={r.descriptionRaw}
+                    currentName={currentName}
+                    allClusters={allClusters}
+                  />
                   {/* Gmail receipt finder */}
                   <ReceiptFinderButton
                     transactionId={r.id}
