@@ -119,8 +119,6 @@ export default async function MerchantsPage({
 
   const sorted = [...groups.values()].sort((a, b) => b.totalAbs - a.totalAbs);
   const totalMerchants = sorted.length;
-  // Max spend for the magnitude-bar denominator (≥1 to avoid div by zero)
-  const maxAbs = sorted[0]?.totalAbs ?? 1;
   const inOutros = sorted.filter((g) => {
     const top = [...g.categoryIds.entries()].sort((a, b) => b[1] - a[1])[0];
     return top && top[0] === outrosId;
@@ -191,10 +189,8 @@ export default async function MerchantsPage({
 
       {/* Main table — Stitch high-density style */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-xl soft-ambient-shadow overflow-hidden">
-        {/* Scrollable inner container — header sticks while rows scroll */}
-        <div className="max-h-[calc(100vh-320px)] overflow-y-auto">
         {/* Table header */}
-        <div className="grid grid-cols-[28px_1fr_60px_72px_124px_16px] gap-3 px-4 py-3 border-b border-outline-variant bg-surface-container-low sticky top-0 z-10 backdrop-blur">
+        <div className="grid grid-cols-[28px_1fr_60px_72px_124px_16px] gap-3 px-4 py-3 border-b border-outline-variant bg-surface-container-low">
           <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant text-center">#</span>
           <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant">
             {direction === "in" ? "Pagador" : "Comerciante"}
@@ -216,7 +212,6 @@ export default async function MerchantsPage({
             const allHidden = g.hiddenCount === g.txCount && g.txCount > 0;
             const partialHidden = g.hiddenCount > 0 && g.hiddenCount < g.txCount;
             const initial = (g.name[0] ?? "?").toUpperCase();
-            const magnitudePct = Math.round((g.totalAbs / maxAbs) * 100);
             const rank = idx + 1;
             // Top-3 visual emphasis
             const isTopThree = rank <= 3;
@@ -290,28 +285,14 @@ export default async function MerchantsPage({
                     {formatInt(g.uniqueDescriptions.size)}
                   </span>
 
-                  {/* Total with magnitude bar */}
-                  <div className="text-right">
-                    <span
-                      className={`text-[13px] font-semibold tabular-nums ${
-                        direction === "in" ? "text-secondary" : "text-on-tertiary-container"
-                      }`}
-                    >
-                      {formatBRL(g.totalAbs)}
-                    </span>
-                    {/* Magnitude bar — shows proportion vs top spender */}
-                    <div className="mt-1 h-0.5 w-full bg-surface-container rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${
-                          direction === "in" ? "bg-secondary" : "bg-on-tertiary-container"
-                        }`}
-                        style={{
-                          width: `${magnitudePct}%`,
-                          opacity: isTopThree ? 1 : 0.55
-                        }}
-                      />
-                    </div>
-                  </div>
+                  {/* Total */}
+                  <span
+                    className={`text-right text-[13px] font-semibold tabular-nums ${
+                      direction === "in" ? "text-secondary" : "text-on-tertiary-container"
+                    }`}
+                  >
+                    {formatBRL(g.totalAbs)}
+                  </span>
 
                   <ChevronRight size={13} className="text-on-surface-variant opacity-0 group-hover:opacity-100 transition" />
                 </Link>
@@ -323,15 +304,11 @@ export default async function MerchantsPage({
         {sorted.length === 0 && (
           <p className="px-5 py-10 text-center text-sm text-on-surface-variant">{copy.emptyLabel}</p>
         )}
-        </div>{/* end scrollable inner container */}
 
-        {/* Table footer — outside scroll area, sticks to bottom of card */}
-        <div className="bg-surface-container-low px-4 py-2.5 border-t border-outline-variant flex items-center justify-between">
+        {/* Table footer */}
+        <div className="bg-surface-container-low px-4 py-2.5 border-t border-outline-variant">
           <span className="text-xs text-on-surface-variant">
             {formatInt(sorted.length)} {copy.rowsLabel} · {formatInt(filtered.length)} transações
-          </span>
-          <span className="text-[10px] text-on-surface-variant/60 uppercase tracking-wider">
-            Role para mais ↓
           </span>
         </div>
       </div>
