@@ -18,7 +18,7 @@ type ClusterFile = Record<string, ClusterEntry>;
 
 let dbCache: ClusterFile | null = null;
 let dbCachedAt = 0;
-const DB_CACHE_TTL_MS = 60_000; // refresh every minute
+const DB_CACHE_TTL_MS = 8_000; // 8s TTL — short enough to see merges quickly
 
 let jsonCache: ClusterFile | null = null;
 

@@ -3,7 +3,7 @@ import { ChevronRight, AlertCircle, EyeOff, SlidersHorizontal } from "lucide-rea
 import { getRole } from "@/lib/auth/admin";
 import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
-import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
+import { clusterFor, preloadClusters, invalidateCache } from "@/lib/merchants/clusters";
 import { formatBRL, formatInt } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +59,9 @@ export default async function MerchantsPage({
   const copy = COPY[direction];
 
   const sb = serverClient();
+  // Always force a fresh DB load — the in-memory module cache is per-process and
+  // can be 60s stale on a different Vercel warm instance after a merge/rename.
+  invalidateCache();
   await preloadClusters();
 
   const all: TxRow[] = [];
