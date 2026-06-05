@@ -833,16 +833,10 @@ export function MerchantDetailClient({
               return (
                 <li
                   key={r.id}
-                  className={`px-4 py-3 flex items-center gap-3 transition ${
-                    hidden ? "opacity-50 bg-fg/[0.02]" : ""
-                  }`}
+                  className="px-4 py-3 flex items-center gap-3 transition"
                 >
                   <div className="flex-1 min-w-0">
-                    <p
-                      className={`font-medium truncate ${
-                        hidden ? "line-through" : ""
-                      }`}
-                    >
+                    <p className="font-medium truncate">
                       {r.description}
                     </p>
                     <div className="flex items-center gap-2 mt-0.5">
