@@ -7,7 +7,7 @@ const schema = z.object({
   ADMIN_PASSWORD_HASH: z.string().min(20),
   HOUSEHOLD_PASSWORD_HASH: z.string().min(20),
   MODE_COOKIE_SECRET: z.string().min(32),
-  ADMIN_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(60),
+  ADMIN_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(480), // 8 hours
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_GENAI_API_KEY: z.string().optional(),
   NEXT_PUBLIC_APP_NAME: z.string().default("Casa")

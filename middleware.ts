@@ -16,7 +16,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const ADMIN_COOKIE = "pf_admin";
 const HOUSEHOLD_COOKIE = "pf_household";
-const ADMIN_TIMEOUT_MIN = Number(process.env.ADMIN_TIMEOUT_MINUTES ?? "60");
+// Default: 8 hours. Override with ADMIN_TIMEOUT_MINUTES env var.
+const ADMIN_TIMEOUT_MIN = Number(process.env.ADMIN_TIMEOUT_MINUTES ?? "480");
 const HOUSEHOLD_TIMEOUT_DAYS = 90;
 const FUTURE_SKEW_MS = 60_000;
 const MIN_SECRET_LENGTH = 32;
@@ -103,6 +104,15 @@ async function hasHousehold(req: NextRequest): Promise<boolean> {
   return verifyToken(t, "household", HOUSEHOLD_TIMEOUT_DAYS * 86400 * 1000);
 }
 
+// Create a fresh admin token (Web Crypto — same HMAC as lib/auth/admin.ts).
+// Used to refresh the sliding-window on every successful admin request.
+async function createAdminToken(): Promise<string> {
+  const payload = `v2.admin.${Date.now()}`;
+  const key = await getKey();
+  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
+  return `${payload}.${toHex(sig)}`;
+}
+
 // Always-open paths (auth flows + static + self-secured machine endpoints).
 // EXACT matches preferred; prefix matches reserved for whole subtrees we own.
 function isAlwaysOpen(pathname: string): boolean {
@@ -139,12 +149,29 @@ export async function middleware(req: NextRequest) {
 
   // /admin/* and /api/admin/* require admin specifically
   if (isAdminGated(pathname)) {
-    if (admin) return NextResponse.next();
+    if (admin) {
+      // Sliding-window refresh: update the cookie timestamp on every successful
+      // admin request so the session stays alive while Mickael is working.
+      const response = NextResponse.next();
+      try {
+        const newToken = await createAdminToken();
+        response.cookies.set(ADMIN_COOKIE, newToken, {
+          httpOnly: true,
+          secure: true,
+          sameSite: "lax",
+          path: "/",
+          maxAge: ADMIN_TIMEOUT_MIN * 60
+        });
+      } catch {
+        // token refresh failed — don't block the request, just let cookie expire naturally
+      }
+      return response;
+    }
     if (pathname.startsWith("/api/")) {
       return new NextResponse("Not Found", { status: 404 });
     }
-    const url = req.nextUrl.clone();
-    url.pathname = "/admin";
+    // Session expired → redirect to /admin (which shows login form) with clean URL
+    const url = new URL("/admin", req.nextUrl.origin);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
@@ -155,8 +182,7 @@ export async function middleware(req: NextRequest) {
   if (pathname.startsWith("/api/")) {
     return new NextResponse("Not Found", { status: 404 });
   }
-  const url = req.nextUrl.clone();
-  url.pathname = "/login";
+  const url = new URL("/login", req.nextUrl.origin);
   if (pathname !== "/") url.searchParams.set("next", pathname);
   return NextResponse.redirect(url);
 }

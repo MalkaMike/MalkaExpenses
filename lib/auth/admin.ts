@@ -20,7 +20,7 @@ import { hasHouseholdCookie } from "./household";
 // payload includes the role, so verifyToken rejects mismatched roles.
 //
 // Sliding window: each authenticated request refreshes lastActivityMs
-// Idle timeout:   ADMIN_TIMEOUT_MINUTES (default 60)
+// Idle timeout:   ADMIN_TIMEOUT_MINUTES (default 480 = 8 hours)
 // ============================================================================
 
 export type Role = "public" | "household" | "admin";
