@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronLeft, Upload } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
@@ -88,6 +88,7 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
         "id, date, description_raw, description_clean, real_amount, shared_amount, is_fake, is_transfer, categories(slug)"
       )
       .eq("account_id", id)
+      .eq("is_fake", false)
       .order("date", { ascending: false })
       .limit(300);
     for (const r of data ?? []) {
@@ -173,12 +174,6 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
             real {formatBRL(realBalance)} · Δ {formatBRL(realBalance - sharedBalance)}
           </p>
         )}
-        <Link
-          href={`/import?account=${id}`}
-          className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-accent/10 text-accent border border-accent/30 text-xs hover:bg-accent/20"
-        >
-          <Upload size={12} /> {t("account.import", lang)}
-        </Link>
       </section>
 
       {monthsBars.length >= 2 && (

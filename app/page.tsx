@@ -1,17 +1,15 @@
 import Link from "next/link";
-import { ArrowRight, Plus, Upload, Sparkles } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { getRole } from "@/lib/auth/admin";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
 import { getDashboardData } from "@/lib/dashboard/queries";
-import { getInsights } from "@/lib/insights/engine";
 import { formatBRL, monthLabel } from "@/lib/format";
 import { TransactionRow } from "@/components/transaction-row";
 import { KpiCard } from "@/components/kpi-card";
 import { CategoryDonut } from "@/components/charts/category-donut";
 import { MonthlyTrend } from "@/components/charts/monthly-trend";
 import { CategoryChip } from "@/components/category-chip";
-import { InsightsPanel } from "@/components/insights-panel";
 import { mergeCategoryTotalsToParents } from "@/lib/categories/meta";
 import { BankSquare } from "@/components/bank-square";
 import { getLang } from "@/lib/i18n/server";
@@ -22,10 +20,9 @@ export const dynamic = "force-dynamic";
 export default async function Home() {
   const role = await getRole();
   const lang = await getLang();
-  const [accounts, dash, insights] = await Promise.all([
+  const [accounts, dash] = await Promise.all([
     getAccountsWithBalances(role),
-    getDashboardData(role),
-    getInsights(role)
+    getDashboardData(role)
   ]);
 
   const empty = dash.accountsCount === 0;
@@ -77,14 +74,6 @@ export default async function Home() {
           >
             <Plus size={16} /> {t("home.new_account", lang)}
           </Link>
-          {dash.accountsCount > 0 && (
-            <Link
-              href="/import"
-              className="px-4 py-2 rounded-xl bg-surface-container border border-outline-variant text-sm font-medium inline-flex items-center gap-2 hover:bg-surface-container-high transition text-on-surface"
-            >
-              <Upload size={16} /> {t("home.import", lang)}
-            </Link>
-          )}
           <span className="ml-auto text-xs text-on-surface-variant">
             {dash.accountsCount} {dash.accountsCount === 1 ? t("home.account_one", lang) : t("home.account_many", lang)}
           </span>
@@ -125,16 +114,6 @@ export default async function Home() {
             />
           </section>
 
-          {/* Smart Facts */}
-          {insights.length > 0 && (
-            <section className="mb-5">
-              <header className="flex items-center gap-2 mb-3 px-1">
-                <Sparkles size={14} className="text-accent" />
-                <h2 className="font-medium">{t("home.insights", lang)}</h2>
-              </header>
-              <InsightsPanel insights={insights} />
-            </section>
-          )}
 
           {/* Category donut */}
           <section className="rounded-2xl bg-surface-container-lowest border border-outline-variant p-5 mb-5 soft-ambient-shadow">
@@ -233,12 +212,6 @@ export default async function Home() {
       {noData && role === "admin" && (
         <div className="rounded-2xl bg-surface-container-lowest border border-dashed border-outline-variant p-6 text-center mb-8">
           <p className="text-sm text-on-surface-variant mb-3">{t("home.no_tx_yet", lang)}</p>
-          <Link
-            href="/import"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-on-primary text-sm font-medium active:scale-[0.99] transition"
-          >
-            <Upload size={14} /> {t("home.import_first", lang)}
-          </Link>
         </div>
       )}
     </div>
@@ -272,12 +245,6 @@ function EmptyOnboarding({ role: _role, lang }: { role: "public" | "household" |
           className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-fg text-bg text-sm font-medium"
         >
           <Plus size={14} /> {t("home.create_first", lang)}
-        </Link>
-        <Link
-          href="/import"
-          className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-card border border-border text-sm font-medium"
-        >
-          <Upload size={14} /> {t("home.import_statement", lang)}
         </Link>
       </div>
     </div>
