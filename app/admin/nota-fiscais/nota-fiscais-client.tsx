@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 import { PrescriptionAttach } from "@/app/admin/health/prescription-attach";
+import { EligibilityPanel } from "@/app/admin/health/eligibility-panel";
 
 function fmtDate(s: string | null | undefined): string {
   if (!s) return "—";
@@ -443,6 +444,8 @@ function DetailContent({ detail, onChanged }: { detail: NfDetail; onChanged: () 
           ) : (
             <PrescriptionAttach nfId={detail.id} onChanged={onChanged} />
           )}
+          <div className="mx-5 border-t border-outline-variant" />
+          <EligibilityPanel nfId={detail.id} />
         </>
       )}
 

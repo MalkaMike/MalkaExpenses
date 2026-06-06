@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 import { PrescriptionAttach } from "./prescription-attach";
+import { EligibilityPanel } from "./eligibility-panel";
 
 type Claim = {
   id: string;
@@ -221,8 +222,11 @@ export function HealthClient() {
                       ) : (
                         <PrescriptionAttach nfId={c.id} onChanged={load} compact />
                       )}
+                      <div className="rounded-lg border border-outline-variant bg-surface-container-lowest overflow-hidden">
+                        <EligibilityPanel nfId={c.id} compact />
+                      </div>
                       <a
-                        href="/admin/nota-fiscais"
+                        href={`/admin/nota-fiscais?id=${c.id}`}
                         className="inline-block text-[11px] text-primary hover:underline"
                       >
                         Ver na lista de notas →

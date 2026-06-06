@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ShieldCheck, FileText, Users, BookOpen, AlertTriangle, Quote,
+  ShieldCheck, FileText, Users, BookOpen, AlertTriangle,
   CheckCircle2, Circle, Loader2, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { SourceQuote } from "@/app/admin/health/source-quote";
 
 type Member = { id: string; name: string; relationship: string | null; birth_date: string | null };
 type Rule = {
@@ -104,16 +105,6 @@ function ConfirmTick({
       {busy ? <Loader2 size={11} className="animate-spin" /> : confirmed ? <CheckCircle2 size={11} /> : <Circle size={11} />}
       {confirmed ? "Confirmado" : "Confirmar"}
     </button>
-  );
-}
-
-function SourceQuote({ text }: { text: string | null }) {
-  if (!text) return null;
-  return (
-    <p className="text-[10px] text-on-surface-variant/80 italic mt-1.5 flex items-start gap-1">
-      <Quote size={9} className="shrink-0 mt-0.5" />
-      <span className="line-clamp-3">&ldquo;{text}&rdquo;</span>
-    </p>
   );
 }
 

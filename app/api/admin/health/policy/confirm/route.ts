@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
+import { recomputeForRuleInBackground } from "@/lib/eligibility/recompute";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -43,5 +44,13 @@ export async function POST(req: NextRequest) {
     .select("id, human_confirmed")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // When a coverage rule is human-confirmed (toggled to true), trigger a
+  // fire-and-forget recompute of every AI-determined claim using this rule.
+  // Manually-confirmed claims are NEVER overwritten (see recomputeOne).
+  if (kind === "rule" && human_confirmed) {
+    recomputeForRuleInBackground(id);
+  }
+
   return NextResponse.json(data);
 }

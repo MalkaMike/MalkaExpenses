@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { scanDocument } from "@/lib/ai/scan";
+import { recomputeOne } from "@/lib/eligibility/recompute";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
@@ -106,6 +107,13 @@ export async function POST(req: NextRequest) {
         });
       }
       paired = true;
+    }
+    // Fire-and-forget: pairing a prescription changes the eligibility verdict
+    // (some rules require a pedido médico). Don't block the response.
+    if (paired && link_nota_fiscal_id) {
+      void recomputeOne(link_nota_fiscal_id).catch((e) =>
+        console.warn("[scan→recompute]", link_nota_fiscal_id, (e as Error).message)
+      );
     }
     return NextResponse.json({ doc_kind: "prescription", medical_document_id: doc.id, paired, scan });
   }
