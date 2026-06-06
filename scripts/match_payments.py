@@ -74,6 +74,21 @@ CORP_STOP = {
     "PRODUCOES",
     "ADVOGADOS",
     "ASSOCIADOS",
+    # geographic / generic — too common to identify a merchant
+    "BRASIL",
+    "BRASILEIRA",
+    "BRAS",
+    "SAO",
+    "PAULO",
+    "RIO",
+    "JANEIRO",
+    "VAREJO",
+    "SHOPPING",
+    "SHOP",
+    "CENTER",
+    "CENTRO",
+    "COMERCIAL",
+    "LOJA",
 }
 # Common surnames — too generic to match on alone (avoids over-matching person names)
 SURNAME_STOP = {
@@ -115,16 +130,29 @@ def norm(s: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"[^A-Z0-9 ]", " ", s)).strip()
 
 
+# Known truncated/abbreviated provider names as they appear in bank statements.
+# Maps a token found in the NF provider name -> extra match substrings to look
+# for in the transaction description (boletos/cards truncate long names).
+ALIASES = {
+    "EINSTEIN": ["ISR B HOSP", "HOSP ALB", "ALB EIN", "ISRAELITA"],
+    "ISRAELITABRAS": ["ISR B HOSP", "HOSP ALB", "ALB EIN"],
+}
+
+
 def provider_keys(name: str):
-    """Return (tokens, sig). tokens = distinctive words matched against tx text;
-    sig = despaced first-two-words signature, a fallback for names whose only
-    identifier is short/spaced (e.g. 'R3 CLINICA' vs tx 'R 3 CLINICA')."""
+    """Return (tokens, sig, aliases). tokens = distinctive words matched against
+    tx text; sig = despaced first-two-words signature (e.g. 'R3 CLINICA' vs tx
+    'R 3 CLINICA'); aliases = known truncated forms a bank statement may use."""
     words = norm(name).split()
     toks = [w for w in words if len(w) >= 4 and w not in CORP_STOP]
     distinctive = [w for w in toks if w not in SURNAME_STOP]
     sig = "".join(words[:2])
     sig = sig if len(sig) >= 5 else ""
-    return (distinctive or toks), sig
+    aliases = []
+    for w in words:
+        if w in ALIASES:
+            aliases.extend(ALIASES[w])
+    return (distinctive or toks), sig, aliases
 
 
 def d10(s):
@@ -176,10 +204,12 @@ def main():
             }
         )
 
-    def merch_match(tokens, sig, tx):
+    def merch_match(tokens, sig, aliases, tx):
         if any(tok in tx["norm"] for tok in tokens):
             return True
-        return bool(sig) and sig in tx["nospace"]
+        if sig and sig in tx["nospace"]:
+            return True
+        return any(al in tx["norm"] for al in (aliases or []))
 
     payments = []  # dicts ready for insert
     plan_count = {"installment_marker": 0, "single": 0, "subset_sum": 0, "recurring": 0}
@@ -211,8 +241,8 @@ def main():
         A = round(float(nf["total_amount"] or 0), 2)
         if A <= 0:
             continue
-        toks, sig = provider_keys(nf["provider_name"])
-        if not toks and not sig:
+        toks, sig, ali = provider_keys(nf["provider_name"])
+        if not toks and not sig and not ali:
             continue
         d0 = to_date(nf["emission_date"]) if nf.get("emission_date") else None
         if not d0:
@@ -222,7 +252,7 @@ def main():
             for t in TX
             if not t["claimed"]
             and t["mk"]
-            and merch_match(toks, sig, t)
+            and merch_match(toks, sig, ali, t)
             and abs((t["date"] - d0).days) <= 560
         ]
         # cluster into plan instances by (M, per) then consecutive k-runs
@@ -258,6 +288,61 @@ def main():
             nf_plan[nf["id"]] = ("installment_marker", M)
             plan_count["installment_marker"] += 1
 
+    # ── PHASE 1b: equal-value installments WITHOUT a k/M marker ──────────────
+    # Brazilian rule: a "parcelado" plan splits the face into M near-equal parts
+    # (cents differ from rounding). If same-merchant charges of near-equal value,
+    # on a monthly cadence, satisfy per*M == face, it's a plan even with no marker.
+    # SPECULATIVE — restricted to medical/education where proof-of-payment matters
+    # and where it gets human/adversarial review (avoids noise on subscriptions/retail).
+    def speculative_target(nf):
+        return nf.get("is_reimbursable") or nf.get("category_slug") in (
+            "saude",
+            "educacao",
+        )
+
+    for nf in targets:
+        if nf["id"] in nf_plan or not speculative_target(nf):
+            continue
+        A = round(float(nf["total_amount"] or 0), 2)
+        if A <= 0:
+            continue
+        toks, sig, ali = provider_keys(nf["provider_name"])
+        if not toks and not sig and not ali:
+            continue
+        d0 = to_date(nf["emission_date"]) if nf.get("emission_date") else None
+        if not d0:
+            continue
+        pool = [
+            t
+            for t in TX
+            if not t["claimed"]
+            and merch_match(toks, sig, ali, t)
+            and -45 <= (t["date"] - d0).days <= 560
+            and t["amt"] < A - 0.01  # a partial (< face) — the installment signal
+        ]
+        best = None  # (count, charges, M, per)
+        for M in range(2, 19):
+            per = round(A / M, 2)
+            tolc = max(0.05, per * 0.02)  # "a few cents" rounding tolerance
+            grp = sorted(
+                [t for t in pool if abs(t["amt"] - per) <= tolc],
+                key=lambda t: t["date"],
+            )
+            if len(grp) < 2 or abs(per * M - A) > max(0.05, M * 0.02):
+                continue
+            gaps = [
+                (grp[i + 1]["date"] - grp[i]["date"]).days for i in range(len(grp) - 1)
+            ]
+            if gaps and all(18 <= g <= 48 for g in gaps):  # monthly cadence
+                if best is None or len(grp) > best[0]:
+                    best = (len(grp), grp[:M], M, per)
+        if best:
+            _, grp, M, per = best
+            for i, t in enumerate(grp):
+                claim(nf, t, i + 1, M, "equal_value", "medium")
+            nf_plan[nf["id"]] = ("equal_value", M)
+            plan_count["equal_value"] = plan_count.get("equal_value", 0) + 1
+
     # ── PHASE 2: single exact payment ─────────────────────────────────────────
     for nf in targets:
         if nf["id"] in nf_plan:
@@ -265,8 +350,8 @@ def main():
         A = round(float(nf["total_amount"] or 0), 2)
         if A <= 0:
             continue
-        toks, sig = provider_keys(nf["provider_name"])
-        if not toks and not sig:
+        toks, sig, ali = provider_keys(nf["provider_name"])
+        if not toks and not sig and not ali:
             continue
         d0 = to_date(nf["emission_date"]) if nf.get("emission_date") else None
         if not d0:
@@ -275,7 +360,7 @@ def main():
             t
             for t in TX
             if not t["claimed"]
-            and merch_match(toks, sig, t)
+            and merch_match(toks, sig, ali, t)
             and abs(t["amt"] - A) <= max(5.0, A * 0.03)
             and abs((t["date"] - d0).days) <= 45
         ]
@@ -292,8 +377,8 @@ def main():
         A = round(float(nf["total_amount"] or 0), 2)
         if A <= 0:
             continue
-        toks, sig = provider_keys(nf["provider_name"])
-        if not toks and not sig:
+        toks, sig, ali = provider_keys(nf["provider_name"])
+        if not toks and not sig and not ali:
             continue
         d0 = to_date(nf["emission_date"]) if nf.get("emission_date") else None
         if not d0:
@@ -303,7 +388,7 @@ def main():
                 t
                 for t in TX
                 if not t["claimed"]
-                and merch_match(toks, sig, t)
+                and merch_match(toks, sig, ali, t)
                 and abs((t["date"] - d0).days) <= 120
             ],
             key=lambda t: abs((t["date"] - d0).days),
@@ -330,8 +415,8 @@ def main():
         A = round(float(nf["total_amount"] or 0), 2)
         if A <= 0:
             continue
-        toks, sig = provider_keys(nf["provider_name"])
-        if not toks and not sig:
+        toks, sig, ali = provider_keys(nf["provider_name"])
+        if not toks and not sig and not ali:
             continue
         d0 = to_date(nf["emission_date"]) if nf.get("emission_date") else None
         if not d0:
@@ -340,7 +425,7 @@ def main():
             t
             for t in TX
             if not t["claimed"]
-            and merch_match(toks, sig, t)
+            and merch_match(toks, sig, ali, t)
             and abs(t["amt"] - A) <= max(5.0, A * 0.05)
             and abs((t["date"] - d0).days) <= 75
         ]
@@ -349,6 +434,36 @@ def main():
             claim(nf, t, None, 1, "recurring", "medium")
             nf_plan[nf["id"]] = ("recurring", 1)
             plan_count["recurring"] += 1
+
+    # ── PHASE 5: Pix-to-named-payee recovery (residual, wider window) ─────────
+    # Last resort for still-unmatched notas: accept a charge that NAMES the
+    # provider (Pix/boleto to the clinic/professional) within a wider window.
+    # Low confidence; the naming requirement is what keeps it safe.
+    for nf in sorted(targets, key=lambda n: d10(n.get("emission_date"))):
+        if nf["id"] in nf_plan or not speculative_target(nf):
+            continue
+        A = round(float(nf["total_amount"] or 0), 2)
+        if A <= 0:
+            continue
+        toks, sig, ali = provider_keys(nf["provider_name"])
+        if not toks and not sig and not ali:
+            continue
+        d0 = to_date(nf["emission_date"]) if nf.get("emission_date") else None
+        if not d0:
+            continue
+        cand = [
+            t
+            for t in TX
+            if not t["claimed"]
+            and merch_match(toks, sig, ali, t)
+            and abs(t["amt"] - A) <= max(5.0, A * 0.03)
+            and abs((t["date"] - d0).days) <= 150
+        ]
+        if cand:
+            t = min(cand, key=lambda x: abs((x["date"] - d0).days))
+            claim(nf, t, None, 1, "pix_named", "low")
+            nf_plan[nf["id"]] = ("pix_named", 1)
+            plan_count["pix_named"] = plan_count.get("pix_named", 0) + 1
 
     # ── Roll up status per nota ───────────────────────────────────────────────
     by_nf = defaultdict(list)
@@ -370,7 +485,7 @@ def main():
             continue
         Mtot = (
             M
-            if method == "installment_marker"
+            if method in ("installment_marker", "equal_value")
             else (len(ps) if method == "subset_sum" else 1)
         )
         paid_charges = [p for p in ps if not p["is_future"]]
@@ -378,7 +493,7 @@ def main():
         amt_paid = round(sum(p["amount"] for p in paid_charges), 2)
         amt_pend = round(sum(p["amount"] for p in fut_charges), 2)
         ipaid = len(paid_charges)
-        if method == "installment_marker":
+        if method in ("installment_marker", "equal_value"):
             # Pending = remainder of the plan total, even if some future
             # installments aren't present in the data yet.
             per = ps[0]["amount"]
