@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers, Mail, CheckCircle2, Sparkles } from "lucide-react";
+import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers, Mail, CheckCircle2, Sparkles, Receipt } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -122,6 +122,12 @@ export default async function AdminLanding({
           title="Reembolsos"
           subtitle="Kenlo · Laik · Plano de Saúde"
           Icon={Briefcase}
+        />
+        <AdminLink
+          href="/admin/nota-fiscais"
+          title="Notas Fiscais"
+          subtitle="PDFs + voos Gmail · indexação + reembolsos"
+          Icon={Receipt}
         />
         <AdminLink
           href="/admin/sugestoes"
