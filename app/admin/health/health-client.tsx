@@ -120,13 +120,16 @@ export function HealthClient() {
       </div>
 
       {/* Legend / explanation */}
-      <div className="mb-4 p-3 rounded-xl border border-outline-variant bg-surface-container-lowest">
+      <div className="mb-4 p-3 rounded-xl border border-outline-variant bg-surface-container-lowest flex items-center justify-between gap-3 flex-wrap">
         <p className="text-[11px] text-on-surface-variant">
           Cada reembolso precisa de 3 partes:{" "}
           <span className="text-on-surface font-medium">pagamento</span> (banco),{" "}
           <span className="text-on-surface font-medium">NF/recibo</span> e{" "}
           <span className="text-on-surface font-medium">pedido médico</span>. Toque numa nota para anexar o pedido (escanear ou upload).
         </p>
+        <a href="/admin/health/policy" className="text-[11px] text-primary hover:underline whitespace-nowrap font-medium">
+          Apólice · Cofre →
+        </a>
       </div>
 
       {/* Filter tabs */}
