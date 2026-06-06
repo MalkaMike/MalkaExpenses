@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Search, X, Plane, FileText, AlertTriangle, CheckCircle2,
-  Clock, ChevronRight, ExternalLink, Loader2,
+  Clock, ChevronRight, ExternalLink, Loader2, Camera, Stethoscope,
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 
@@ -72,9 +72,25 @@ type FlightLeg = {
   fare_class: string | null;
 };
 
+type Prescription = {
+  id: string;
+  doctor_name: string | null;
+  doctor_crm: string | null;
+  patient_name: string | null;
+  issue_date: string | null;
+  description: string | null;
+};
+
+type Claim = {
+  id: string;
+  prescription_id: string | null;
+  medical_documents: Prescription | null;
+};
+
 type NfDetail = NfRow & {
   nota_fiscal_flights: FlightLeg[];
   nota_fiscal_payments: Payment[];
+  reimbursement_claims: Claim[];
 };
 
 type Stats = {
@@ -341,6 +357,83 @@ function PaymentSchedule({ detail }: { detail: NfDetail }) {
   );
 }
 
+function PrescriptionAttach({ detail, onChanged }: { detail: NfDetail; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{ doc_kind?: string; paired?: boolean; scan?: { prescription?: { doctor_name?: string | null; doctor_crm?: string | null; issue_date?: string | null } } } | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handle(file: File) {
+    setBusy(true); setErr(null); setResult(null);
+    try {
+      const b64 = await new Promise<string>((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result).split(",")[1] ?? "");
+        fr.onerror = () => rej(new Error("falha ao ler o arquivo"));
+        fr.readAsDataURL(file);
+      });
+      const r = await fetch("/api/admin/health/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base64: b64,
+          mime_type: file.type || "application/pdf",
+          link_nota_fiscal_id: detail.id,
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "falha no reconhecimento");
+      setResult(data);
+      if (data.paired) onChanged();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const presc = result?.scan?.prescription;
+
+  return (
+    <div className="px-5 py-4">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">Pedido médico</p>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handle(f); }}
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        disabled={busy}
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg border border-dashed border-primary/40 text-primary text-sm font-medium hover:bg-primary/5 transition disabled:opacity-50"
+      >
+        {busy ? <Loader2 size={15} className="animate-spin" /> : <Camera size={15} />}
+        {busy ? "Lendo documento…" : "Escanear / anexar pedido médico"}
+      </button>
+
+      {err && <p className="text-[11px] text-red-400 mt-2">{err}</p>}
+
+      {result && result.doc_kind === "prescription" && (
+        <div className="mt-3 p-3 rounded-lg bg-[#10b981]/5 border border-[#10b981]/20 space-y-1">
+          <p className="text-[11px] text-[#10b981] font-semibold flex items-center gap-1">
+            <CheckCircle2 size={12} /> {result.paired ? "Pedido vinculado a esta nota" : "Pedido reconhecido"}
+          </p>
+          {presc?.doctor_name && <p className="text-[11px] text-on-surface">Dr(a). {presc.doctor_name}{presc.doctor_crm ? ` · CRM ${presc.doctor_crm}` : ""}</p>}
+          {presc?.issue_date && <p className="text-[10px] text-on-surface-variant">{fmtDate(presc.issue_date)}</p>}
+        </div>
+      )}
+      {result && result.doc_kind !== "prescription" && (
+        <p className="text-[11px] text-[#f59e0b] mt-2">
+          O documento foi reconhecido como “{result.doc_kind}”, não um pedido médico. Tente outra foto.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function ReasonButtons({
   nf, onSave, saving,
 }: {
@@ -372,10 +465,11 @@ function ReasonButtons({
   );
 }
 
-function DetailContent({ detail }: { detail: NfDetail }) {
+function DetailContent({ detail, onChanged }: { detail: NfDetail; onChanged: () => void }) {
   const isGmail = detail.source_type === "gmail_email";
   const isPortal = detail.source_type === "nfse_portal";
   const flights = [...(detail.nota_fiscal_flights ?? [])].sort((a, b) => a.leg_order - b.leg_order);
+  const prescription = detail.reimbursement_claims?.find((c) => c.medical_documents)?.medical_documents ?? null;
 
   return (
     <div className="overflow-y-auto">
@@ -406,6 +500,25 @@ function DetailContent({ detail }: { detail: NfDetail }) {
         <>
           <div className="mx-5 border-t border-outline-variant" />
           <PaymentSchedule detail={detail} />
+          <div className="mx-5 border-t border-outline-variant" />
+          {prescription ? (
+            <div className="px-5 py-4">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">Pedido médico</p>
+              <div className="p-3 rounded-lg bg-[#10b981]/5 border border-[#10b981]/20 flex items-start gap-2">
+                <Stethoscope size={14} className="text-[#10b981] shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <p className="text-[11px] text-on-surface font-medium">
+                    {prescription.doctor_name ? `Dr(a). ${prescription.doctor_name}` : "Pedido vinculado"}
+                    {prescription.doctor_crm ? ` · CRM ${prescription.doctor_crm}` : ""}
+                  </p>
+                  {prescription.issue_date && <p className="text-[10px] text-on-surface-variant">{fmtDate(prescription.issue_date)}</p>}
+                  {prescription.description && <p className="text-[10px] text-on-surface-variant mt-0.5">{prescription.description.slice(0, 100)}</p>}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <PrescriptionAttach detail={detail} onChanged={onChanged} />
+          )}
         </>
       )}
 
@@ -464,6 +577,7 @@ export function NotaFiscaisClient() {
   const [list, setList] = useState<ListResp | null>(null);
   const [loadingStats, setLoadingStats] = useState(true);
   const [loadingList, setLoadingList] = useState(true);
+  const [listRefresh, setListRefresh] = useState(0);
 
   // Detail modal
   const [selected, setSelected] = useState<NfRow | null>(null);
@@ -508,7 +622,7 @@ export function NotaFiscaisClient() {
       .then((r) => r.json())
       .then(setList)
       .finally(() => setLoadingList(false));
-  }, [debouncedQ, category, activeTab, page]);
+  }, [debouncedQ, category, activeTab, page, listRefresh]);
 
   // Load detail on row click
   useEffect(() => {
@@ -519,6 +633,17 @@ export function NotaFiscaisClient() {
       .then((r) => r.json())
       .then(setDetail)
       .finally(() => setLoadingDetail(false));
+  }, [selected?.id]);
+
+  // Called after a prescription is scanned/paired: refresh detail + list.
+  const onPrescriptionChanged = useCallback(() => {
+    setListRefresh((x) => x + 1);
+    if (selected) {
+      fetch(`/api/admin/nota-fiscais/${selected.id}`)
+        .then((r) => r.json())
+        .then(setDetail)
+        .catch(() => {});
+    }
   }, [selected?.id]);
 
   const saveReason = useCallback(async (nfId: string, reason: string | null) => {
@@ -933,7 +1058,7 @@ export function NotaFiscaisClient() {
                   <Loader2 size={20} className="animate-spin text-on-surface-variant" />
                 </div>
               ) : detail ? (
-                <DetailContent detail={detail} />
+                <DetailContent detail={detail} onChanged={onPrescriptionChanged} />
               ) : null}
             </div>
           </div>
