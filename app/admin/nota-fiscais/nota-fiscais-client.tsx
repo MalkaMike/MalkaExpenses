@@ -1,13 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Search, X, Plane, FileText, AlertTriangle, CheckCircle2,
   Clock, ChevronRight, ExternalLink, Loader2,
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 
-// Supabase may return timestamps; slice to YYYY-MM-DD before formatting.
 function fmtDate(s: string | null | undefined): string {
   if (!s) return "—";
   return formatDate(s.slice(0, 10));
@@ -34,6 +33,7 @@ type NfRow = {
   source_type: string | null;
   verification_code: string | null;
   service_description: string | null;
+  no_match_reason: string | null;
 };
 
 type FlightLeg = {
@@ -67,6 +67,7 @@ type Stats = {
   reimbursable_count: number;
   reimbursable_total: number;
   missing_nf_count: number;
+  unmatched_pending: number;
   missing_nfs: { transaction_id: string; date: string; description: string; amount: number }[];
 };
 
@@ -78,7 +79,7 @@ type ListResp = {
   total_pages: number;
 };
 
-// ─── Category meta ───────────────────────────────────────────────────────────
+// ─── Category + reason meta ──────────────────────────────────────────────────
 
 const CAT_META: Record<string, { label: string; cls: string }> = {
   saude:       { label: "Saúde",       cls: "bg-[#0ea5e9]/10 text-[#0ea5e9] border-[#0ea5e9]/20" },
@@ -86,8 +87,35 @@ const CAT_META: Record<string, { label: string; cls: string }> = {
   transporte:  { label: "Transporte",  cls: "bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/20" },
   viagem:      { label: "Viagem",      cls: "bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20" },
   alimentacao: { label: "Alimentação", cls: "bg-[#ef4444]/10 text-[#ef4444] border-[#ef4444]/20" },
+  assinaturas: { label: "Assinaturas", cls: "bg-neutral-100 text-neutral-500 border-neutral-200" },
+  servicos:    { label: "Serviços",    cls: "bg-neutral-100 text-neutral-500 border-neutral-200" },
   outros:      { label: "Outros",      cls: "bg-neutral-100 text-neutral-500 border-neutral-200" },
 };
+
+const REASON_META: Record<string, { label: string; cls: string; activeCls: string }> = {
+  plano_direto: {
+    label: "Plano Direto",
+    cls: "border-outline-variant text-on-surface-variant hover:border-[#8b5cf6]/40 hover:text-[#8b5cf6]",
+    activeCls: "bg-[#8b5cf6]/10 text-[#8b5cf6] border-[#8b5cf6]/30",
+  },
+  dinheiro: {
+    label: "Dinheiro",
+    cls: "border-outline-variant text-on-surface-variant hover:border-[#10b981]/40 hover:text-[#10b981]",
+    activeCls: "bg-[#10b981]/10 text-[#10b981] border-[#10b981]/30",
+  },
+  miles: {
+    label: "Milhas",
+    cls: "border-outline-variant text-on-surface-variant hover:border-[#0ea5e9]/40 hover:text-[#0ea5e9]",
+    activeCls: "bg-[#0ea5e9]/10 text-[#0ea5e9] border-[#0ea5e9]/30",
+  },
+  pendente: {
+    label: "Pendente",
+    cls: "border-outline-variant text-on-surface-variant hover:border-[#f59e0b]/40 hover:text-[#f59e0b]",
+    activeCls: "bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/30",
+  },
+};
+
+const REASONS = Object.entries(REASON_META).map(([key, m]) => ({ key, ...m }));
 
 function catMeta(slug: string | null) {
   return CAT_META[slug ?? "outros"] ?? CAT_META.outros;
@@ -158,8 +186,6 @@ function FlightCard({ leg }: { leg: FlightLeg }) {
           <span className="text-[10px] text-on-surface-variant">{leg.airline} {leg.flight_number}</span>
         )}
       </div>
-
-      {/* Route */}
       <div className="flex items-center gap-2">
         <div className="text-center min-w-[48px]">
           <p className="text-lg font-bold text-on-surface leading-none">{leg.origin_airport ?? "—"}</p>
@@ -183,8 +209,6 @@ function FlightCard({ leg }: { leg: FlightLeg }) {
           <p className="text-[10px] text-on-surface-variant leading-none mt-0.5 truncate max-w-[60px]">{leg.dest_city ?? ""}</p>
         </div>
       </div>
-
-      {/* Passengers + ref */}
       <div className="space-y-0.5">
         {leg.passengers && leg.passengers.length > 0 && (
           <p className="text-[10px] text-on-surface-variant">{leg.passengers.join(", ")}</p>
@@ -197,13 +221,44 @@ function FlightCard({ leg }: { leg: FlightLeg }) {
   );
 }
 
+function ReasonButtons({
+  nf, onSave, saving,
+}: {
+  nf: NfRow;
+  onSave: (id: string, reason: string | null) => void;
+  saving: boolean;
+}) {
+  return (
+    <div
+      className="flex gap-1.5 flex-wrap mt-2"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {REASONS.map((r) => {
+        const active = nf.no_match_reason === r.key;
+        return (
+          <button
+            key={r.key}
+            disabled={saving}
+            onClick={() => onSave(nf.id, active ? null : r.key)}
+            className={`px-2.5 py-1 rounded-full text-[10px] border font-medium transition ${
+              active ? r.activeCls : r.cls
+            } ${saving ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          >
+            {r.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function DetailContent({ detail }: { detail: NfDetail }) {
   const isGmail = detail.source_type === "gmail_email";
+  const isPortal = detail.source_type === "nfse_portal";
   const flights = [...(detail.nota_fiscal_flights ?? [])].sort((a, b) => a.leg_order - b.leg_order);
 
   return (
     <div className="overflow-y-auto">
-      {/* Meta */}
       <div className="px-5 py-4 space-y-2">
         <InfoRow label="Data" value={fmtDate(detail.emission_date ?? detail.payment_date)} />
         <InfoRow label="Valor" value={formatBRL(Number(detail.total_amount ?? 0))} bold />
@@ -213,7 +268,7 @@ function DetailContent({ detail }: { detail: NfDetail }) {
         {detail.nf_number && <InfoRow label="Número NF" value={detail.nf_number} />}
         {detail.verification_code && <InfoRow label="Cód. verificação" value={detail.verification_code} mono />}
         {detail.service_description && (
-          <InfoRow label="Serviço" value={detail.service_description.slice(0, 80)} />
+          <InfoRow label="Serviço" value={detail.service_description.slice(0, 120)} />
         )}
         <div className="flex items-center justify-between pt-1">
           <span className="text-[11px] text-on-surface-variant">Indexação</span>
@@ -227,7 +282,6 @@ function DetailContent({ detail }: { detail: NfDetail }) {
         )}
       </div>
 
-      {/* Flight legs */}
       {isGmail && flights.length > 0 && (
         <>
           <div className="mx-5 border-t border-outline-variant" />
@@ -238,8 +292,7 @@ function DetailContent({ detail }: { detail: NfDetail }) {
         </>
       )}
 
-      {/* PDF viewer */}
-      {!isGmail && (
+      {!isGmail && !isPortal && (
         <>
           <div className="mx-5 border-t border-outline-variant" />
           <div className="px-5 py-4">
@@ -271,11 +324,12 @@ function DetailContent({ detail }: { detail: NfDetail }) {
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function NotaFiscaisClient() {
+  const [activeTab, setActiveTab] = useState<"all" | "unmatched">("all");
+
   // Filters
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const [category, setCategory] = useState("");
-  const [unmatched, setUnmatched] = useState(false);
   const [page, setPage] = useState(1);
 
   // Data
@@ -292,14 +346,17 @@ export function NotaFiscaisClient() {
   // Missing NFs panel
   const [showMissing, setShowMissing] = useState(false);
 
+  // Reason saving
+  const [savingReason, setSavingReason] = useState<string | null>(null);
+
   // Debounce search
   useEffect(() => {
     const t = setTimeout(() => setDebouncedQ(q), 380);
     return () => clearTimeout(t);
   }, [q]);
 
-  // Reset page on filter change
-  useEffect(() => { setPage(1); }, [debouncedQ, category, unmatched]);
+  // Reset page on filter/tab change
+  useEffect(() => { setPage(1); }, [debouncedQ, category, activeTab]);
 
   // Load stats (once)
   useEffect(() => {
@@ -316,14 +373,14 @@ export function NotaFiscaisClient() {
     const p = new URLSearchParams();
     if (debouncedQ) p.set("q", debouncedQ);
     if (category) p.set("category", category);
-    if (unmatched) p.set("unmatched", "true");
+    if (activeTab === "unmatched") p.set("unmatched", "true");
     p.set("page", String(page));
     p.set("per_page", "30");
     fetch(`/api/admin/nota-fiscais?${p}`)
       .then((r) => r.json())
       .then(setList)
       .finally(() => setLoadingList(false));
-  }, [debouncedQ, category, unmatched, page]);
+  }, [debouncedQ, category, activeTab, page]);
 
   // Load detail on row click
   useEffect(() => {
@@ -336,11 +393,45 @@ export function NotaFiscaisClient() {
       .finally(() => setLoadingDetail(false));
   }, [selected?.id]);
 
+  const saveReason = useCallback(async (nfId: string, reason: string | null) => {
+    setSavingReason(nfId);
+    try {
+      await fetch(`/api/admin/nota-fiscais/${nfId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ no_match_reason: reason }),
+      });
+      setList((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          data: prev.data.map((r) =>
+            r.id === nfId ? { ...r, no_match_reason: reason } : r
+          ),
+        };
+      });
+      // Recount unmatched_pending in stats
+      setStats((prev) => {
+        if (!prev) return prev;
+        const wasClassified = prev.unmatched_pending;
+        const delta = reason ? -1 : 1;
+        return { ...prev, unmatched_pending: Math.max(0, wasClassified + delta) };
+      });
+    } finally {
+      setSavingReason(null);
+    }
+  }, []);
+
   const rows = list?.data ?? [];
 
   function openRow(row: NfRow) {
     setSelected((prev) => (prev?.id === row.id ? null : row));
   }
+
+  const tabItems = [
+    { key: "all" as const,       label: "Todas",          count: stats?.total },
+    { key: "unmatched" as const, label: "Sem Transação",  count: stats?.unmatched, pendingCount: stats?.unmatched_pending, warn: true },
+  ];
 
   return (
     <>
@@ -402,6 +493,42 @@ export function NotaFiscaisClient() {
         </div>
       )}
 
+      {/* Tab bar */}
+      <div className="flex gap-0 mb-4 border-b border-outline-variant">
+        {tabItems.map(({ key, label, count, pendingCount, warn }) => {
+          const active = activeTab === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px ${
+                active
+                  ? "border-primary text-primary"
+                  : "border-transparent text-on-surface-variant hover:text-on-surface"
+              }`}
+            >
+              {label}
+              {count !== undefined && (
+                <span className={`text-[10px] rounded-full px-1.5 py-0.5 tabular-nums font-semibold ${
+                  active
+                    ? "bg-primary/10 text-primary"
+                    : warn
+                    ? "bg-[#f59e0b]/10 text-[#f59e0b]"
+                    : "bg-surface-container text-on-surface-variant"
+                }`}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+        {activeTab === "unmatched" && stats && stats.unmatched_pending > 0 && (
+          <span className="ml-auto self-center text-[10px] text-on-surface-variant px-2">
+            {stats.unmatched_pending} sem classificação
+          </span>
+        )}
+      </div>
+
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2 mb-4">
         <div className="relative flex-1 min-w-[180px]">
@@ -421,7 +548,6 @@ export function NotaFiscaisClient() {
             </button>
           )}
         </div>
-
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value)}
@@ -430,32 +556,31 @@ export function NotaFiscaisClient() {
           <option value="">Todas as categorias</option>
           <option value="saude">Saúde</option>
           <option value="educacao">Educação</option>
+          <option value="assinaturas">Assinaturas</option>
+          <option value="servicos">Serviços</option>
           <option value="transporte">Transporte</option>
           <option value="viagem">Viagem</option>
           <option value="outros">Outros</option>
         </select>
-
-        <label className="flex items-center gap-2 px-3 py-2 text-sm rounded-lg border border-outline-variant bg-surface-container-lowest cursor-pointer select-none transition hover:bg-surface-container">
-          <input
-            type="checkbox"
-            checked={unmatched}
-            onChange={(e) => setUnmatched(e.target.checked)}
-            className="w-3.5 h-3.5 accent-primary"
-          />
-          <span>Sem transação</span>
-        </label>
       </div>
 
       {/* Table */}
       <div className="rounded-xl border border-outline-variant overflow-hidden bg-surface-container-lowest">
         {/* Header */}
-        <div className="grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-0 border-b border-outline-variant bg-surface-container px-4 py-2.5">
-          {["Data", "Fornecedor", "Valor", "Categoria", ""].map((h, i) => (
-            <p key={i} className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-              {h}
-            </p>
-          ))}
-        </div>
+        {activeTab === "all" && (
+          <div className="grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-0 border-b border-outline-variant bg-surface-container px-4 py-2.5">
+            {["Data", "Fornecedor", "Valor", "Categoria", ""].map((h, i) => (
+              <p key={i} className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{h}</p>
+            ))}
+          </div>
+        )}
+        {activeTab === "unmatched" && (
+          <div className="grid grid-cols-[80px_1fr_80px] gap-0 border-b border-outline-variant bg-surface-container px-4 py-2.5">
+            {["Data", "Fornecedor · Valor · Razão", "Cat."].map((h, i) => (
+              <p key={i} className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">{h}</p>
+            ))}
+          </div>
+        )}
 
         {loadingList && (
           <div className="flex items-center justify-center py-14">
@@ -465,11 +590,11 @@ export function NotaFiscaisClient() {
 
         {!loadingList && rows.length === 0 && (
           <div className="text-center py-14 text-sm text-on-surface-variant">
-            Nenhuma nota fiscal encontrada
+            {activeTab === "unmatched" ? "Todas as NFs já têm transação vinculada" : "Nenhuma nota fiscal encontrada"}
           </div>
         )}
 
-        {!loadingList && rows.length > 0 && (
+        {!loadingList && rows.length > 0 && activeTab === "all" && (
           <div className="divide-y divide-outline-variant">
             {rows.map((row) => {
               const cat = catMeta(row.category_slug);
@@ -482,14 +607,11 @@ export function NotaFiscaisClient() {
                     selected?.id === row.id ? "bg-primary/5" : ""
                   }`}
                 >
-                  {/* Date */}
                   <div>
                     <p className="text-xs tabular-nums text-on-surface-variant whitespace-nowrap">
                       {fmtDate(dateStr)}
                     </p>
                   </div>
-
-                  {/* Provider + type icon */}
                   <div className="flex items-center gap-2 min-w-0">
                     {row.source_type === "gmail_email"
                       ? <Plane size={12} className="text-[#0ea5e9] shrink-0" />
@@ -502,16 +624,12 @@ export function NotaFiscaisClient() {
                       )}
                     </div>
                   </div>
-
-                  {/* Amount */}
                   <div>
                     <p className="text-xs tabular-nums font-semibold text-on-surface">
                       {formatBRL(Number(row.total_amount ?? 0))}
                     </p>
                     <MatchBadge conf={row.match_confidence} />
                   </div>
-
-                  {/* Category pill */}
                   <div>
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] border ${cat.cls}`}>
                       {cat.label}
@@ -522,10 +640,61 @@ export function NotaFiscaisClient() {
                       </p>
                     )}
                   </div>
-
-                  {/* Chevron */}
                   <div className="flex items-center">
                     <ChevronRight size={14} className="text-on-surface-variant" />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {!loadingList && rows.length > 0 && activeTab === "unmatched" && (
+          <div className="divide-y divide-outline-variant">
+            {rows.map((row) => {
+              const cat = catMeta(row.category_slug);
+              const dateStr = row.emission_date ?? row.payment_date ?? "";
+              const isSaving = savingReason === row.id;
+              return (
+                <button
+                  key={row.id}
+                  onClick={() => openRow(row)}
+                  className={`w-full grid grid-cols-[80px_1fr_80px] gap-0 px-4 py-3 text-left transition hover:bg-surface-container ${
+                    selected?.id === row.id ? "bg-primary/5" : ""
+                  }`}
+                >
+                  {/* Date */}
+                  <div className="pt-0.5">
+                    <p className="text-[11px] tabular-nums text-on-surface-variant whitespace-nowrap">
+                      {fmtDate(dateStr)}
+                    </p>
+                  </div>
+
+                  {/* Provider + amount + reason buttons */}
+                  <div className="min-w-0 pr-3">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {row.source_type === "gmail_email"
+                        ? <Plane size={11} className="text-[#0ea5e9] shrink-0" />
+                        : <FileText size={11} className="text-on-surface-variant/60 shrink-0" />
+                      }
+                      <p className="text-xs text-on-surface truncate">{row.provider_name ?? "—"}</p>
+                      <span className="text-[10px] text-on-surface-variant shrink-0">·</span>
+                      <p className="text-[11px] tabular-nums font-semibold text-on-surface shrink-0">
+                        {formatBRL(Number(row.total_amount ?? 0))}
+                      </p>
+                      {isSaving && <Loader2 size={10} className="animate-spin text-on-surface-variant shrink-0 ml-1" />}
+                    </div>
+                    {row.patient_name && row.patient_name !== "Mickael" && (
+                      <p className="text-[10px] text-on-surface-variant mt-0.5 ml-[15px]">{row.patient_name}</p>
+                    )}
+                    <ReasonButtons nf={row} onSave={saveReason} saving={isSaving} />
+                  </div>
+
+                  {/* Category */}
+                  <div className="flex items-start justify-end pt-0.5">
+                    <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[9px] border ${cat.cls}`}>
+                      {cat.label}
+                    </span>
                   </div>
                 </button>
               );
@@ -567,7 +736,6 @@ export function NotaFiscaisClient() {
           onClick={(e) => { if (e.target === e.currentTarget) setSelected(null); }}
         >
           <div className="w-full max-w-2xl max-h-[85vh] bg-surface rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-outline-variant">
-            {/* Modal header */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-outline-variant shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 {selected.source_type === "gmail_email"
@@ -585,8 +753,6 @@ export function NotaFiscaisClient() {
                 <X size={17} />
               </button>
             </div>
-
-            {/* Modal body */}
             <div className="flex-1 overflow-y-auto">
               {loadingDetail ? (
                 <div className="flex items-center justify-center py-16">

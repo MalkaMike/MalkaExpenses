@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       `id, file_name, nf_number, emission_date, provider_name, provider_cnpj_formatted,
        patient_name, service_code, service_description, total_amount, category_slug,
        is_medical, is_reimbursable, match_confidence, transaction_id,
-       reimbursement_status, verification_code, payment_date`,
+       reimbursement_status, verification_code, payment_date, source_type, no_match_reason`,
       { count: "exact" }
     )
     .order("emission_date", { ascending: false });

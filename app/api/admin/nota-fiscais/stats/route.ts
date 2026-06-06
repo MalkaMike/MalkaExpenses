@@ -12,7 +12,7 @@ export async function GET() {
 
   const { data: rows } = await sb
     .from("nota_fiscais")
-    .select("category_slug, is_medical, is_reimbursable, match_confidence, total_amount, patient_name, source_type");
+    .select("category_slug, is_medical, is_reimbursable, match_confidence, total_amount, patient_name, source_type, transaction_id, no_match_reason");
 
   const all = rows ?? [];
 
@@ -22,6 +22,7 @@ export async function GET() {
   let matched = 0;
   let reimbursableTotal = 0;
   let reimbursableCount = 0;
+  let unmatchedPending = 0;
 
   for (const r of all) {
     const cat = r.category_slug ?? "outros";
@@ -30,6 +31,8 @@ export async function GET() {
     byCategory[cat].total += Number(r.total_amount ?? 0);
 
     if (r.match_confidence && r.match_confidence !== "none") matched++;
+
+    if (!r.transaction_id && !r.no_match_reason) unmatchedPending++;
 
     if (r.is_reimbursable) {
       reimbursableTotal += Number(r.total_amount ?? 0);
@@ -91,5 +94,6 @@ export async function GET() {
       amount: Math.abs(Number(tx.real_amount)),
     })),
     missing_nf_count: missingNfs.length,
+    unmatched_pending: unmatchedPending,
   });
 }
