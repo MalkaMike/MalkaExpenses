@@ -34,6 +34,23 @@ type NfRow = {
   verification_code: string | null;
   service_description: string | null;
   no_match_reason: string | null;
+  payment_status: string | null;
+  installments_total: number | null;
+  installments_paid: number | null;
+  amount_paid: number | null;
+  amount_pending: number | null;
+};
+
+type Payment = {
+  id: string;
+  transaction_id: string | null;
+  installment_k: number | null;
+  installment_m: number | null;
+  amount: number | null;
+  charge_date: string | null;
+  is_future: boolean;
+  match_method: string | null;
+  match_confidence: string | null;
 };
 
 type FlightLeg = {
@@ -56,6 +73,7 @@ type FlightLeg = {
 
 type NfDetail = NfRow & {
   nota_fiscal_flights: FlightLeg[];
+  nota_fiscal_payments: Payment[];
 };
 
 type Stats = {
@@ -69,6 +87,7 @@ type Stats = {
   missing_nf_count: number;
   unmatched_pending: number;
   missing_nfs: { transaction_id: string; date: string; description: string; amount: number }[];
+  reimbursement_by_status?: Record<string, { count: number; face: number; paid: number; pending: number }>;
 };
 
 type ListResp = {
@@ -127,6 +146,28 @@ const REASONS = Object.entries(REASON_META).map(([key, m]) => ({ key, ...m }));
 
 function catMeta(slug: string | null) {
   return CAT_META[slug ?? "outros"] ?? CAT_META.outros;
+}
+
+const PAY_META: Record<string, { label: string; cls: string; dot: string }> = {
+  paid_full: { label: "Pago",      cls: "text-[#10b981]", dot: "bg-[#10b981]" },
+  paying:    { label: "Pagando",   cls: "text-[#f59e0b]", dot: "bg-[#f59e0b]" },
+  scheduled: { label: "Agendado",  cls: "text-[#0ea5e9]", dot: "bg-[#0ea5e9]" },
+  no_proof:  { label: "Sem prova", cls: "text-red-400",   dot: "bg-red-400" },
+};
+
+function PaymentBadge({ row }: { row: NfRow }) {
+  const st = row.payment_status ?? "no_proof";
+  const m = PAY_META[st] ?? PAY_META.no_proof;
+  const inst =
+    (row.installments_total ?? 0) > 1
+      ? ` ${row.installments_paid ?? 0}/${row.installments_total}`
+      : "";
+  return (
+    <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${m.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
+      {m.label}{inst}
+    </span>
+  );
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -229,6 +270,76 @@ function FlightCard({ leg }: { leg: FlightLeg }) {
   );
 }
 
+const METHOD_LABEL: Record<string, string> = {
+  installment_marker: "Parcelado",
+  single: "À vista",
+  subset_sum: "Pagamentos",
+  recurring: "Recorrente",
+  manual: "Manual",
+};
+
+function PaymentSchedule({ detail }: { detail: NfDetail }) {
+  const pays = [...(detail.nota_fiscal_payments ?? [])].sort((a, b) =>
+    (a.charge_date ?? "").localeCompare(b.charge_date ?? "")
+  );
+  const st = detail.payment_status ?? "no_proof";
+  const m = PAY_META[st] ?? PAY_META.no_proof;
+  const face = Number(detail.total_amount ?? 0);
+  const paid = Number(detail.amount_paid ?? 0);
+  const pending = Number(detail.amount_pending ?? 0);
+  const method = pays[0]?.match_method ?? null;
+
+  return (
+    <div className="px-5 py-4">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Pagamento</p>
+        <span className={`inline-flex items-center gap-1 text-[11px] font-medium ${m.cls}`}>
+          <span className={`w-1.5 h-1.5 rounded-full ${m.dot}`} />
+          {m.label}
+          {(detail.installments_total ?? 0) > 1 && ` ${detail.installments_paid}/${detail.installments_total}`}
+          {method && <span className="text-on-surface-variant/60 ml-1">· {METHOD_LABEL[method] ?? method}</span>}
+        </span>
+      </div>
+
+      {/* paid / pending bar */}
+      {face > 0 && (paid > 0 || pending > 0) && (
+        <>
+          <div className="flex h-2 rounded-full overflow-hidden bg-surface-container mb-1.5">
+            <div className="bg-[#10b981]" style={{ width: `${Math.min(100, (paid / face) * 100)}%` }} />
+            <div className="bg-[#f59e0b]/50" style={{ width: `${Math.min(100, (pending / face) * 100)}%` }} />
+          </div>
+          <div className="flex justify-between text-[10px] text-on-surface-variant mb-3">
+            <span>Pago <span className="text-[#10b981] font-semibold">{formatBRL(paid)}</span></span>
+            {pending > 0 && <span>Falta <span className="text-[#f59e0b] font-semibold">{formatBRL(pending)}</span></span>}
+          </div>
+        </>
+      )}
+
+      {pays.length > 0 ? (
+        <div className="space-y-1">
+          {pays.map((p) => (
+            <div key={p.id} className="flex items-center justify-between text-[11px] py-1 border-b border-outline-variant last:border-0">
+              <div className="flex items-center gap-2">
+                <span className={`w-1.5 h-1.5 rounded-full ${p.is_future ? "bg-[#f59e0b]" : "bg-[#10b981]"}`} />
+                <span className="text-on-surface-variant">
+                  {p.installment_k && p.installment_m && p.installment_m > 1
+                    ? `Parcela ${p.installment_k}/${p.installment_m}`
+                    : "Pagamento"}
+                </span>
+                <span className="text-on-surface-variant/60">{fmtDate(p.charge_date)}</span>
+                {p.is_future && <span className="text-[9px] text-[#f59e0b]">agendado</span>}
+              </div>
+              <span className="tabular-nums font-medium text-on-surface">{formatBRL(Number(p.amount ?? 0))}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[11px] text-on-surface-variant">Nenhum pagamento localizado — precisa achar o comprovante.</p>
+      )}
+    </div>
+  );
+}
+
 function ReasonButtons({
   nf, onSave, saving,
 }: {
@@ -289,6 +400,13 @@ function DetailContent({ detail }: { detail: NfDetail }) {
           </div>
         )}
       </div>
+
+      {detail.is_reimbursable && (
+        <>
+          <div className="mx-5 border-t border-outline-variant" />
+          <PaymentSchedule detail={detail} />
+        </>
+      )}
 
       {isGmail && flights.length > 0 && (
         <>
@@ -353,6 +471,7 @@ export function NotaFiscaisClient() {
 
   // Missing NFs panel
   const [showMissing, setShowMissing] = useState(false);
+  const [showReimb, setShowReimb] = useState(false);
 
   // Reason saving
   const [savingReason, setSavingReason] = useState<string | null>(null);
@@ -460,8 +579,9 @@ export function NotaFiscaisClient() {
         <StatCard
           label="Reembolsável"
           value={stats ? formatBRL(stats.reimbursable_total) : "—"}
-          sub={stats ? `${stats.reimbursable_count} NFs` : ""}
+          sub={stats ? `${stats.reimbursable_count} NFs · ver status` : ""}
           loading={loadingStats}
+          onClick={() => setShowReimb((v) => !v)}
         />
         <StatCard
           label="Sem NF vinculada"
@@ -498,6 +618,38 @@ export function NotaFiscaisClient() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Reimbursement-by-payment-status panel */}
+      {showReimb && stats?.reimbursement_by_status && (
+        <div className="mb-5 p-4 rounded-xl border border-outline-variant bg-surface-container-lowest">
+          <p className="text-xs font-semibold text-on-surface mb-3">Reembolso por status de pagamento</p>
+          <div className="space-y-2">
+            {(["paid_full", "paying", "scheduled", "no_proof"] as const)
+              .filter((st) => stats.reimbursement_by_status![st])
+              .map((st) => {
+                const b = stats.reimbursement_by_status![st];
+                const m = PAY_META[st];
+                return (
+                  <div key={st} className="flex items-center justify-between gap-3">
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${m.cls} min-w-[120px]`}>
+                      <span className={`w-2 h-2 rounded-full ${m.dot}`} />
+                      {m.label}
+                      <span className="text-on-surface-variant font-normal">· {b.count} NF</span>
+                    </span>
+                    <div className="flex-1 text-right text-[11px] text-on-surface-variant">
+                      face <span className="text-on-surface font-semibold tabular-nums">{formatBRL(b.face)}</span>
+                      {b.paid > 0 && <> · pago <span className="text-[#10b981] font-semibold tabular-nums">{formatBRL(b.paid)}</span></>}
+                      {b.pending > 0 && <> · falta <span className="text-[#f59e0b] font-semibold tabular-nums">{formatBRL(b.pending)}</span></>}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+          <p className="text-[10px] text-on-surface-variant/70 mt-3">
+            &ldquo;Pagando&rdquo; = nota parcelada com cobranças futuras ainda vindo. &ldquo;Sem prova&rdquo; = comprovante de pagamento ainda não localizado.
+          </p>
         </div>
       )}
 
@@ -641,7 +793,9 @@ export function NotaFiscaisClient() {
                     <p className="text-xs tabular-nums font-semibold text-on-surface">
                       {formatBRL(Number(row.total_amount ?? 0))}
                     </p>
-                    <MatchBadge conf={row.match_confidence} />
+                    {row.is_reimbursable
+                      ? <PaymentBadge row={row} />
+                      : <MatchBadge conf={row.match_confidence} />}
                   </div>
                   <div>
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] border ${cat.cls}`}>

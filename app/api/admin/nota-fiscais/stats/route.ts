@@ -12,7 +12,7 @@ export async function GET() {
 
   const { data: rows } = await sb
     .from("nota_fiscais")
-    .select("category_slug, is_medical, is_reimbursable, match_confidence, total_amount, patient_name, source_type, transaction_id, no_match_reason");
+    .select("category_slug, is_medical, is_reimbursable, match_confidence, total_amount, patient_name, source_type, transaction_id, no_match_reason, payment_status, amount_paid, amount_pending");
 
   const all = rows ?? [];
 
@@ -46,6 +46,18 @@ export async function GET() {
   }
 
   const grandTotal = all.reduce((s, r) => s + Number(r.total_amount ?? 0), 0);
+
+  // Reimbursement by payment status (installment-aware)
+  const reimb = all.filter((r) => r.is_reimbursable);
+  const payAgg: Record<string, { count: number; face: number; paid: number; pending: number }> = {};
+  for (const r of reimb) {
+    const st = r.payment_status ?? "no_proof";
+    payAgg[st] = payAgg[st] ?? { count: 0, face: 0, paid: 0, pending: 0 };
+    payAgg[st].count++;
+    payAgg[st].face += Number(r.total_amount ?? 0);
+    payAgg[st].paid += Number(r.amount_paid ?? 0);
+    payAgg[st].pending += Number(r.amount_pending ?? 0);
+  }
 
   // Transactions matched by NFs (IDs already linked in nota_fiscais.transaction_id)
   const { data: linkedTxIds } = await sb
@@ -95,5 +107,6 @@ export async function GET() {
     })),
     missing_nf_count: missingNfs.length,
     unmatched_pending: unmatchedPending,
+    reimbursement_by_status: payAgg,
   });
 }

@@ -17,7 +17,7 @@ export async function GET(
 
   const { data, error } = await sb
     .from("nota_fiscais")
-    .select("*, nota_fiscal_flights(*)")
+    .select("*, nota_fiscal_flights(*), nota_fiscal_payments(*)")
     .eq("id", id)
     .maybeSingle();
 
