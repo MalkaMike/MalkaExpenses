@@ -82,14 +82,22 @@ type ListResp = {
 // ─── Category + reason meta ──────────────────────────────────────────────────
 
 const CAT_META: Record<string, { label: string; cls: string }> = {
-  saude:       { label: "Saúde",       cls: "bg-[#0ea5e9]/10 text-[#0ea5e9] border-[#0ea5e9]/20" },
-  educacao:    { label: "Educação",    cls: "bg-[#8b5cf6]/10 text-[#8b5cf6] border-[#8b5cf6]/20" },
-  transporte:  { label: "Transporte",  cls: "bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/20" },
-  viagem:      { label: "Viagem",      cls: "bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20" },
-  alimentacao: { label: "Alimentação", cls: "bg-[#ef4444]/10 text-[#ef4444] border-[#ef4444]/20" },
-  assinaturas: { label: "Assinaturas", cls: "bg-neutral-100 text-neutral-500 border-neutral-200" },
-  servicos:    { label: "Serviços",    cls: "bg-neutral-100 text-neutral-500 border-neutral-200" },
-  outros:      { label: "Outros",      cls: "bg-neutral-100 text-neutral-500 border-neutral-200" },
+  saude:                  { label: "Saúde",        cls: "bg-[#0ea5e9]/10 text-[#0ea5e9] border-[#0ea5e9]/20" },
+  educacao:               { label: "Educação",     cls: "bg-[#8b5cf6]/10 text-[#8b5cf6] border-[#8b5cf6]/20" },
+  cosmeticos:             { label: "Cosméticos",   cls: "bg-[#ec4899]/10 text-[#ec4899] border-[#ec4899]/20" },
+  assinaturas:            { label: "Assinaturas",  cls: "bg-[#6366f1]/10 text-[#6366f1] border-[#6366f1]/20" },
+  esportes_hobby:         { label: "Esportes",     cls: "bg-[#10b981]/10 text-[#10b981] border-[#10b981]/20" },
+  viagens:                { label: "Viagens",      cls: "bg-[#14b8a6]/10 text-[#14b8a6] border-[#14b8a6]/20" },
+  lazer:                  { label: "Lazer",        cls: "bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/20" },
+  casa_decoracao:         { label: "Casa & Decor", cls: "bg-[#f97316]/10 text-[#f97316] border-[#f97316]/20" },
+  estacionamento_pedagio: { label: "Estacion.",    cls: "bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/20" },
+  manutencao_casa:        { label: "Manutenção",   cls: "bg-[#f97316]/10 text-[#f97316] border-[#f97316]/20" },
+  hoteis_pousadas:        { label: "Hotéis",       cls: "bg-[#14b8a6]/10 text-[#14b8a6] border-[#14b8a6]/20" },
+  tecnologia:             { label: "Tecnologia",   cls: "bg-[#64748b]/10 text-[#64748b] border-[#64748b]/20" },
+  delivery:               { label: "Delivery",     cls: "bg-[#ef4444]/10 text-[#ef4444] border-[#ef4444]/20" },
+  transporte:             { label: "Transporte",   cls: "bg-[#f59e0b]/10 text-[#f59e0b] border-[#f59e0b]/20" },
+  servicos:               { label: "Serviços",     cls: "bg-neutral-100 text-neutral-500 border-neutral-200" },
+  outros:                 { label: "Outros",       cls: "bg-neutral-100 text-neutral-500 border-neutral-200" },
 };
 
 const REASON_META: Record<string, { label: string; cls: string; activeCls: string }> = {
@@ -556,10 +564,15 @@ export function NotaFiscaisClient() {
           <option value="">Todas as categorias</option>
           <option value="saude">Saúde</option>
           <option value="educacao">Educação</option>
+          <option value="cosmeticos">Cosméticos</option>
           <option value="assinaturas">Assinaturas</option>
-          <option value="servicos">Serviços</option>
-          <option value="transporte">Transporte</option>
-          <option value="viagem">Viagem</option>
+          <option value="esportes_hobby">Esportes</option>
+          <option value="viagens">Viagens</option>
+          <option value="lazer">Lazer</option>
+          <option value="casa_decoracao">Casa & Decor</option>
+          <option value="hoteis_pousadas">Hotéis</option>
+          <option value="estacionamento_pedagio">Estacionamento</option>
+          <option value="tecnologia">Tecnologia</option>
           <option value="outros">Outros</option>
         </select>
       </div>

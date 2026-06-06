@@ -18,3 +18,4 @@ stitch_*.html
 
 # Private files (PDFs, sensitive docs)
 private/
+scripts/__pycache__/
