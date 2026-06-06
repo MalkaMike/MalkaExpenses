@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers, Mail, CheckCircle2, Sparkles, Receipt } from "lucide-react";
+import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers, Mail, CheckCircle2, Sparkles, Receipt, Stethoscope } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -128,6 +128,12 @@ export default async function AdminLanding({
           title="Notas Fiscais"
           subtitle="PDFs + voos Gmail · indexação + reembolsos"
           Icon={Receipt}
+        />
+        <AdminLink
+          href="/admin/health"
+          title="Saúde · Reembolsos"
+          subtitle="notas médicas · pagamento + NF + pedido médico"
+          Icon={Stethoscope}
         />
         <AdminLink
           href="/admin/sugestoes"
