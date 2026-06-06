@@ -19,3 +19,6 @@ stitch_*.html
 # Private files (PDFs, sensitive docs)
 private/
 scripts/__pycache__/
+
+# Insurance policy extractions contain family PII — keep out of git (live in the safe)
+docs/health-hub/extracted/
