@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
        patient_name, service_code, service_description, total_amount, category_slug,
        is_medical, is_reimbursable, match_confidence, transaction_id,
        reimbursement_status, verification_code, payment_date, source_type, no_match_reason,
-       payment_status, installments_total, installments_paid, amount_paid, amount_pending`,
+       payment_status, installments_total, installments_paid, amount_paid, amount_pending,
+       reimbursement_claims(prescription_id)`,
       { count: "exact" }
     )
     .order("emission_date", { ascending: false });
@@ -71,8 +72,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  // Derive has_prescription from the joined claim, then drop the nested array.
+  type Row = Record<string, unknown> & {
+    reimbursement_claims?: { prescription_id: string | null }[];
+  };
+  const rows = (data as Row[] | null)?.map((r) => {
+    const claim = r.reimbursement_claims?.[0];
+    const { reimbursement_claims, ...rest } = r;
+    void reimbursement_claims;
+    return { ...rest, has_prescription: !!claim?.prescription_id };
+  });
+
   return NextResponse.json({
-    data,
+    data: rows,
     total: count ?? 0,
     page,
     per_page,

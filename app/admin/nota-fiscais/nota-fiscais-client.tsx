@@ -39,6 +39,7 @@ type NfRow = {
   installments_paid: number | null;
   amount_paid: number | null;
   amount_pending: number | null;
+  has_prescription?: boolean;
 };
 
 type Payment = {
@@ -802,9 +803,15 @@ export function NotaFiscaisClient() {
                       {cat.label}
                     </span>
                     {row.is_reimbursable && (
-                      <p className="text-[10px] text-[#10b981] mt-0.5 flex items-center gap-0.5">
-                        <CheckCircle2 size={10} /> reimb.
-                      </p>
+                      row.has_prescription ? (
+                        <p className="text-[10px] text-[#10b981] mt-0.5 flex items-center gap-0.5">
+                          <CheckCircle2 size={10} /> pedido ok
+                        </p>
+                      ) : (
+                        <p className="text-[10px] text-[#f59e0b] mt-0.5 flex items-center gap-0.5 font-medium">
+                          <AlertTriangle size={10} /> falta pedido
+                        </p>
+                      )
                     )}
                   </div>
                   <div className="flex items-center">
