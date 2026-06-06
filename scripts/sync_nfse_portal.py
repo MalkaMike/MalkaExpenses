@@ -204,64 +204,62 @@ def main():
     cpf = secrets.get("NFS_SP_CPF", "23304126813")
     password = secrets.get("NFS_SP_PASSWORD", "")
 
-    if not password:
-        print(
-            "ERROR: NFS_SP_PASSWORD not set.\n"
-            "Add it to ~/.claude/secrets.local.env:\n"
-            "  NFS_SP_PASSWORD=<your portal password>\n"
-            "\nAlternatively, download the CSV manually from:\n"
-            "  https://nfe.prefeitura.sp.gov.br/tomador/notasrecapuradas.aspx\n"
-            "and run: python -X utf8 scripts/import_nfse_portal.py <csv_file>"
-        )
-        sys.exit(1)
-
-    # Date range: last 18 months (catches back-dated NFs)
     now = datetime.now()
-    start = (now - timedelta(days=548)).replace(day=1)  # ~18 months
-    start_ym = start.strftime("%Y%m")
-    end_ym = now.strftime("%Y%m")
-
-    dl_dir = Path.home() / "Downloads"
-    out_path = dl_dir / f"NFSe_sync_{now.strftime('%Y%m%d_%H%M%S')}.csv"
-
-    print(f"NFS-e Portal Sync — {now.strftime('%Y-%m-%d %H:%M')}")
-    print(f"Range:  {start_ym} → {end_ym}")
-    print(f"Output: {out_path}")
+    print(f"NFS-e Weekly Sync — {now.strftime('%Y-%m-%d %H:%M')}")
     print(f"Mode:   {'DRY RUN' if dry_run else 'LIVE'}")
     print()
 
-    # ── Login + export ─────────────────────────────────────────────────────────
-    print("Logging in to portal…")
-    try:
-        session = _portal_login(cpf, password)
-    except Exception as e:
-        print(f"Login error: {e}")
-        sys.exit(1)
+    # ── Step 1: portal import (best-effort) ─────────────────────────────────────
+    # If the portal password isn't configured, or login/export fails, we SKIP the
+    # import but still run the intelligence refresh below (installments tick
+    # forward from bank data even with no new notas).
+    if not password:
+        print(
+            "NOTE: NFS_SP_PASSWORD not set — skipping portal import.\n"
+            "      To enable: add NFS_SP_PASSWORD to ~/.claude/secrets.local.env.\n"
+            "      (Intelligence refresh still runs below.)\n"
+        )
+    else:
+        start = (now - timedelta(days=548)).replace(day=1)  # ~18 months
+        start_ym, end_ym = start.strftime("%Y%m"), now.strftime("%Y%m")
+        out_path = (
+            Path.home() / "Downloads" / f"NFSe_sync_{now.strftime('%Y%m%d_%H%M%S')}.csv"
+        )
+        print(f"Portal range: {start_ym} → {end_ym}  ->  {out_path.name}")
+        try:
+            print("Logging in to portal…")
+            session = _portal_login(cpf, password)
+            print("Exporting CSV…")
+            _export_csv(session, cpf, start_ym, end_ym, out_path)
+            size_kb = out_path.stat().st_size // 1024
+            print(f"Downloaded {size_kb} KB.")
+            imp = [
+                sys.executable,
+                "-X",
+                "utf8",
+                str(SCRIPT_DIR / "import_nfse_portal.py"),
+                str(out_path),
+            ]
+            if dry_run:
+                imp.append("--dry-run")
+            print("Running importer…")
+            subprocess.run(imp, cwd=str(PROJECT_ROOT))
+        except Exception as e:
+            print(f"Portal import failed (continuing to refresh): {e}")
+        print()
 
-    print("Exporting CSV…")
-    try:
-        _export_csv(session, cpf, start_ym, end_ym, out_path)
-    except Exception as e:
-        print(f"Export error: {e}")
-        sys.exit(1)
-
-    size_kb = out_path.stat().st_size // 1024
-    print(f"Downloaded {size_kb} KB → {out_path.name}")
-    print()
-
-    # ── Run importer ───────────────────────────────────────────────────────────
-    cmd = [
+    # ── Step 2: intelligence refresh — ALWAYS runs ──────────────────────────────
+    # Dedup new imports against existing + recompute every payment link/status.
+    print("=" * 60)
+    refresh = [
         sys.executable,
         "-X",
         "utf8",
-        str(SCRIPT_DIR / "import_nfse_portal.py"),
-        str(out_path),
+        str(SCRIPT_DIR / "refresh_nf_intelligence.py"),
     ]
-    if dry_run:
-        cmd.append("--dry-run")
-
-    print("Running importer…")
-    result = subprocess.run(cmd, capture_output=False)
+    if not dry_run:
+        refresh.append("--apply")
+    result = subprocess.run(refresh, cwd=str(PROJECT_ROOT))
     sys.exit(result.returncode)
 
 
