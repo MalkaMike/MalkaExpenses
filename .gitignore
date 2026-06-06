@@ -22,3 +22,5 @@ scripts/__pycache__/
 
 # Insurance policy extractions contain family PII — keep out of git (live in the safe)
 docs/health-hub/extracted/
+scripts/save_policy_safe.py
+private/insurance-vault/
