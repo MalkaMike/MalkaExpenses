@@ -128,9 +128,14 @@ export function HealthClient() {
           <span className="text-on-surface font-medium">NF/recibo</span> e{" "}
           <span className="text-on-surface font-medium">pedido médico</span>. Toque numa nota para anexar o pedido (escanear ou upload).
         </p>
-        <a href="/admin/health/policy" className="text-[11px] text-primary hover:underline whitespace-nowrap font-medium">
-          Apólice · Cofre →
-        </a>
+        <div className="flex items-center gap-3 flex-wrap">
+          <a href="/admin/health/policy" className="text-[11px] text-primary hover:underline whitespace-nowrap font-medium">
+            Apólice · Cofre →
+          </a>
+          <a href="/admin/reembolsos?tag=insurance" className="text-[11px] text-primary hover:underline whitespace-nowrap font-medium">
+            Tracker financeiro →
+          </a>
+        </div>
       </div>
 
       {/* Filter tabs */}

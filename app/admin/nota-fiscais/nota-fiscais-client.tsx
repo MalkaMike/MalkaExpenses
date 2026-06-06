@@ -42,6 +42,8 @@ type NfRow = {
   amount_paid: number | null;
   amount_pending: number | null;
   has_prescription?: boolean;
+  eligibility?: string | null;
+  eligible_amount?: number | null;
 };
 
 type Payment = {
@@ -855,15 +857,24 @@ export function NotaFiscaisClient() {
                       {cat.label}
                     </span>
                     {row.is_reimbursable && (
-                      row.has_prescription ? (
-                        <p className="text-[10px] text-[#10b981] mt-0.5 flex items-center gap-0.5">
-                          <CheckCircle2 size={10} /> pedido ok
-                        </p>
-                      ) : (
-                        <p className="text-[10px] text-[#f59e0b] mt-0.5 flex items-center gap-0.5 font-medium">
-                          <AlertTriangle size={10} /> falta pedido
-                        </p>
-                      )
+                      <div className="mt-0.5 space-y-0.5">
+                        {row.has_prescription ? (
+                          <p className="text-[10px] text-[#10b981] flex items-center gap-0.5">
+                            <CheckCircle2 size={10} /> pedido ok
+                          </p>
+                        ) : (
+                          <p className="text-[10px] text-[#f59e0b] flex items-center gap-0.5 font-medium">
+                            <AlertTriangle size={10} /> falta pedido
+                          </p>
+                        )}
+                        <a
+                          href={`/admin/health?claim=${row.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-[10px] text-primary hover:underline inline-flex items-center gap-0.5"
+                        >
+                          Saúde · Reembolsos →
+                        </a>
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center">

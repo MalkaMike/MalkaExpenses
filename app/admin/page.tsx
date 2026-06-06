@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers, Mail, CheckCircle2, Sparkles, Receipt, Stethoscope } from "lucide-react";
+import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers, Mail, CheckCircle2, Sparkles, Receipt, Stethoscope, Download, ShieldCheck } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -95,100 +95,125 @@ export default async function AdminLanding({
         <StatCard label="Fake"        value={fakes   ?? 0} href="/transactions?status=fake" />
       </section>
 
-      {/* Tools section */}
-      <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3 px-1">Ferramentas</h2>
-      <nav className="space-y-2 mb-28">
-        <AdminLink
-          href="/admin/inbox"
-          title="Caixa de entrada"
-          subtitle={(pending ?? 0) > 0 ? `${formatInt(pending ?? 0)} aguardando revisão` : "tudo decidido"}
-          Icon={Inbox}
-          badge={(pending ?? 0) > 0 ? String(pending) : undefined}
-        />
-        <AdminLink
-          href="/admin/merchants?direction=out"
-          title="Comerciantes"
-          subtitle="categorize por merchant — vale pra todas"
-          Icon={Store}
-        />
-        <AdminLink
-          href="/admin/merchants?direction=in"
-          title="Pagadores"
-          subtitle="de onde vem o dinheiro"
-          Icon={TrendingUp}
-        />
-        <AdminLink
-          href="/admin/reembolsos"
-          title="Reembolsos"
-          subtitle="Kenlo · Laik · Plano de Saúde"
-          Icon={Briefcase}
-        />
-        <AdminLink
-          href="/admin/nota-fiscais"
-          title="Notas Fiscais"
-          subtitle="PDFs + voos Gmail · indexação + reembolsos"
-          Icon={Receipt}
-        />
-        <AdminLink
-          href="/admin/health"
-          title="Saúde · Reembolsos"
-          subtitle="notas médicas · pagamento + NF + pedido médico"
-          Icon={Stethoscope}
-        />
-        <AdminLink
-          href="/admin/sugestoes"
-          title="Sugestões de fusão (IA)"
-          subtitle="merchants que parecem duplicados"
-          Icon={Sparkles}
-        />
-        <AdminLink
-          href="/admin/historico"
-          title="Histórico de modificações"
-          subtitle="o que você alterou vs o que a Ayelet vê"
-          Icon={History}
-        />
-        {/* Gmail connection — admin-only */}
-        {gmail.connected ? (
-          <>
+      {/* ── Sections (one entire system, grouped by domain) ───────────────── */}
+      <nav className="mb-28">
+        {/* Finanças */}
+        <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mt-6 mb-3 px-1">Finanças</h2>
+        <div className="space-y-2">
+          <AdminLink
+            href="/admin/inbox"
+            title="Caixa de entrada"
+            subtitle={(pending ?? 0) > 0 ? `${formatInt(pending ?? 0)} aguardando revisão` : "tudo decidido"}
+            Icon={Inbox}
+            badge={(pending ?? 0) > 0 ? String(pending) : undefined}
+          />
+          <AdminLink
+            href="/admin/merchants?direction=out"
+            title="Comerciantes"
+            subtitle="categorize por merchant — vale pra todas"
+            Icon={Store}
+          />
+          <AdminLink
+            href="/admin/merchants?direction=in"
+            title="Pagadores"
+            subtitle="de onde vem o dinheiro"
+            Icon={TrendingUp}
+          />
+          <AdminLink
+            href="/admin/nota-fiscais"
+            title="Notas Fiscais"
+            subtitle="PDFs + voos Gmail · indexação + pagamentos"
+            Icon={Receipt}
+          />
+          <AdminLink
+            href="/admin/reembolsos"
+            title="Reembolsos"
+            subtitle="Kenlo · Laik · Plano de Saúde"
+            Icon={Briefcase}
+          />
+          <AdminLink
+            href="/admin/sugestoes"
+            title="Sugestões de fusão (IA)"
+            subtitle="merchants que parecem duplicados"
+            Icon={Sparkles}
+          />
+          <AdminLink
+            href="/import"
+            title="Importar bancos"
+            subtitle="conectar contas via Pluggy (Open Finance)"
+            Icon={Download}
+          />
+        </div>
+
+        {/* Saúde */}
+        <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mt-6 mb-3 px-1">Saúde</h2>
+        <div className="space-y-2">
+          <AdminLink
+            href="/admin/health"
+            title="Reembolsos médicos"
+            subtitle="notas + pedido médico + cálculo de elegibilidade IA"
+            Icon={Stethoscope}
+          />
+          <AdminLink
+            href="/admin/health/policy"
+            title="Apólice · Cofre"
+            subtitle="APRIL Ma Santé Internationale · regras + termos verificáveis"
+            Icon={ShieldCheck}
+          />
+        </div>
+
+        {/* Operações */}
+        <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mt-6 mb-3 px-1">Operações</h2>
+        <div className="space-y-2">
+          {/* Gmail connection — admin-only */}
+          {gmail.connected ? (
+            <>
+              <AdminLink
+                href="/api/auth/gmail/connect"
+                title="Gmail conectado"
+                subtitle={gmail.email ?? "buscar notas fiscais automaticamente"}
+                Icon={CheckCircle2}
+                badge="✓"
+              />
+              {/* Batch search controller */}
+              <GmailBatchButton />
+            </>
+          ) : (
             <AdminLink
               href="/api/auth/gmail/connect"
-              title="Gmail conectado"
-              subtitle={gmail.email ?? "buscar notas fiscais automaticamente"}
-              Icon={CheckCircle2}
-              badge="✓"
+              title="Conectar Gmail"
+              subtitle="buscar notas fiscais e invoices automaticamente"
+              Icon={Mail}
             />
-            {/* Batch search controller */}
-            <GmailBatchButton />
-          </>
-        ) : (
+          )}
+          <div className="rounded-xl border border-outline-variant overflow-hidden bg-surface-container-lowest">
+            <div className="px-4 pt-3 pb-1">
+              <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Sincronização</p>
+            </div>
+            <div className="p-2">
+              <PluggySyncButton />
+              <ReconcileButton />
+            </div>
+          </div>
           <AdminLink
-            href="/api/auth/gmail/connect"
-            title="Conectar Gmail"
-            subtitle="buscar notas fiscais e invoices automaticamente"
-            Icon={Mail}
+            href="/admin/historico"
+            title="Histórico de modificações"
+            subtitle="o que você alterou vs o que a Ayelet vê"
+            Icon={History}
           />
-        )}
-        <div className="rounded-xl border border-outline-variant overflow-hidden bg-surface-container-lowest">
-          <div className="px-4 pt-3 pb-1">
-            <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Sincronização</p>
-          </div>
-          <div className="p-2">
-            <PluggySyncButton />
-            <ReconcileButton />
-          </div>
+          <AdminLink
+            href="/admin/archive"
+            title="Arquivo"
+            subtitle={(hidden ?? 0) > 0 ? `${formatInt(hidden ?? 0)} item(ns) oculto(s) — pode restaurar` : "itens removidos do portal"}
+            Icon={Archive}
+          />
+          <AdminLink
+            href="/"
+            title="Portal da Ayelet"
+            subtitle="o que sua esposa vê"
+            Icon={Eye}
+          />
         </div>
-        <AdminLink
-          href="/admin/archive"
-          title="Arquivo"
-          subtitle={(hidden ?? 0) > 0 ? `${formatInt(hidden ?? 0)} item(ns) oculto(s) — pode restaurar` : "itens removidos do portal"}
-          Icon={Archive}
-        />
-        <AdminLink
-          href="/"
-          title="Portal da Ayelet"
-          subtitle="o que sua esposa vê"
-          Icon={Eye}
-        />
       </nav>
     </div>
   </>
