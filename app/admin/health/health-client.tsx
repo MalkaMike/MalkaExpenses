@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Wallet, FileText, Stethoscope, CheckCircle2, AlertTriangle,
-  Loader2, ChevronDown, ChevronRight,
+  Loader2, ChevronDown, ChevronRight, Send, PauseCircle,
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 import { PrescriptionAttach } from "./prescription-attach";
@@ -77,6 +77,8 @@ export function HealthClient() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>("all");
+  const [autoSend, setAutoSend] = useState<boolean | null>(null);
+  const [togglingFlag, setTogglingFlag] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -89,7 +91,33 @@ export function HealthClient() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  const loadFlags = useCallback(() => {
+    fetch("/api/admin/health/feature-flags")
+      .then((r) => r.json())
+      .then((d) => {
+        const v = d?.flags?.auto_send_secretary;
+        setAutoSend(v === true || v === "true");
+      })
+      .catch(() => setAutoSend(null));
+  }, []);
+
+  useEffect(() => { load(); loadFlags(); }, [load, loadFlags]);
+
+  const toggleAutoSend = useCallback(async () => {
+    if (autoSend === null) return;
+    setTogglingFlag(true);
+    const next = !autoSend;
+    try {
+      await fetch("/api/admin/health/feature-flags", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "auto_send_secretary", value: next }),
+      });
+      setAutoSend(next);
+    } finally {
+      setTogglingFlag(false);
+    }
+  }, [autoSend]);
 
   const shown = claims.filter((c) => filter === "all" || c.readiness === filter);
 
@@ -129,6 +157,21 @@ export function HealthClient() {
           <span className="text-on-surface font-medium">pedido médico</span>. Toque numa nota para anexar o pedido (escanear ou upload).
         </p>
         <div className="flex items-center gap-3 flex-wrap">
+          {autoSend !== null && (
+            <button
+              onClick={toggleAutoSend}
+              disabled={togglingFlag}
+              title={autoSend ? "Quando uma nota fica completa, o email para Celina sai automaticamente. Clique para pausar." : "Auto-envio pausado. Clique para reativar."}
+              className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border transition disabled:opacity-50 ${
+                autoSend
+                  ? "text-[#10b981] border-[#10b981]/30 bg-[#10b981]/5 hover:bg-[#10b981]/10"
+                  : "text-on-surface-variant border-outline-variant bg-surface-container hover:bg-surface-container-highest"
+              }`}
+            >
+              {togglingFlag ? <Loader2 size={11} className="animate-spin" /> : autoSend ? <Send size={11} /> : <PauseCircle size={11} />}
+              {autoSend ? "Auto-envio: ativo" : "Auto-envio: pausado"}
+            </button>
+          )}
           <a href="/admin/health/policy" className="text-[11px] text-primary hover:underline whitespace-nowrap font-medium">
             Apólice · Cofre →
           </a>

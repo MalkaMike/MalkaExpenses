@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { scanDocument } from "@/lib/ai/scan";
 import { recomputeOne } from "@/lib/eligibility/recompute";
+import { maybeQueueSecretaryEmail } from "@/lib/health/lifecycle";
 import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { randomUUID } from "crypto";
@@ -108,12 +109,16 @@ export async function POST(req: NextRequest) {
       }
       paired = true;
     }
-    // Fire-and-forget: pairing a prescription changes the eligibility verdict
-    // (some rules require a pedido médico). Don't block the response.
+    // Fire-and-forget: pairing a prescription completes the 3-part claim.
+    // Recompute eligibility + queue the auto-email to Celina (idempotent).
     if (paired && link_nota_fiscal_id) {
       void recomputeOne(link_nota_fiscal_id).catch((e) =>
         console.warn("[scan→recompute]", link_nota_fiscal_id, (e as Error).message)
       );
+      void maybeQueueSecretaryEmail(link_nota_fiscal_id).then((r) => {
+        if (!r.ok) console.warn("[scan→queue-email]", link_nota_fiscal_id, r.detail);
+        else if (r.action === "queued") console.log("[scan→queue-email] queued", link_nota_fiscal_id);
+      });
     }
     return NextResponse.json({ doc_kind: "prescription", medical_document_id: doc.id, paired, scan });
   }

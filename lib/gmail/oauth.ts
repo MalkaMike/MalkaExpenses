@@ -13,12 +13,14 @@ import { serverClient } from "@/lib/supabase/server";
 //      the access_token if it's expired (using the long-lived refresh_token)
 //
 // Scopes:
-//   - gmail.readonly — read messages, attachments, labels (no send/modify)
+//   - gmail.readonly — read messages, attachments, labels
+//   - gmail.send     — send the auto-email of claims to Celina (secretária)
 //   - userinfo.email — get the connected Gmail address
 // ============================================================================
 
 const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/userinfo.email"
 ].join(" ");
 

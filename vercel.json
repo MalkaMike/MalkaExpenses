@@ -12,10 +12,15 @@
     {
       "path": "/api/cron/weekly-snapshot",
       "schedule": "0 4 * * 1"
+    },
+    {
+      "path": "/api/cron/health-outbox",
+      "schedule": "*/5 * * * *"
     }
   ],
   "functions": {
     "app/api/cron/weekly-snapshot/route.ts": { "maxDuration": 120 },
-    "app/api/cron/gmail-search/route.ts": { "maxDuration": 300 }
+    "app/api/cron/gmail-search/route.ts": { "maxDuration": 300 },
+    "app/api/cron/health-outbox/route.ts": { "maxDuration": 90 }
   }
 }
