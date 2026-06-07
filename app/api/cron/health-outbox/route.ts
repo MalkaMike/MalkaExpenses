@@ -3,6 +3,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { sendEmail, type Attachment } from "@/lib/gmail/send";
 import { readFile } from "fs/promises";
 import { join } from "path";
+import { downloadFile, type StorageBucket } from "@/lib/storage/supabase-storage";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -41,8 +42,12 @@ type ClaimDocs = {
   nf_id: string;
   nf_file_name: string | null;
   nf_file_path: string | null;
+  nf_storage_bucket: string | null;
+  nf_storage_path: string | null;
   prescription_id: string | null;
   prescription_file_path: string | null;
+  prescription_storage_bucket: string | null;
+  prescription_storage_path: string | null;
   provider_name: string | null;
   emission_date: string | null;
   total_amount: number | null;
@@ -52,38 +57,54 @@ type ClaimDocs = {
 async function fetchAttachments(docs: ClaimDocs): Promise<Attachment[]> {
   const out: Attachment[] = [];
 
-  if (docs.nf_file_path) {
+  // NF PDF — prefer Supabase Storage, fall back to local disk
+  if (docs.nf_storage_bucket && docs.nf_storage_path) {
     try {
-      const fullPath = join(PRIVATE_ROOT, docs.nf_file_path);
-      const bytes = await readFile(fullPath);
+      const bytes = await downloadFile(docs.nf_storage_bucket as StorageBucket, docs.nf_storage_path);
       out.push({
         filename: docs.nf_file_name ?? `nota_fiscal_${docs.nf_id}.pdf`,
         mime_type: "application/pdf",
         bytes,
       });
     } catch (e) {
-      console.warn("[outbox] missing NF file", docs.nf_file_path, (e as Error).message);
+      console.warn("[outbox] storage NF read failed", docs.nf_storage_path, (e as Error).message);
     }
-  }
-
-  if (docs.prescription_file_path) {
+  } else if (docs.nf_file_path) {
     try {
-      const fullPath = join(PRIVATE_ROOT, docs.prescription_file_path);
-      const bytes = await readFile(fullPath);
-      const ext = (docs.prescription_file_path.split(".").pop() ?? "pdf").toLowerCase();
-      const mime =
-        ext === "pdf" ? "application/pdf"
-        : ext === "jpg" || ext === "jpeg" ? "image/jpeg"
-        : ext === "png" ? "image/png"
-        : ext === "heic" ? "image/heic"
-        : "application/octet-stream";
+      const bytes = await readFile(join(PRIVATE_ROOT, docs.nf_file_path));
       out.push({
-        filename: `pedido_medico.${ext}`,
-        mime_type: mime,
+        filename: docs.nf_file_name ?? `nota_fiscal_${docs.nf_id}.pdf`,
+        mime_type: "application/pdf",
         bytes,
       });
     } catch (e) {
-      console.warn("[outbox] missing prescription file", docs.prescription_file_path, (e as Error).message);
+      console.warn("[outbox] local NF file missing", docs.nf_file_path, (e as Error).message);
+    }
+  }
+
+  // Prescription — prefer Supabase Storage, fall back to local disk
+  const prescPath = docs.prescription_storage_path ?? docs.prescription_file_path;
+  const prescExt = (prescPath?.split(".").pop() ?? "pdf").toLowerCase();
+  const prescMime =
+    prescExt === "pdf" ? "application/pdf"
+    : prescExt === "jpg" || prescExt === "jpeg" ? "image/jpeg"
+    : prescExt === "png" ? "image/png"
+    : prescExt === "heic" ? "image/heic"
+    : "application/octet-stream";
+
+  if (docs.prescription_storage_bucket && docs.prescription_storage_path) {
+    try {
+      const bytes = await downloadFile(docs.prescription_storage_bucket as StorageBucket, docs.prescription_storage_path);
+      out.push({ filename: `pedido_medico.${prescExt}`, mime_type: prescMime, bytes });
+    } catch (e) {
+      console.warn("[outbox] storage prescription read failed", docs.prescription_storage_path, (e as Error).message);
+    }
+  } else if (docs.prescription_file_path) {
+    try {
+      const bytes = await readFile(join(PRIVATE_ROOT, docs.prescription_file_path));
+      out.push({ filename: `pedido_medico.${prescExt}`, mime_type: prescMime, bytes });
+    } catch (e) {
+      console.warn("[outbox] local prescription file missing", docs.prescription_file_path, (e as Error).message);
     }
   }
 
@@ -96,14 +117,14 @@ async function loadClaimDocs(claimId: string): Promise<ClaimDocs | null> {
     .from("reimbursement_claims")
     .select(
       `id, nota_fiscal_id, prescription_id,
-       nota_fiscais(provider_name, emission_date, total_amount, patient_name, file_name, file_path),
-       medical_documents(file_path)`
+       nota_fiscais(provider_name, emission_date, total_amount, patient_name, file_name, file_path, storage_bucket, storage_path),
+       medical_documents(file_path, storage_bucket, storage_path)`
     )
     .eq("id", claimId)
     .maybeSingle();
   if (error || !data) return null;
-  type NfRel = { provider_name: string | null; emission_date: string | null; total_amount: number | string | null; patient_name: string | null; file_name: string | null; file_path: string | null };
-  type MdRel = { file_path: string | null };
+  type NfRel = { provider_name: string | null; emission_date: string | null; total_amount: number | string | null; patient_name: string | null; file_name: string | null; file_path: string | null; storage_bucket: string | null; storage_path: string | null };
+  type MdRel = { file_path: string | null; storage_bucket: string | null; storage_path: string | null };
   const dRow = data as { id: string; nota_fiscal_id: string; prescription_id: string | null; nota_fiscais: NfRel | NfRel[] | null; medical_documents: MdRel | MdRel[] | null };
   const nf = Array.isArray(dRow.nota_fiscais) ? dRow.nota_fiscais[0] : dRow.nota_fiscais;
   const md = Array.isArray(dRow.medical_documents) ? dRow.medical_documents[0] : dRow.medical_documents;
@@ -112,8 +133,12 @@ async function loadClaimDocs(claimId: string): Promise<ClaimDocs | null> {
     nf_id: dRow.nota_fiscal_id,
     nf_file_name: nf?.file_name ?? null,
     nf_file_path: nf?.file_path ?? null,
+    nf_storage_bucket: nf?.storage_bucket ?? null,
+    nf_storage_path: nf?.storage_path ?? null,
     prescription_id: dRow.prescription_id,
     prescription_file_path: md?.file_path ?? null,
+    prescription_storage_bucket: md?.storage_bucket ?? null,
+    prescription_storage_path: md?.storage_path ?? null,
     provider_name: nf?.provider_name ?? null,
     emission_date: nf?.emission_date ?? null,
     total_amount: nf?.total_amount != null ? Number(nf.total_amount) : null,

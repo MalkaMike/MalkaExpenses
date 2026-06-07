@@ -4,9 +4,8 @@ import { serverClient } from "@/lib/supabase/server";
 import { scanDocument } from "@/lib/ai/scan";
 import { recomputeOne } from "@/lib/eligibility/recompute";
 import { maybeQueueSecretaryEmail } from "@/lib/health/lifecycle";
-import { writeFile, mkdir } from "fs/promises";
-import { join } from "path";
 import { randomUUID } from "crypto";
+import { uploadFile } from "@/lib/storage/supabase-storage";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -103,17 +102,16 @@ export async function POST(req: NextRequest) {
     console.warn("[scan] Gemini failed, continuing with empty metadata:", (e as Error).message);
   }
 
-  // Persist the file to disk (Phase 4 will migrate to Supabase Storage).
+  // Persist the file to Supabase Storage (falls back gracefully on error).
   const id = randomUUID();
   const ext = EXT[mime_type] ?? "bin";
-  let filePath: string | null = null;
+  const storagePath = `${id}.${ext}`;
+  let savedToStorage = false;
   try {
-    const dir = join(process.cwd(), "private", "medical-docs");
-    await mkdir(dir, { recursive: true });
-    filePath = join("private", "medical-docs", `${id}.${ext}`);
-    await writeFile(join(process.cwd(), filePath), Buffer.from(base64, "base64"));
-  } catch {
-    filePath = null;
+    await uploadFile("medical-documents", storagePath, Buffer.from(base64, "base64"), mime_type);
+    savedToStorage = true;
+  } catch (e) {
+    console.warn("[scan] Storage upload failed, continuing without file:", (e as Error).message);
   }
 
   const sb = serverClient();
@@ -132,7 +130,8 @@ export async function POST(req: NextRequest) {
         doctor_crm: p?.doctor_crm ?? null,
         issue_date: p?.issue_date ?? null,
         description: p?.description ?? null,
-        file_path: filePath,
+        storage_bucket: savedToStorage ? "medical-documents" : null,
+        storage_path: savedToStorage ? storagePath : null,
         raw_text: scan.raw_text ?? null,
         source: "mobile_scan",
       })
@@ -221,7 +220,7 @@ export async function POST(req: NextRequest) {
         payment = { matched: true, transaction: cand[0] };
       }
     }
-    return NextResponse.json({ doc_kind: "nota_fiscal", file_path: filePath, scan, payment });
+    return NextResponse.json({ doc_kind: "nota_fiscal", storage_path: savedToStorage ? storagePath : null, scan, payment });
   }
 
   return NextResponse.json({ doc_kind: scan.doc_kind, scan, note: "unrecognized document" });
