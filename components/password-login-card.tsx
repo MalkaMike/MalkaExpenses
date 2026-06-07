@@ -31,7 +31,12 @@ export function PasswordLoginCard({ next }: Props) {
         return;
       }
       const data = await r.json();
-      router.replace(next ?? (data.role === "admin" ? "/admin" : "/"));
+      const defaultDest =
+        data.role === "admin" ? "/admin"
+        : data.role === "health" ? "/admin/health"
+        : data.role === "secretary" ? "/admin/health/queue"
+        : "/";
+      router.replace(next ?? defaultDest);
       router.refresh();
     } catch {
       setErr("Erro de conexão");

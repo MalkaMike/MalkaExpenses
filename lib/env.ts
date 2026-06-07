@@ -8,6 +8,10 @@ const schema = z.object({
   HOUSEHOLD_PASSWORD_HASH: z.string().min(20),
   MODE_COOKIE_SECRET: z.string().min(32),
   ADMIN_TIMEOUT_MINUTES: z.coerce.number().int().positive().default(480), // 8 hours
+  // Optional — set to enable Ayelet (health_admin) and Celina (secretary) logins.
+  // Generate hash: node -e "const b=require('bcryptjs');console.log(b.hashSync('password',10))"
+  HEALTH_PASSWORD_HASH: z.string().optional(),
+  CELINA_PASSWORD_HASH: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_GENAI_API_KEY: z.string().optional(),
   // Gmail OAuth for nota fiscal lookup (admin only)
@@ -24,6 +28,8 @@ export const env = schema.parse({
   HOUSEHOLD_PASSWORD_HASH: process.env.HOUSEHOLD_PASSWORD_HASH,
   MODE_COOKIE_SECRET: process.env.MODE_COOKIE_SECRET,
   ADMIN_TIMEOUT_MINUTES: process.env.ADMIN_TIMEOUT_MINUTES,
+  HEALTH_PASSWORD_HASH: process.env.HEALTH_PASSWORD_HASH,
+  CELINA_PASSWORD_HASH: process.env.CELINA_PASSWORD_HASH,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   GOOGLE_GENAI_API_KEY: process.env.GOOGLE_GENAI_API_KEY,
   GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,

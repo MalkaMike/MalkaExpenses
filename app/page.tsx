@@ -232,7 +232,7 @@ function AccountTypeBadge({ type, lang }: { type: string; lang: Lang }) {
   );
 }
 
-function EmptyOnboarding({ role: _role, lang }: { role: "public" | "household" | "admin"; lang: Lang }) {
+function EmptyOnboarding({ role: _role, lang }: { role: "public" | "household" | "admin" | "health" | "secretary"; lang: Lang }) {
   return (
     <div className="rounded-2xl bg-gradient-to-br from-accent/10 to-card border border-accent/30 p-6 mb-6">
       <h3 className="font-medium mb-1">{t("home.welcome", lang)}</h3>

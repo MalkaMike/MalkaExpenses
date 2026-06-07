@@ -3,30 +3,31 @@ import { cookies, headers } from "next/headers";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { env } from "@/lib/env";
-import { serverClient } from "@/lib/supabase/server";
 import { hasHouseholdCookie } from "./household";
+import { hasHealthCookie } from "./health";
+import { hasSecretaryCookie } from "./secretary";
 
 // ============================================================================
 // Admin auth — single shared password for Mickael's admin surface (/admin/*).
-// Wife uses the main site freely (no auth). Mickael logs in to /admin to see
-// real_amount, edit shared_amount, hide transactions, add fake entries.
-// ============================================================================
 //
-// Cookie format (v2 — role-bound, prevents cookie swap attacks):
+// Role hierarchy (highest → lowest privilege):
+//   admin      Mickael — full access including all /admin/* routes
+//   health     Ayelet  — /admin/health/* + main site
+//   secretary  Celina  — /admin/health/queue only
+//   household  Ayelet  — main site only (legacy, still valid)
+//   public     unauthenticated
+//
+// Cookie format (v2 — role-bound):
 //   pf_admin = v2.admin.<lastActivityMs>.<sig>
-//   Sig:      HMAC-SHA256(MODE_COOKIE_SECRET, "v2.admin." + lastActivityMs)
-//
-// A pf_household token cannot be copied into pf_admin and pass — the signed
-// payload includes the role, so verifyToken rejects mismatched roles.
+//   Sig: HMAC-SHA256(MODE_COOKIE_SECRET, "v2.admin." + lastActivityMs)
 //
 // Sliding window: each authenticated request refreshes lastActivityMs
 // Idle timeout:   ADMIN_TIMEOUT_MINUTES (default 480 = 8 hours)
 // ============================================================================
 
-export type Role = "public" | "household" | "admin";
+export type Role = "public" | "household" | "admin" | "health" | "secretary";
 export const COOKIE_NAME = "pf_admin";
 const TOKEN_ROLE: "admin" = "admin";
-// Reject tokens from the future beyond this skew (small NTP tolerance).
 const FUTURE_SKEW_MS = 60_000;
 
 function sign(payload: string): string {
@@ -46,42 +47,40 @@ function packToken(lastActivityMs: number): string {
 
 function unpackToken(token: string): { lastActivity: Date } | null {
   const parts = token.split(".");
-  // Strict format: v2.admin.<ms>.<sig>
   if (parts.length !== 4 || parts[0] !== "v2" || parts[1] !== TOKEN_ROLE) return null;
   const payload = `${parts[0]}.${parts[1]}.${parts[2]}`;
   if (!verify(payload, parts[3])) return null;
   const ms = Number(parts[2]);
   if (!Number.isFinite(ms)) return null;
-  // Reject future-issued tokens (signature forgery / clock attack)
   if (ms > Date.now() + FUTURE_SKEW_MS) return null;
   return { lastActivity: new Date(ms) };
 }
 
-// ----------------------------------------------------------------------------
-// Read current role. Returns:
-//   "admin"     — pf_admin cookie present + valid (full access; sees real_amount)
-//   "household" — pf_household cookie present + valid (main site only)
-//   "public"    — neither cookie (must log in via /login)
-// Side-effect-free.
-// ----------------------------------------------------------------------------
 export async function getRole(): Promise<Role> {
-  // Admin first (highest privilege)
   const c = await cookies();
-  const token = c.get(COOKIE_NAME)?.value;
-  if (token) {
-    const parsed = unpackToken(token);
+
+  // Admin (sliding-window, highest privilege)
+  const adminToken = c.get(COOKIE_NAME)?.value;
+  if (adminToken) {
+    const parsed = unpackToken(adminToken);
     if (parsed) {
       const elapsedMin = (Date.now() - parsed.lastActivity.getTime()) / 60000;
       if (elapsedMin <= env.ADMIN_TIMEOUT_MINUTES) return "admin";
     }
   }
+
+  // Health admin (Ayelet — /admin/health + main site)
+  if (await hasHealthCookie()) return "health";
+
+  // Secretary (Celina — /admin/health/queue only)
+  if (await hasSecretaryCookie()) return "secretary";
+
+  // Household (Ayelet legacy — main site only)
   if (await hasHouseholdCookie()) return "household";
+
   return "public";
 }
 
-// ----------------------------------------------------------------------------
-// Password validation against the env-var bcrypt hash.
-// ----------------------------------------------------------------------------
 export async function validatePassword(password: string): Promise<boolean> {
   if (!password || password.length > 200) return false;
   try {
@@ -91,9 +90,6 @@ export async function validatePassword(password: string): Promise<boolean> {
   }
 }
 
-// ----------------------------------------------------------------------------
-// Login / logout — write cookie + audit
-// ----------------------------------------------------------------------------
 export async function loginAdmin(): Promise<void> {
   const c = await cookies();
   const token = packToken(Date.now());
@@ -113,8 +109,6 @@ export async function logoutAdmin(): Promise<void> {
   await writeAudit("admin.logout");
 }
 
-// Refresh the sliding-window timestamp. Call from middleware on each /admin/*
-// or /api/admin/* request to keep the session alive.
 export async function refreshAdmin(): Promise<void> {
   const c = await cookies();
   const token = c.get(COOKIE_NAME)?.value;
@@ -135,9 +129,6 @@ export async function refreshAdmin(): Promise<void> {
   });
 }
 
-// ----------------------------------------------------------------------------
-// Audit log
-// ----------------------------------------------------------------------------
 export async function writeAudit(
   action: string,
   data?: {
@@ -149,9 +140,13 @@ export async function writeAudit(
   try {
     const h = await headers();
     const role = await getRole();
+    const { serverClient } = await import("@/lib/supabase/server");
     const sb = serverClient();
     await sb.from("audit_log").insert({
-      actor: "mickael",
+      actor:
+        role === "secretary" ? "celina"
+        : role === "health" ? "ayelet"
+        : "mickael",
       mode: role,
       action,
       transaction_id: data?.transactionId ?? null,
@@ -165,9 +160,27 @@ export async function writeAudit(
   }
 }
 
-// Enforce admin role in API route handlers
+// ── Role guards for API routes ────────────────────────────────────────────────
+
+// Full admin only
 export async function requireAdmin(): Promise<void> {
   if ((await getRole()) !== "admin") {
+    throw new Response("Not Found", { status: 404 });
+  }
+}
+
+// Admin or health_admin (Ayelet) — for /admin/health/* API routes
+export async function requireAdminOrHealth(): Promise<void> {
+  const r = await getRole();
+  if (r !== "admin" && r !== "health") {
+    throw new Response("Not Found", { status: 404 });
+  }
+}
+
+// Admin, health, or secretary — for queue/confirm routes Celina can call
+export async function requireAnyHealthRole(): Promise<void> {
+  const r = await getRole();
+  if (r !== "admin" && r !== "health" && r !== "secretary") {
     throw new Response("Not Found", { status: 404 });
   }
 }

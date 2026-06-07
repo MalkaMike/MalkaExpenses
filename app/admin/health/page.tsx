@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 
 export default async function HealthPage() {
   const role = await getRole();
-  if (role !== "admin") {
+  if (role === "secretary") redirect("/admin/health/queue");
+  if (role !== "admin" && role !== "health") {
     redirect("/login?next=/admin/health");
   }
 

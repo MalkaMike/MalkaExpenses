@@ -21,6 +21,9 @@ export default async function AdminLanding({
   const role = await getRole();
   const sp = await searchParams;
 
+  // Non-admin roles land on their own home
+  if (role === "health") redirect("/admin/health");
+  if (role === "secretary") redirect("/admin/health/queue");
   if (role !== "admin") {
     redirect(`/login?next=${encodeURIComponent(sp.next ?? "/admin")}`);
   }
