@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Wallet, FileText, Stethoscope, CheckCircle2, AlertTriangle,
-  Loader2, ChevronDown, ChevronRight, Send, PauseCircle,
+  Loader2, ChevronDown, ChevronRight, Send, PauseCircle, ScanLine,
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 import { PrescriptionAttach } from "./prescription-attach";
@@ -79,6 +79,7 @@ export function HealthClient() {
   const [filter, setFilter] = useState<string>("all");
   const [autoSend, setAutoSend] = useState<boolean | null>(null);
   const [togglingFlag, setTogglingFlag] = useState(false);
+  const [showScan, setShowScan] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -157,6 +158,13 @@ export function HealthClient() {
           <span className="text-on-surface font-medium">pedido médico</span>. Toque numa nota para anexar o pedido (escanear ou upload).
         </p>
         <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={() => setShowScan((v) => !v)}
+            className="inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border border-primary/30 text-primary bg-primary/5 hover:bg-primary/10 transition"
+          >
+            <ScanLine size={11} />
+            {showScan ? "Fechar scan" : "Escanear pedido"}
+          </button>
           {autoSend !== null && (
             <button
               onClick={toggleAutoSend}
@@ -180,6 +188,21 @@ export function HealthClient() {
           </a>
         </div>
       </div>
+
+      {/* Standalone prescription scan panel (no specific NF pre-selected) */}
+      {showScan && (
+        <div className="mb-4 rounded-xl border border-primary/20 bg-primary/3 overflow-hidden">
+          <div className="px-4 pt-3 pb-1">
+            <p className="text-[11px] font-semibold text-on-surface">Escanear pedido avulso</p>
+            <p className="text-[10px] text-on-surface-variant mt-0.5">
+              Foto ou upload → escolha a nota a vincular
+            </p>
+          </div>
+          <PrescriptionAttach
+            onChanged={() => { load(); setShowScan(false); }}
+          />
+        </div>
+      )}
 
       {/* Filter tabs */}
       <div className="flex gap-1.5 mb-4 flex-wrap">
