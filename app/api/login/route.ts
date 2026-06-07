@@ -11,7 +11,7 @@ export const runtime = "nodejs";
 const ADMIN_USERNAME = "Malka_Admin";
 const HOUSEHOLD_USERNAME = "Malka";
 const AYELET_USERNAME = "Ayelet_Malka";   // health_admin — /admin/health + main site
-const CELINA_USERNAME = "Celina";          // secretary — /admin/health/queue only
+const CELINA_USERNAME = "Celine";          // secretary — /admin/health/queue only
 
 const WINDOW_MIN = 15;
 const MAX_FAILS_PER_IP = 20;
