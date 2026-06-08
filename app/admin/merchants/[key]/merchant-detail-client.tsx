@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { ReceiptFinderButton } from "@/components/receipt-finder-button";
 import { MoveDescriptionButton } from "@/components/move-description-button";
@@ -43,6 +43,7 @@ type Props = {
   currentName: string;
   tags: ReimbTag[];
   allClusters: ClusterOption[];
+  role: "admin" | "health";  // health = Ayelet: read-only, no ocultar/aprovar controls
 };
 
 export function MerchantDetailClient({
@@ -54,7 +55,8 @@ export function MerchantDetailClient({
   currentSharedTotal,
   currentName,
   tags,
-  allClusters
+  allClusters,
+  role
 }: Props) {
   const router = useRouter();
   const [selectedCat, setSelectedCat] = useState<string>(currentCategoryId ?? "");
@@ -66,6 +68,10 @@ export function MerchantDetailClient({
   const [shareDone, setShareDone] = useState<string | null>(null);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [adjustValue, setAdjustValue] = useState("");
+
+  // Google Sheets export state
+  const [sheetsBusy, setSheetsBusy] = useState(false);
+  const [sheetsErr, setSheetsErr] = useState<string | null>(null);
 
   // Rename state
   const [editingName, setEditingName] = useState(false);
@@ -130,7 +136,7 @@ export function MerchantDetailClient({
     setErr(null);
     setDoneCount(null);
     try {
-      const r = await fetch("/api/admin/merchants/categorize", {
+      const r = await fetch("/api/admin/merchants/approve-all", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -334,6 +340,38 @@ export function MerchantDetailClient({
     (c) => c.name.trim().toLowerCase() === nameDraft.trim().toLowerCase()
   );
 
+  async function openInSheets() {
+    setSheetsErr(null);
+    // Open a new tab immediately (before the async call) so popup blockers
+    // don't block it — we navigate it to the sheet URL when ready.
+    const newTab = window.open("about:blank", "_blank");
+    setSheetsBusy(true);
+    try {
+      const r = await fetch(
+        `/api/admin/merchants/${encodeURIComponent(canonicalKey)}/export-sheet`,
+        { method: "POST" }
+      );
+      const j = await r.json().catch(() => ({ error: `Erro ${r.status}` }));
+      if (!r.ok) {
+        if (newTab) newTab.close();
+        setSheetsErr(
+          (j as { needsAuth?: boolean }).needsAuth
+            ? "Conta Google não conectada."
+            : ((j as { error?: string }).error ?? `Erro ${r.status}`)
+        );
+        return;
+      }
+      const url = (j as { url: string }).url;
+      if (newTab) newTab.location.href = url;
+      else window.open(url, "_blank");
+    } catch (e) {
+      if (newTab) newTab.close();
+      setSheetsErr((e as Error).message);
+    } finally {
+      setSheetsBusy(false);
+    }
+  }
+
   async function toggleRowHide(row: Row) {
     const effectiveShared = localShared[row.id] ?? row.sharedAmount;
     const willHide = effectiveShared !== 0;
@@ -370,8 +408,8 @@ export function MerchantDetailClient({
 
   return (
     <>
-      {/* ── Nome exibido + Fundir com outros ─────────────────────────────── */}
-      <section className="mb-5 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
+      {/* ── Nome exibido + Fundir com outros — admin only ────────────────── */}
+      {role === "admin" && <section className="mb-5 p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow">
         <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3">
           Nome exibido
         </p>
@@ -593,59 +631,13 @@ export function MerchantDetailClient({
             <Check size={13} /> {multiMergeDone}
           </p>
         )}
-      </section>
+      </section>}
 
-      {/* Categorize-all action */}
-      <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
-        <p className="text-xs uppercase tracking-wider text-muted mb-2">
-          Aplicar categoria a TODAS as {formatInt(rows.length)} transações
-        </p>
-        <div className="flex gap-2">
-          <select
-            value={selectedCat}
-            onChange={(e) => setSelectedCat(e.target.value)}
-            className="flex-1 px-3 py-2.5 rounded-xl bg-bg border border-border text-sm outline-none focus:border-accent transition"
-          >
-            <option value="">Escolha uma categoria…</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={applyToAll}
-            disabled={busy || !selectedCat}
-            className={`px-4 py-2.5 rounded-xl font-medium text-sm transition flex items-center gap-2
-              ${busy || !selectedCat
-                ? "bg-fg/20 text-fg/40 cursor-not-allowed"
-                : "bg-fg text-bg hover:bg-fg/90 active:scale-[0.99]"}`}
-          >
-            {busy ? (
-              <>
-                <Loader2 size={14} className="animate-spin" /> Aplicando…
-              </>
-            ) : (
-              <>
-                <Check size={14} /> Aplicar
-              </>
-            )}
-          </button>
-        </div>
-        {doneCount !== null && (
-          <p className="mt-2 text-xs text-accent">
-            ✅ {formatInt(doneCount)} {doneCount === 1 ? "transação atualizada" : "transações atualizadas"}
-          </p>
-        )}
-        {err && <p className="mt-2 text-xs text-danger">{err}</p>}
-      </section>
-
-      {/* Compartilhar com Ayelet (dual ledger control at cluster level) */}
-      <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-xs uppercase tracking-wider text-muted">
-            Compartilhar com Ayelet
-          </p>
+      {/* ── Aprovar todas + Ocultar comerciante — admin only ─────────────── */}
+      {role === "admin" && <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
+        {/* Header inline: title + transaction count + status badge */}
+        <p className="text-xs uppercase tracking-wider text-muted mb-3 flex items-center gap-2 flex-wrap">
+          Aprovar / Ocultar — {formatInt(rows.length)} transações
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
               currentShareMode === "hide"
@@ -661,25 +653,58 @@ export function MerchantDetailClient({
                 ? "MOSTRANDO"
                 : "MISTO"}
           </span>
-        </div>
-        <p className="text-xs text-muted mb-3">
-          Atual no portal compartilhado: <span className="tabular-nums font-medium text-fg">{formatBRL(currentSharedTotal)}</span>
         </p>
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            onClick={() => applyShare("hide")}
-            disabled={shareBusy !== null || currentShareMode === "hide"}
-            className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
-              ${shareBusy !== null || currentShareMode === "hide"
-                ? "border-border text-fg/40 cursor-not-allowed"
-                : "border-warning/40 text-warning hover:bg-warning/5 active:scale-[0.99]"}`}
+
+        {/* Approve: category picker + Aprovar todas button */}
+        <div className="flex flex-col sm:flex-row gap-2 mb-1">
+          <select
+            value={selectedCat}
+            onChange={(e) => setSelectedCat(e.target.value)}
+            className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-bg border border-border text-sm outline-none focus:border-accent transition"
           >
-            {shareBusy === "hide" ? (
-              <><Loader2 size={14} className="animate-spin" /> ...</>
+            <option value="">Categoria para aprovar…</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={applyToAll}
+            disabled={busy || !selectedCat}
+            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center justify-center gap-2 sm:shrink-0
+              ${busy || !selectedCat
+                ? "bg-fg/20 text-fg/40 cursor-not-allowed"
+                : "bg-fg text-bg hover:bg-fg/90 active:scale-[0.99]"}`}
+          >
+            {busy ? (
+              <><Loader2 size={14} className="animate-spin" /> Aprovando…</>
             ) : (
-              <><EyeOff size={14} /> Esconder</>
+              <><Check size={14} /> Aprovar todas ({formatInt(rows.length)})</>
             )}
           </button>
+        </div>
+        {!selectedCat && !busy && (
+          <p className="text-[10px] text-muted mb-2">
+            Escolha uma categoria para habilitar o botão de aprovação
+          </p>
+        )}
+
+        {doneCount !== null && (
+          <p className="mb-3 text-xs text-accent">
+            ✅ {formatInt(doneCount)} {doneCount === 1 ? "transação aprovada" : "transações aprovadas"} — visíveis no portal, saíram do inbox
+          </p>
+        )}
+        {err && <p className="mb-3 text-xs text-danger">{err}</p>}
+
+        {/* Divider */}
+        <div className="border-t border-border mb-3 mt-3" />
+
+        {/* Secondary: show / hide / adjust — safe action first (Mostrar), destructive second (Ocultar) */}
+        <p className="text-[10px] text-muted mb-2">
+          Portal Ayelet: <span className="tabular-nums font-medium text-fg">{formatBRL(currentSharedTotal)}</span>
+        </p>
+        <div className="grid grid-cols-3 gap-2">
           <button
             onClick={() => applyShare("show")}
             disabled={shareBusy !== null || currentShareMode === "show"}
@@ -691,7 +716,21 @@ export function MerchantDetailClient({
             {shareBusy === "show" ? (
               <><Loader2 size={14} className="animate-spin" /> ...</>
             ) : (
-              <><Eye size={14} /> Valor real</>
+              <><Eye size={14} /> Mostrar</>
+            )}
+          </button>
+          <button
+            onClick={() => applyShare("hide")}
+            disabled={shareBusy !== null || currentShareMode === "hide"}
+            className={`px-3 py-2.5 rounded-xl text-sm font-medium border transition flex items-center justify-center gap-2
+              ${shareBusy !== null || currentShareMode === "hide"
+                ? "border-border text-fg/40 cursor-not-allowed"
+                : "border-warning/40 text-warning hover:bg-warning/5 active:scale-[0.99]"}`}
+          >
+            {shareBusy === "hide" ? (
+              <><Loader2 size={14} className="animate-spin" /> ...</>
+            ) : (
+              <><EyeOff size={14} /> Ocultar</>
             )}
           </button>
           <button
@@ -748,10 +787,10 @@ export function MerchantDetailClient({
 
         {shareDone && <p className="mt-2 text-xs text-accent">✅ {shareDone}</p>}
         {shareErr && <p className="mt-2 text-xs text-danger">{shareErr}</p>}
-      </section>
+      </section>}
 
-      {/* Reimbursement tags — bulk apply per cluster */}
-      <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
+      {/* ── Reimbursement tags — admin only ──────────────────────────────── */}
+      {role === "admin" && <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
         <p className="text-xs uppercase tracking-wider text-muted mb-2">
           Reembolso (marca essas {formatInt(rows.length)} despesas)
         </p>
@@ -814,15 +853,41 @@ export function MerchantDetailClient({
           Clique pra adicionar tag. Se TODAS já estiverem marcadas, clica de novo pra remover.
           Acompanhe o status em <a href="/admin/reembolsos" className="underline">Reembolsos</a>.
         </p>
-      </section>
+      </section>}
 
-      {/* Transactions list — per-row hide/show toggle */}
+      {/* ── Transactions list ─────────────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-2 px-1">
           <h2 className="text-xs uppercase tracking-wider text-muted">Histórico</h2>
-          <p className="text-[10px] text-muted">
-            Clique no olho 👁 pra esconder/mostrar individualmente
-          </p>
+          <div className="flex items-center gap-3">
+            {role === "admin" && (
+              <p className="text-[10px] text-muted hidden sm:block">
+                Clique no olho 👁 pra esconder/mostrar individualmente
+              </p>
+            )}
+            <div className="flex flex-col items-end gap-1">
+              <button
+                onClick={openInSheets}
+                disabled={sheetsBusy || rows.length === 0}
+                title="Criar planilha no Google Sheets com todas as transações"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30 text-[11px] font-medium transition disabled:opacity-30"
+              >
+                {sheetsBusy ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <ExternalLink size={12} />
+                )}
+                {sheetsBusy ? "Gerando…" : "Abrir no Sheets"}
+              </button>
+              {sheetsErr && (
+                <p className="text-[10px] text-danger max-w-[240px] text-right">
+                  {sheetsErr.includes("Conta Google")
+                    ? "Conta Google não conectada — configure em Admin."
+                    : sheetsErr}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
         <div className="rounded-2xl bg-card border border-border overflow-hidden">
           <ul className="divide-y divide-border text-sm">
@@ -871,39 +936,45 @@ export function MerchantDetailClient({
                   >
                     {formatBRL(r.amount)}
                   </span>
-                  {/* Move to another merchant */}
-                  <MoveDescriptionButton
-                    descriptionRaw={r.descriptionRaw}
-                    currentName={currentName}
-                    allClusters={allClusters}
-                  />
-                  {/* Gmail receipt finder */}
-                  <ReceiptFinderButton
-                    transactionId={r.id}
-                    merchantName={currentName}
-                    searched={r.gmailSearched}
-                    matchCount={r.gmailMatchCount}
-                  />
-                  <button
-                    onClick={() => toggleRowHide(r)}
-                    disabled={isBusy}
-                    aria-label={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
-                    title={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
-                    className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center transition
-                      ${isBusy
-                        ? "border-border text-muted cursor-wait"
-                        : hidden
-                          ? "border-warning/30 text-warning hover:bg-warning/5"
-                          : "border-border text-muted hover:text-fg hover:border-fg/30"}`}
-                  >
-                    {isBusy ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : hidden ? (
-                      <EyeOff size={14} />
-                    ) : (
-                      <Eye size={14} />
-                    )}
-                  </button>
+                  {/* Admin-only per-row controls */}
+                  {role === "admin" && (
+                    <>
+                      {/* Move to another merchant */}
+                      <MoveDescriptionButton
+                        descriptionRaw={r.descriptionRaw}
+                        currentName={currentName}
+                        allClusters={allClusters}
+                      />
+                      {/* Gmail receipt finder */}
+                      <ReceiptFinderButton
+                        transactionId={r.id}
+                        merchantName={currentName}
+                        searched={r.gmailSearched}
+                        matchCount={r.gmailMatchCount}
+                      />
+                      {/* Per-row hide/show toggle */}
+                      <button
+                        onClick={() => toggleRowHide(r)}
+                        disabled={isBusy}
+                        aria-label={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
+                        title={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
+                        className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center transition
+                          ${isBusy
+                            ? "border-border text-muted cursor-wait"
+                            : hidden
+                              ? "border-warning/30 text-warning hover:bg-warning/5"
+                              : "border-border text-muted hover:text-fg hover:border-fg/30"}`}
+                      >
+                        {isBusy ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : hidden ? (
+                          <EyeOff size={14} />
+                        ) : (
+                          <Eye size={14} />
+                        )}
+                      </button>
+                    </>
+                  )}
                 </li>
               );
             })}

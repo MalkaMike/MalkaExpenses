@@ -19,13 +19,19 @@
  */
 
 import { readFile, readdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { config } from "dotenv";
 
-// Load .env.local (Next.js convention)
-config({ path: ".env.local" });
+// Load .env.local — no dotenv dep needed
+try {
+  const raw = readFileSync(".env.local", "utf-8");
+  for (const line of raw.split("\n")) {
+    const m = line.match(/^([A-Z0-9_]+)\s*=\s*(.*)$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+  }
+} catch { /* .env.local missing — rely on actual process env */ }
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;

@@ -24,3 +24,5 @@ scripts/__pycache__/
 docs/health-hub/extracted/
 scripts/save_policy_safe.py
 private/insurance-vault/
+
+.env*

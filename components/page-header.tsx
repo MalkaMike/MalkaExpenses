@@ -18,15 +18,20 @@ type Props = {
 export function PageHeader({ title, back, crumbs, right }: Props) {
   const pathname = usePathname();
   const isAdmin = pathname?.startsWith("/admin");
+  // On mobile admin pages, the AdminLayoutShell renders a fixed top bar at z-30.
+  // PageHeader should not also be sticky on mobile (it would stack). On desktop it
+  // sticks normally within the sidebar content pane.
+  const stickyClass = isAdmin
+    ? "md:sticky md:top-0 z-20"
+    : "sticky top-0 z-30";
 
   return (
     <header
-      className="sticky top-0 z-30 border-b border-outline-variant px-4"
+      className={`${stickyClass} border-b border-outline-variant px-4`}
       style={{
         background: "rgba(251,249,246,0.96)",
         backdropFilter: "blur(12px)",
-        // thin accent line on admin screens signals privileged mode
-        borderTop: isAdmin ? "2px solid #006c49" : undefined
+        borderTop: isAdmin ? "2px solid #006c49" : undefined,
       }}
     >
       <div className="max-w-3xl mx-auto">

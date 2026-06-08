@@ -9,19 +9,22 @@ import { serverClient } from "@/lib/supabase/server";
 //   1. /api/auth/gmail/connect → redirect to Google authorize URL
 //   2. Google redirects back to /api/auth/gmail/callback with ?code=...
 //   3. We exchange code for refresh_token + access_token, store in DB
-//   4. Whenever we need to call Gmail API, getValidAccessToken() refreshes
-//      the access_token if it's expired (using the long-lived refresh_token)
+//      tagged with user_role (admin | health) — one row per role
+//   4. Whenever we need to call Gmail or Sheets API, getValidAccessToken(role)
+//      refreshes the access_token if expired (using the long-lived refresh_token)
 //
 // Scopes:
-//   - gmail.readonly — read messages, attachments, labels
-//   - gmail.send     — send the auto-email of claims to Celina (secretária)
-//   - userinfo.email — get the connected Gmail address
+//   - gmail.readonly   — read messages, attachments, labels
+//   - gmail.send       — send the auto-email of claims to Celina (secretária)
+//   - userinfo.email   — get the connected Gmail address
+//   - spreadsheets     — create Google Sheets (merchant CSV export)
 // ============================================================================
 
 const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
   "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/userinfo.email"
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/spreadsheets"   // create Sheets on user's Drive
 ].join(" ");
 
 const AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
@@ -127,7 +130,8 @@ export async function fetchUserInfo(accessToken: string): Promise<{
   return { email: j.email, sub: j.id };
 }
 
-/** Upsert the credential row after successful OAuth exchange. */
+/** Upsert the credential row after successful OAuth exchange.
+ * One row per role — re-connecting the same role overwrites the existing row. */
 export async function storeCredentials(args: {
   email: string;
   sub: string;
@@ -135,12 +139,14 @@ export async function storeCredentials(args: {
   accessToken: string;
   expiresInSec: number;
   scopes: string;
+  userRole: string;  // "admin" | "health" — which role this credential belongs to
 }): Promise<void> {
   const sb = serverClient();
   await sb
     .from("gmail_credentials")
     .upsert(
       {
+        user_role: args.userRole,                // conflict key
         google_email: args.email,
         google_sub: args.sub,
         refresh_token: args.refreshToken,
@@ -150,13 +156,14 @@ export async function storeCredentials(args: {
         revoked_at: null,
         connected_at: new Date().toISOString()
       },
-      { onConflict: "google_sub" }
+      { onConflict: "user_role" }
     );
 }
 
-/** Returns a valid access_token for the active Gmail connection.
- * Refreshes automatically if expired. Returns null if not connected. */
-export async function getValidAccessToken(): Promise<{
+/** Returns a valid access_token for the given role's Google connection.
+ * Refreshes automatically if expired. Returns null if not connected.
+ * @param role  "admin" (default) or "health" — which role's credential to use */
+export async function getValidAccessToken(role = "admin"): Promise<{
   accessToken: string;
   email: string;
 } | null> {
@@ -164,9 +171,8 @@ export async function getValidAccessToken(): Promise<{
   const { data } = await sb
     .from("gmail_credentials")
     .select("id, google_email, refresh_token, access_token, access_token_expiry")
+    .eq("user_role", role)
     .is("revoked_at", null)
-    .order("connected_at", { ascending: false })
-    .limit(1)
     .maybeSingle();
   if (!data) return null;
 
@@ -176,21 +182,29 @@ export async function getValidAccessToken(): Promise<{
     return { accessToken: data.access_token as string, email: data.google_email as string };
   }
 
-  // Refresh
-  const fresh = await refreshAccessToken(data.refresh_token as string);
-  await sb
-    .from("gmail_credentials")
-    .update({
-      access_token: fresh.access_token,
-      access_token_expiry: new Date(Date.now() + fresh.expires_in * 1000).toISOString(),
-      last_used_at: new Date().toISOString()
-    })
-    .eq("id", data.id);
-  return { accessToken: fresh.access_token, email: data.google_email as string };
+  // Refresh — if credentials are missing or the refresh token is revoked,
+  // return null instead of throwing so callers get a 412, not a 500.
+  try {
+    const fresh = await refreshAccessToken(data.refresh_token as string);
+    await sb
+      .from("gmail_credentials")
+      .update({
+        access_token: fresh.access_token,
+        access_token_expiry: new Date(Date.now() + fresh.expires_in * 1000).toISOString(),
+        last_used_at: new Date().toISOString()
+      })
+      .eq("id", data.id);
+    return { accessToken: fresh.access_token, email: data.google_email as string };
+  } catch {
+    // Refresh failed (credentials not configured, token revoked, network error).
+    // Return null — caller will surface "Gmail not connected" to the admin.
+    return null;
+  }
 }
 
-/** Status check for the admin dashboard. */
-export async function getConnectionStatus(): Promise<{
+/** Status check for the dashboard. Defaults to admin role for backward compat.
+ * @param role  "admin" (default) or "health" */
+export async function getConnectionStatus(role = "admin"): Promise<{
   connected: boolean;
   email?: string;
   connectedAt?: string;
@@ -199,9 +213,8 @@ export async function getConnectionStatus(): Promise<{
   const { data } = await sb
     .from("gmail_credentials")
     .select("google_email, connected_at")
+    .eq("user_role", role)
     .is("revoked_at", null)
-    .order("connected_at", { ascending: false })
-    .limit(1)
     .maybeSingle();
   if (!data) return { connected: false };
   return {
@@ -212,11 +225,21 @@ export async function getConnectionStatus(): Promise<{
 }
 
 /** Soft-disconnect (sets revoked_at). The refresh_token in our DB is no
- * longer used; admin must re-consent to reconnect. */
-export async function disconnect(): Promise<void> {
+ * longer used; user must re-consent to reconnect.
+ * @param role  if provided, only disconnects that role; otherwise disconnects all */
+export async function disconnect(role?: string): Promise<void> {
   const sb = serverClient();
-  await sb
-    .from("gmail_credentials")
-    .update({ revoked_at: new Date().toISOString() })
-    .is("revoked_at", null);
+  const ts = new Date().toISOString();
+  if (role) {
+    await sb
+      .from("gmail_credentials")
+      .update({ revoked_at: ts })
+      .eq("user_role", role)
+      .is("revoked_at", null);
+  } else {
+    await sb
+      .from("gmail_credentials")
+      .update({ revoked_at: ts })
+      .is("revoked_at", null);
+  }
 }

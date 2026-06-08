@@ -14,7 +14,8 @@ export default async function MerchantDetailPage({
   params: Promise<{ key: string }>;
   searchParams: Promise<{ direction?: string }>;
 }) {
-  if ((await getRole()) !== "admin") {
+  const role = await getRole();
+  if (role !== "admin" && role !== "health") {
     return (
       <div className="px-4 pt-6 max-w-2xl mx-auto">
         <p className="text-sm text-muted">Acesso restrito.</p>
@@ -73,6 +74,7 @@ export default async function MerchantDetailPage({
             "id, date, description_raw, description_clean, real_amount, shared_amount, category_id, account_id, source, ai_reasoning, gmail_searched_at, gmail_match_count"
           )
           .in("description_raw", slice)
+          .eq("is_fake", false)
           .order("date", { ascending: false })
           .order("id", { ascending: true })  // tie-breaker → stable pagination
           .range(off, off + 999);
@@ -150,9 +152,8 @@ export default async function MerchantDetailPage({
       ? "show"
       : "mixed";
 
-  // Reimbursement tags currently applied across these transactions
-  const txIds = txs.map((t) => t.id);
-  type ReimbAgg = { tag_id: string; count: number };
+  // Reimbursement tags — admin only (health role sees a read-only view without tag controls)
+  const txIds = role === "admin" ? txs.map((t) => t.id) : [];
   const tagCounts = new Map<string, number>();
   if (txIds.length > 0) {
     const { data: reimbRows } = await sb
@@ -164,42 +165,48 @@ export default async function MerchantDetailPage({
       tagCounts.set(k, (tagCounts.get(k) ?? 0) + 1);
     }
   }
-  const { data: tags } = await sb
-    .from("reimbursement_tags")
-    .select("id, slug, name, color, icon")
-    .order("slug");
-  const tagList = (tags ?? []).map((t) => ({
-    id: t.id as string,
-    slug: t.slug as string,
-    name: t.name as string,
-    color: t.color as string,
-    icon: t.icon as string,
-    appliedCount: tagCounts.get(t.id as string) ?? 0
-  }));
-
-  // Load all distinct (canonical_key, canonical_name) pairs for the rename
-  // combobox autocomplete — used to either RENAME (free text) or MERGE
-  // (pick an existing merchant). 2378 entries × ~50 chars ≈ 120KB, fine.
-  type ClusterOption = { key: string; name: string };
-  const seenKeys = new Set<string>();
-  const allClusters: ClusterOption[] = [];
-  let cOff = 0;
-  while (true) {
-    const { data } = await sb
-      .from("merchant_clusters")
-      .select("canonical_key, canonical_name")
-      .order("canonical_name", { ascending: true })
-      .range(cOff, cOff + 999);
-    if (!data || !data.length) break;
-    for (const r of data) {
-      const k = r.canonical_key as string;
-      if (k === key) continue; // exclude current cluster
-      if (seenKeys.has(k)) continue;
-      seenKeys.add(k);
-      allClusters.push({ key: k, name: r.canonical_name as string });
+  const tagList: { id: string; slug: string; name: string; color: string; icon: string; appliedCount: number }[] = [];
+  if (role === "admin") {
+    const { data: tags } = await sb
+      .from("reimbursement_tags")
+      .select("id, slug, name, color, icon")
+      .order("slug");
+    for (const t of tags ?? []) {
+      tagList.push({
+        id: t.id as string,
+        slug: t.slug as string,
+        name: t.name as string,
+        color: t.color as string,
+        icon: t.icon as string,
+        appliedCount: tagCounts.get(t.id as string) ?? 0
+      });
     }
-    if (data.length < 1000) break;
-    cOff += 1000;
+  }
+
+  // Cluster list for rename/merge combobox — admin only.
+  // Skipped for health role to avoid the ~120KB DB round-trip.
+  type ClusterOption = { key: string; name: string };
+  const allClusters: ClusterOption[] = [];
+  if (role === "admin") {
+    const seenKeys = new Set<string>();
+    let cOff = 0;
+    while (true) {
+      const { data } = await sb
+        .from("merchant_clusters")
+        .select("canonical_key, canonical_name")
+        .order("canonical_name", { ascending: true })
+        .range(cOff, cOff + 999);
+      if (!data || !data.length) break;
+      for (const r of data) {
+        const k = r.canonical_key as string;
+        if (k === key) continue; // exclude current cluster
+        if (seenKeys.has(k)) continue;
+        seenKeys.add(k);
+        allClusters.push({ key: k, name: r.canonical_name as string });
+      }
+      if (data.length < 1000) break;
+      cOff += 1000;
+    }
   }
 
   const categories = (cats ?? []).map((c) => ({
@@ -273,6 +280,7 @@ export default async function MerchantDetailPage({
         currentName={displayName}
         tags={tagList}
         allClusters={allClusters}
+        role={role as "admin" | "health"}
       />
     </div>
   </>

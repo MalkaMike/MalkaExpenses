@@ -1,18 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/admin";
+import { getRole } from "@/lib/auth/admin";
 import { buildAuthorizeUrl } from "@/lib/gmail/oauth";
 import { randomBytes } from "node:crypto";
 
 export const runtime = "nodejs";
 
-// GET /api/auth/gmail/connect
-// Admin-only. Generates an OAuth state token (CSRF protection), stashes it
-// in a short-lived cookie, and redirects the user to Google's consent screen.
+// GET /api/auth/gmail/connect?forRole=<role>
+// Admin or health role. Generates an OAuth state token (CSRF protection),
+// encodes the target role in it ("nonce.targetRole") so the callback knows
+// which credential row to update.
+//
+// Admin can connect for any role via ?forRole=admin|health.
+// Health can only connect their own account (no forRole override).
 export async function GET(req: NextRequest) {
-  await requireAdmin();
+  const sessionRole = await getRole();
+  if (sessionRole !== "admin" && sessionRole !== "health") {
+    return NextResponse.redirect(new URL("/", new URL(req.url).origin));
+  }
 
-  const state = randomBytes(16).toString("hex");
-  const origin = new URL(req.url).origin;
+  const reqUrl = new URL(req.url);
+  const forRole = reqUrl.searchParams.get("forRole");
+
+  // Admin can target any role; others can only target themselves.
+  let targetRole: string;
+  if (sessionRole === "admin" && forRole && ["admin", "health"].includes(forRole)) {
+    targetRole = forRole;
+  } else {
+    targetRole = sessionRole;
+  }
+
+  const nonce = randomBytes(16).toString("hex");
+  const state = `${nonce}.${targetRole}`; // encode target role for the callback
+  const origin = reqUrl.origin;
   const url = buildAuthorizeUrl(origin, state);
 
   const response = NextResponse.redirect(url);

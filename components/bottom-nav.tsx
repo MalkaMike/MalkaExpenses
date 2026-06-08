@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ListChecks, PieChart, Target, Settings, Stethoscope } from "lucide-react";
+import { Home, ListChecks, PieChart, Target, Stethoscope } from "lucide-react";
 import type { Role } from "@/lib/auth/admin";
 import { useLang } from "@/lib/i18n/context";
 import { t } from "@/lib/i18n/translations";
@@ -12,12 +12,14 @@ export function BottomNav({ role }: { role: Role }) {
 
   if (pathname === "/login") return null;
 
-  // Secretary (Celina): only the health queue link
+  const isAdmin = pathname?.startsWith("/admin");
+
+  // Secretary (Celina): only the health queue link; the admin sidebar handles desktop nav
   if (role === "secretary") {
     const active = pathname.startsWith("/admin/health");
     return (
       <nav
-        className="fixed bottom-0 inset-x-0 z-40 border-t border-outline-variant"
+        className={`fixed bottom-0 inset-x-0 z-40 border-t border-outline-variant ${isAdmin ? "md:hidden" : ""}`}
         style={{ background: "rgba(251,249,246,0.96)", backdropFilter: "blur(12px)" }}
       >
         <div className="max-w-2xl mx-auto flex justify-around items-stretch">
@@ -47,7 +49,7 @@ export function BottomNav({ role }: { role: Role }) {
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-40 border-t border-outline-variant"
+      className={`fixed bottom-0 inset-x-0 z-40 border-t border-outline-variant ${isAdmin ? "md:hidden" : ""}`}
       style={{ background: "rgba(251,249,246,0.96)", backdropFilter: "blur(12px)" }}
     >
       <div className="max-w-2xl mx-auto flex justify-around items-stretch">
@@ -83,18 +85,7 @@ export function BottomNav({ role }: { role: Role }) {
           </Link>
         )}
 
-        {/* Admin gear: only Mickael */}
-        {role === "admin" && (
-          <Link
-            href="/admin"
-            className={`flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium transition-colors ${
-              pathname === "/admin" ? "text-primary" : "text-on-surface-variant hover:text-on-surface"
-            }`}
-          >
-            <Settings size={20} strokeWidth={1.5} />
-            <span className="tracking-wide">Admin</span>
-          </Link>
-        )}
+        {/* Admin gear removed — sidebar handles admin navigation */}
       </div>
     </nav>
   );

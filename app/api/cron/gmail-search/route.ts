@@ -1,28 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { getValidAccessToken } from "@/lib/gmail/oauth";
-import { findReceiptsForTransactionV2 } from "@/lib/gmail/find-receipt-v2";
-import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
+import { preloadClusters } from "@/lib/merchants/clusters";
+import { searchOneTransaction } from "@/lib/gmail/search-one";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // Pro plan allows 300s
 
 // GET /api/cron/gmail-search
 //
-// Vercel cron — runs daily at 07:00 UTC (04:00 BRT) after the 06:00 Pluggy
-// sync. Processes any transactions added since the last run by searching
-// their Gmail for nota fiscal matches.
+// Vercel cron — runs daily at 06:30 UTC (03:30 BRT) after the 06:00 Pluggy
+// sync (see vercel.json). Two passes:
+//   Pass 1 — search transactions never searched before (gmail_searched_at IS NULL).
+//   Pass 2 — retry rows whose previous search ERRORED (transient Gmail failure),
+//            at most once per day, capped at 3 total attempts. Genuine 0-match
+//            rows (gmail_search_error IS NULL) are never re-searched.
 //
-// Self-throttling: bails after ~250s to stay under Vercel's 300s timeout.
-// Designed to be picked up next day if it doesn't finish.
+// Excludes fake transactions and only searches expenses (real_amount < 0,
+// not transfers). Self-throttling: bails after ~250s to stay under the 300s
+// timeout; unfinished work is picked up the next day.
 export async function GET(req: NextRequest) {
-  // Vercel cron sends a special header
+  // Fail CLOSED: require CRON_SECRET to be set AND match the Vercel-cron header.
+  // (Previously an unset secret left this route open to anyone.)
+  const secret = process.env.CRON_SECRET;
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET ?? "no-cron-secret-configured"}`) {
-    // Still allow if no CRON_SECRET configured (dev mode)
-    if (process.env.CRON_SECRET) {
-      return new NextResponse("unauthorized", { status: 401 });
-    }
+  if (!secret || authHeader !== `Bearer ${secret}`) {
+    return new NextResponse("unauthorized", { status: 401 });
   }
 
   const cred = await getValidAccessToken();
@@ -35,79 +38,72 @@ export async function GET(req: NextRequest) {
 
   const startedAt = Date.now();
   const HARD_DEADLINE_MS = 250_000; // 250s — Vercel kills at 300s
+  const timeLeft = () => Date.now() - startedAt < HARD_DEADLINE_MS;
+
+  // Start of today (UTC) — Pass 2 only retries rows last touched on a PRIOR day,
+  // so a persistently-failing row is retried at most once per cron run.
+  const todayStart = new Date();
+  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayStartIso = todayStart.toISOString();
 
   let processed = 0;
   let found = 0;
 
-  while (Date.now() - startedAt < HARD_DEADLINE_MS) {
+  // ── Pass 1: never-searched transactions ───────────────────────────────────
+  while (timeLeft()) {
     const { data: txs } = await sb
       .from("transactions")
-      .select("id, date, description_raw, real_amount")
+      .select("id, date, description_raw, real_amount, gmail_search_attempts")
       .is("gmail_searched_at", null)
+      .eq("is_fake", false)
       .eq("is_transfer", false)
       .lt("real_amount", 0)
       .order("date", { ascending: false })
-      .limit(10);  // v2 is slower — smaller batches
+      .limit(10); // v2 is slower — smaller batches
 
     if (!txs || txs.length === 0) break;
 
     for (const tx of txs) {
-      if (Date.now() - startedAt >= HARD_DEADLINE_MS) break;
+      if (!timeLeft()) break;
       processed++;
-      const absAmount = Math.abs(Number(tx.real_amount));
-      try {
-        const cluster = clusterFor(tx.description_raw as string);
-        const matches = await findReceiptsForTransactionV2({
-          accessToken: cred.accessToken,
-          merchantName: cluster.name,
-          date: tx.date as string,
-          amount: absAmount,
-          dayWindow: 7,
-          max: 5
-        });
-        if (matches.length > 0) {
-          found++;
-          await sb.from("transaction_receipts").upsert(
-            matches.map((m) => ({
-              transaction_id: tx.id as string,
-              gmail_message_id: m.gmailMessageId,
-              gmail_thread_id: m.gmailThreadId,
-              subject: m.subject,
-              from_email: m.fromEmail,
-              from_name: m.fromName,
-              sent_at: m.sentAt,
-              has_attachment: m.hasAttachment,
-              attachment_count: m.attachmentCount,
-              match_score: m.confidence === "verified" ? 1.0 : 0.75,
-              match_reason: m.matchReason,
-              confidence: m.confidence,
-              match_source: m.matchSource,
-              match_snippet: m.matchSnippet,
-              amount_brl: absAmount
-            })),
-            { onConflict: "transaction_id,gmail_message_id" }
-          );
-        }
-        await sb
-          .from("transactions")
-          .update({
-            gmail_searched_at: new Date().toISOString(),
-            gmail_match_count: matches.length
-          })
-          .eq("id", tx.id as string);
-      } catch {
-        await sb
-          .from("transactions")
-          .update({ gmail_searched_at: new Date().toISOString(), gmail_match_count: 0 })
-          .eq("id", tx.id as string);
-      }
+      const r = await searchOneTransaction(sb, cred.accessToken, tx);
+      if (r.found) found++;
+    }
+  }
+
+  // ── Pass 2: bounded retry of rows that ERRORED on a previous day ───────────
+  // Genuine 0-match rows (gmail_search_error IS NULL) are never picked here.
+  let retried = 0;
+  let retryFound = 0;
+  while (timeLeft()) {
+    const { data: txs } = await sb
+      .from("transactions")
+      .select("id, date, description_raw, real_amount, gmail_search_attempts")
+      .not("gmail_search_error", "is", null)
+      .lt("gmail_search_attempts", 3)
+      .lt("gmail_searched_at", todayStartIso)
+      .eq("is_fake", false)
+      .eq("is_transfer", false)
+      .lt("real_amount", 0)
+      .order("gmail_search_attempts", { ascending: true })
+      .limit(10);
+
+    if (!txs || txs.length === 0) break;
+
+    for (const tx of txs) {
+      if (!timeLeft()) break;
+      retried++;
+      const r = await searchOneTransaction(sb, cred.accessToken, tx);
+      if (r.found) retryFound++;
     }
   }
 
   return NextResponse.json({
     processed,
     found,
+    retried,
+    retryFound,
     elapsedMs: Date.now() - startedAt,
-    hitDeadline: Date.now() - startedAt >= HARD_DEADLINE_MS
+    hitDeadline: !timeLeft()
   });
 }

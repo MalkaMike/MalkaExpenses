@@ -45,7 +45,8 @@ export default async function MerchantsPage({
 }: {
   searchParams: Promise<{ direction?: string; transfers?: string }>;
 }) {
-  if ((await getRole()) !== "admin") {
+  const role = await getRole();
+  if (role !== "admin" && role !== "health") {
     return (
       <div className="px-4 pt-6 max-w-2xl mx-auto">
         <p className="text-sm text-on-surface-variant">Acesso restrito.</p>
@@ -70,6 +71,7 @@ export default async function MerchantsPage({
     const { data, error } = await sb
       .from("transactions")
       .select("id, description_raw, real_amount, shared_amount, category_id, date, source, is_transfer")
+      .eq("is_fake", false)
       .order("id", { ascending: true })
       .range(off, off + 999);
     if (error) throw new Error(`Failed to load transactions: ${error.message}`);

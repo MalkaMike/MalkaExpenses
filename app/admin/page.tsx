@@ -1,230 +1,261 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Archive, Eye, ChevronRight, Inbox, Store, TrendingUp, History, Briefcase, RefreshCw, Layers, Mail, CheckCircle2, Sparkles, Receipt, Stethoscope, Download, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Mail, Receipt, ChevronRight, RefreshCw } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
 import { formatBRL, formatInt } from "@/lib/format";
 import { ReconcileButton } from "./reconcile-button";
 import { PluggySyncButton } from "./pluggy-sync-button";
+import { ResetVisibilityButton } from "./reset-visibility-button";
 import { PageHeader } from "@/components/page-header";
 import { getConnectionStatus } from "@/lib/gmail/oauth";
-import { GmailBatchButton } from "@/components/gmail-batch-button";
+import { GmailDisconnectButton } from "./gmail-disconnect-button";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminLanding({
-  searchParams
+export default async function AdminDashboard({
+  searchParams,
 }: {
   searchParams: Promise<{ next?: string; gmail?: string; reason?: string }>;
 }) {
   const role = await getRole();
   const sp = await searchParams;
 
-  // Non-admin roles land on their own home
   if (role === "health") redirect("/admin/health");
   if (role === "secretary") redirect("/admin/health/queue");
   if (role !== "admin") {
     redirect(`/login?next=${encodeURIComponent(sp.next ?? "/admin")}`);
   }
 
-  // Gmail connection status (admin-only)
-  const gmail = await getConnectionStatus();
-
-  const accounts = await getAccountsWithBalances("admin");
+  const [gmailAdmin, gmailHealth, accounts] = await Promise.all([
+    getConnectionStatus("admin"),
+    getConnectionStatus("health"),
+    getAccountsWithBalances("admin")
+  ]);
   const totalReal = accounts.reduce((s, a) => s + (a.realBalance ?? 0), 0);
   const totalShared = accounts.reduce((s, a) => s + a.sharedBalance, 0);
   const deltaHidden = totalReal - totalShared;
 
   const sb = serverClient();
-  const [{ count: total }, { count: pending }, { count: fakes }, { count: hidden }] =
+  const [{ count: total }, { count: pending }, { count: fakes }, { count: hidden }, { count: nfFound }] =
     await Promise.all([
-      sb.from("transactions").select("*", { count: "exact", head: true }),
+      sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", false),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("status", "pending_review"),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", true),
-      sb.from("transactions").select("*", { count: "exact", head: true })
-        .eq("shared_amount", 0).neq("status", "pending_review")
+      sb
+        .from("transactions")
+        .select("*", { count: "exact", head: true })
+        .eq("shared_amount", 0)
+        .neq("status", "pending_review"),
+      // Found nota fiscais the admin hasn't triaged yet (confirmed IS NULL).
+      sb.from("transaction_receipts").select("*", { count: "exact", head: true }).is("confirmed", null),
     ]);
 
   return (
     <>
-    <PageHeader title="Admin" />
-    <div className="px-4 pt-5 max-w-2xl mx-auto pb-28">
+      <PageHeader title="Dashboard" />
+      <div className="px-6 pt-6 max-w-4xl mx-auto pb-28">
 
-      {/* Gmail connection banner */}
-      {sp.gmail === "connected" && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-secondary-container/40 border border-secondary text-sm flex items-center gap-2">
-          <CheckCircle2 size={16} className="text-secondary shrink-0" />
-          <span className="text-on-surface">Gmail conectado com sucesso. Agora você pode buscar notas fiscais nas transações.</span>
-        </div>
-      )}
-      {sp.gmail === "error" && (
-        <div className="mb-4 px-4 py-3 rounded-xl bg-error-container/40 border border-error text-sm">
-          <p className="text-on-error-container font-medium">Erro ao conectar Gmail</p>
-          {sp.reason && <p className="text-xs text-on-surface-variant mt-0.5">{sp.reason}</p>}
-        </div>
-      )}
+        {/* Gmail connection banners */}
+        {sp.gmail === "connected" && (
+          <div className="mb-5 px-4 py-3 rounded-xl bg-secondary-container/40 border border-secondary text-sm flex items-center gap-2">
+            <CheckCircle2 size={16} className="text-secondary shrink-0" />
+            <span className="text-on-surface">Gmail conectado com sucesso.</span>
+          </div>
+        )}
+        {sp.gmail === "error" && (
+          <div className="mb-5 px-4 py-3 rounded-xl bg-error-container/40 border border-error text-sm">
+            <p className="text-on-error-container font-medium">Erro ao conectar Gmail</p>
+            {sp.reason && <p className="text-xs text-on-surface-variant mt-0.5">{sp.reason}</p>}
+          </div>
+        )}
 
-      {/* Dual-ledger balance cards — both clickable */}
-      <section className="grid grid-cols-2 gap-3 mb-4">
-        <Link
-          href="/accounts"
-          className="block p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow hover:bg-surface-container transition"
-        >
-          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Saldo real</p>
-          <p className="text-2xl font-semibold tabular-nums text-on-surface">{formatBRL(totalReal)}</p>
-        </Link>
-        <Link
-          href="/"
-          className="block p-4 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow hover:bg-surface-container transition"
-        >
-          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Portal Ayelet</p>
-          <p className="text-2xl font-semibold tabular-nums text-on-surface">{formatBRL(totalShared)}</p>
-        </Link>
-      </section>
+        {/* Balance cards */}
+        <section className="grid grid-cols-2 gap-4 mb-4">
+          <Link
+            href="/accounts"
+            className="block p-5 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow hover:bg-surface-container transition"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+              Saldo real
+            </p>
+            <p className="text-3xl font-semibold tabular-nums text-on-surface">{formatBRL(totalReal)}</p>
+          </Link>
+          <Link
+            href="/"
+            className="block p-5 rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow hover:bg-surface-container transition"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+              Portal Ayelet
+            </p>
+            <p className="text-3xl font-semibold tabular-nums text-on-surface">{formatBRL(totalShared)}</p>
+          </Link>
+        </section>
 
-      {/* Delta hidden */}
-      {deltaHidden !== 0 && (
-        <div className="mb-5 px-4 py-2.5 rounded-xl bg-surface-container border border-outline-variant text-sm flex justify-between items-center">
-          <span className="text-on-surface-variant text-xs">Diferença oculta</span>
-          <span className="tabular-nums font-semibold text-on-surface">{formatBRL(deltaHidden)}</span>
-        </div>
-      )}
+        {deltaHidden !== 0 && (
+          <div className="mb-6 px-4 py-2.5 rounded-xl bg-surface-container border border-outline-variant flex justify-between items-center">
+            <span className="text-on-surface-variant text-xs">Diferença oculta</span>
+            <span className="tabular-nums font-semibold text-on-surface text-sm">{formatBRL(deltaHidden)}</span>
+          </div>
+        )}
 
-      {/* Stats row — all clickable */}
-      <section className="grid grid-cols-3 gap-3 mb-8">
-        <StatCard label="Movimentos"  value={total   ?? 0} href="/transactions" />
-        <StatCard label="A revisar"   value={pending ?? 0} href="/admin/inbox"  accent={!!pending && pending > 0} />
-        <StatCard label="Fake"        value={fakes   ?? 0} href="/transactions?status=fake" />
-      </section>
-
-      {/* ── Sections (one entire system, grouped by domain) ───────────────── */}
-      <nav className="mb-28">
-        {/* Finanças */}
-        <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mt-6 mb-3 px-1">Finanças</h2>
-        <div className="space-y-2">
-          <AdminLink
+        {/* Stats grid */}
+        <section className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+          <StatCard label="Movimentos" value={total ?? 0} href="/transactions" />
+          <StatCard
+            label="A revisar"
+            value={pending ?? 0}
             href="/admin/inbox"
-            title="Caixa de entrada"
-            subtitle={(pending ?? 0) > 0 ? `${formatInt(pending ?? 0)} aguardando revisão` : "tudo decidido"}
-            Icon={Inbox}
-            badge={(pending ?? 0) > 0 ? String(pending) : undefined}
+            accent={!!(pending && pending > 0)}
           />
-          <AdminLink
-            href="/admin/merchants?direction=out"
-            title="Comerciantes"
-            subtitle="categorize por merchant — vale pra todas"
-            Icon={Store}
-          />
-          <AdminLink
-            href="/admin/merchants?direction=in"
-            title="Pagadores"
-            subtitle="de onde vem o dinheiro"
-            Icon={TrendingUp}
-          />
-          <AdminLink
-            href="/admin/nota-fiscais"
-            title="Notas Fiscais"
-            subtitle="PDFs + voos Gmail · indexação + pagamentos"
-            Icon={Receipt}
-          />
-          <AdminLink
-            href="/admin/reembolsos"
-            title="Reembolsos"
-            subtitle="Kenlo · Laik · Plano de Saúde"
-            Icon={Briefcase}
-          />
-          <AdminLink
-            href="/admin/sugestoes"
-            title="Sugestões de fusão (IA)"
-            subtitle="merchants que parecem duplicados"
-            Icon={Sparkles}
-          />
-          <AdminLink
-            href="/import"
-            title="Importar bancos"
-            subtitle="conectar contas via Pluggy (Open Finance)"
-            Icon={Download}
-          />
-        </div>
+          <StatCard label="Fake" value={fakes ?? 0} href="/transactions?status=fake" />
+          <StatCard label="Ocultos" value={hidden ?? 0} href="/admin/archive" />
+        </section>
 
-        {/* Saúde */}
-        <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mt-6 mb-3 px-1">Saúde</h2>
-        <div className="space-y-2">
-          <AdminLink
-            href="/admin/health"
-            title="Reembolsos médicos"
-            subtitle="notas + pedido médico + cálculo de elegibilidade IA"
-            Icon={Stethoscope}
-          />
-          <AdminLink
-            href="/admin/health/policy"
-            title="Apólice · Cofre"
-            subtitle="APRIL Ma Santé Internationale · regras + termos verificáveis"
-            Icon={ShieldCheck}
-          />
-        </div>
-
-        {/* Operações */}
-        <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mt-6 mb-3 px-1">Operações</h2>
-        <div className="space-y-2">
-          {/* Gmail connection — admin-only */}
-          {gmail.connected ? (
-            <>
-              <AdminLink
-                href="/api/auth/gmail/connect"
-                title="Gmail conectado"
-                subtitle={gmail.email ?? "buscar notas fiscais automaticamente"}
-                Icon={CheckCircle2}
-                badge="✓"
-              />
-              {/* Batch search controller */}
-              <GmailBatchButton />
-            </>
+        {/* Daily nota-fiscal digest — the robot found these, review & accept */}
+        <Link
+          href="/admin/notas-encontradas"
+          className={`flex items-center gap-3 px-4 py-3.5 rounded-xl border mb-6 transition ${
+            nfFound && nfFound > 0
+              ? "bg-secondary-container/30 border-secondary/40 hover:bg-secondary-container/50"
+              : "bg-surface-container-lowest border-outline-variant hover:bg-surface-container"
+          }`}
+        >
+          <div
+            className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
+              nfFound && nfFound > 0 ? "bg-secondary/15 text-secondary" : "bg-surface-container text-on-surface-variant"
+            }`}
+          >
+            <Receipt size={17} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-on-surface">Notas fiscais encontradas</p>
+            <p className="text-xs text-on-surface-variant">
+              {nfFound && nfFound > 0
+                ? `${formatInt(nfFound)} ${nfFound === 1 ? "nota nova pra revisar" : "notas novas pra revisar"}`
+                : "Tudo revisado — o robô avisa aqui quando achar mais"}
+            </p>
+          </div>
+          {nfFound && nfFound > 0 ? (
+            <span className="shrink-0 min-w-[22px] h-[22px] px-1.5 rounded-full bg-secondary text-on-secondary text-xs font-bold flex items-center justify-center tabular-nums">
+              {formatInt(nfFound)}
+            </span>
           ) : (
-            <AdminLink
-              href="/api/auth/gmail/connect"
-              title="Conectar Gmail"
-              subtitle="buscar notas fiscais e invoices automaticamente"
-              Icon={Mail}
-            />
+            <ChevronRight size={16} className="text-on-surface-variant shrink-0" />
           )}
-          <div className="rounded-xl border border-outline-variant overflow-hidden bg-surface-container-lowest">
-            <div className="px-4 pt-3 pb-1">
-              <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider">Sincronização</p>
-            </div>
-            <div className="p-2">
+        </Link>
+
+        {/* Quick ops */}
+        <section className="mb-6">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3">
+            Operações rápidas
+          </p>
+          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest overflow-hidden">
+            <div className="p-3 space-y-1">
               <PluggySyncButton />
               <ReconcileButton />
+              <ResetVisibilityButton />
             </div>
           </div>
-          <AdminLink
-            href="/admin/historico"
-            title="Histórico de modificações"
-            subtitle="o que você alterou vs o que a Ayelet vê"
-            Icon={History}
-          />
-          <AdminLink
-            href="/admin/archive"
-            title="Arquivo"
-            subtitle={(hidden ?? 0) > 0 ? `${formatInt(hidden ?? 0)} item(ns) oculto(s) — pode restaurar` : "itens removidos do portal"}
-            Icon={Archive}
-          />
-          <AdminLink
-            href="/"
-            title="Portal da Ayelet"
-            subtitle="o que sua esposa vê"
-            Icon={Eye}
-          />
-        </div>
-      </nav>
-    </div>
-  </>
+        </section>
+
+        {/* Google accounts — manage both Mickael and Ayelet from here */}
+        <section>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-3">
+            Contas Google
+          </p>
+          <div className="rounded-xl border border-outline-variant bg-surface-container-lowest overflow-hidden">
+
+            {/* Mickael (admin) */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-outline-variant">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant w-14 shrink-0">
+                Mickael
+              </span>
+              {gmailAdmin.connected ? (
+                <>
+                  <CheckCircle2 size={13} className="text-secondary shrink-0" />
+                  <span className="text-sm text-on-surface truncate flex-1">{gmailAdmin.email}</span>
+                  <Link
+                    href="/api/auth/gmail/connect?forRole=admin"
+                    className="text-xs text-on-surface-variant hover:text-on-surface transition shrink-0"
+                  >
+                    Reconectar
+                  </Link>
+                  <GmailDisconnectButton role="admin" label="Mickael" />
+                </>
+              ) : (
+                <>
+                  <Mail size={13} className="text-on-surface-variant shrink-0" />
+                  <span className="text-sm text-on-surface-variant flex-1">Não conectado</span>
+                  <Link
+                    href="/api/auth/gmail/connect?forRole=admin"
+                    className="text-xs font-medium text-primary hover:text-primary/80 transition shrink-0"
+                  >
+                    Conectar
+                  </Link>
+                </>
+              )}
+            </div>
+
+            {/* Ayelet (health) */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-outline-variant">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant w-14 shrink-0">
+                Ayelet
+              </span>
+              {gmailHealth.connected ? (
+                <>
+                  <CheckCircle2 size={13} className="text-secondary shrink-0" />
+                  <span className="text-sm text-on-surface truncate flex-1">{gmailHealth.email}</span>
+                  <Link
+                    href="/api/auth/gmail/connect?forRole=health"
+                    className="text-xs text-on-surface-variant hover:text-on-surface transition shrink-0"
+                  >
+                    Reconectar
+                  </Link>
+                  <GmailDisconnectButton role="health" label="Ayelet" />
+                </>
+              ) : (
+                <>
+                  <Mail size={13} className="text-on-surface-variant shrink-0" />
+                  <span className="text-sm text-on-surface-variant flex-1">Não conectado</span>
+                  <Link
+                    href="/api/auth/gmail/connect?forRole=health"
+                    className="text-xs font-medium text-primary hover:text-primary/80 transition shrink-0"
+                  >
+                    Conectar
+                  </Link>
+                </>
+              )}
+            </div>
+
+            {/* NF search is fully automatic: the daily cron is the ONLY searcher.
+                No manual bulk button → cron + manual can't double-search the same
+                transaction (closed the overlap race). */}
+            {gmailAdmin.connected && (
+              <div className="px-4 py-3 flex items-center gap-2 text-xs text-on-surface-variant">
+                <RefreshCw size={12} className="shrink-0" />
+                Busca de notas no Gmail roda automática todo dia às 03:30 (BRT).
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+    </>
   );
 }
 
-// StatCard is now a Link when href is provided
-function StatCard({ label, value, accent, href }: { label: string; value: number; accent?: boolean; href?: string }) {
+function StatCard({
+  label,
+  value,
+  accent,
+  href,
+}: {
+  label: string;
+  value: number;
+  accent?: boolean;
+  href?: string;
+}) {
   const inner = (
     <>
       <p className={`text-2xl font-semibold tabular-nums ${accent ? "text-[#f59e0b]" : "text-on-surface"}`}>
@@ -233,52 +264,11 @@ function StatCard({ label, value, accent, href }: { label: string; value: number
       <p className="text-[10px] text-on-surface-variant mt-0.5">{label}</p>
     </>
   );
-  const cls = `p-3.5 rounded-xl border soft-ambient-shadow text-center transition block ${
+  const cls = `p-4 rounded-xl border soft-ambient-shadow text-center transition block ${
     accent
       ? "bg-[#f59e0b]/5 border-[#f59e0b]/20 hover:bg-[#f59e0b]/10"
       : "bg-surface-container-lowest border-outline-variant hover:bg-surface-container"
   }`;
   if (href) return <Link href={href} className={cls}>{inner}</Link>;
   return <div className={cls}>{inner}</div>;
-}
-
-function AdminLink({
-  href, title, subtitle, Icon, badge, disabled = false
-}: {
-  href: string; title: string; subtitle?: string;
-  Icon: typeof Archive; badge?: string; disabled?: boolean;
-}) {
-  const content = (
-    <div className="flex items-center gap-3">
-      <div className="w-10 h-10 rounded-xl bg-surface-container flex items-center justify-center text-on-surface-variant shrink-0">
-        <Icon size={18} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-sm text-on-surface">{title}</p>
-        {subtitle && <p className="text-xs text-on-surface-variant truncate mt-0.5">{subtitle}</p>}
-      </div>
-      {badge && (
-        <span className="px-2 py-0.5 rounded-full bg-[#f59e0b] text-black text-[10px] font-bold">
-          {badge}
-        </span>
-      )}
-      <ChevronRight size={15} className="text-on-surface-variant shrink-0" />
-    </div>
-  );
-
-  if (disabled) {
-    return (
-      <div className="p-4 rounded-xl bg-surface-container-lowest border border-outline-variant opacity-40 cursor-not-allowed">
-        {content}
-      </div>
-    );
-  }
-  return (
-    <Link
-      href={href}
-      className="block p-4 rounded-xl bg-surface-container-lowest border border-outline-variant hover:bg-surface-container active:scale-[0.99] transition-all"
-    >
-      {content}
-    </Link>
-  );
 }

@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   // Fetch the transaction
   const { data: tx } = await sb
     .from("transactions")
-    .select("id, date, real_amount")
+    .select("id, date, real_amount, gmail_searched_at")
     .eq("id", transaction_id)
     .maybeSingle();
   if (!tx) {
@@ -76,6 +76,12 @@ export async function POST(req: NextRequest) {
         }))
       });
     }
+    // No cached receipts — but if we ALREADY searched this transaction and it
+    // came back empty, honor the search-once guarantee: don't re-hit Gmail.
+    // (Without this, every 0-match transaction re-searched Gmail on each click.)
+    if (tx.gmail_searched_at) {
+      return NextResponse.json({ cached: true, matches: [] });
+    }
   }
 
   // Live search
@@ -101,10 +107,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Replace cache
-  await sb.from("transaction_receipts").delete().eq("transaction_id", transaction_id);
+  // Refresh the cache WITHOUT destroying admin triage.
+  // Old behavior was DELETE+INSERT, which (a) wiped the `confirmed` flag on
+  // every refresh and (b) raced to a 500 on a double-click. Instead:
+  //   • upsert on the natural key → re-matched rows KEEP their `confirmed`
+  //     value (we never send `confirmed` in the payload), new rows arrive NULL;
+  //   • prune only STALE + UNCONFIRMED rows (no longer matched, never triaged).
+  const newIds = new Set(matches.map((m) => m.gmailMessageId));
+  const { data: existingRows } = await sb
+    .from("transaction_receipts")
+    .select("id, gmail_message_id, confirmed")
+    .eq("transaction_id", transaction_id);
+  const staleIds = (existingRows ?? [])
+    .filter((r) => !newIds.has(r.gmail_message_id as string) && r.confirmed == null)
+    .map((r) => r.id as string);
+  if (staleIds.length > 0) {
+    await sb.from("transaction_receipts").delete().in("id", staleIds);
+  }
   if (matches.length > 0) {
-    await sb.from("transaction_receipts").insert(
+    await sb.from("transaction_receipts").upsert(
       matches.map((m) => ({
         transaction_id,
         gmail_message_id: m.gmailMessageId,
@@ -121,16 +142,19 @@ export async function POST(req: NextRequest) {
         match_source: m.matchSource,
         match_snippet: m.matchSnippet,
         amount_brl: absAmount
-      }))
+      })),
+      { onConflict: "transaction_id,gmail_message_id" }
     );
   }
 
-  // Mark transaction as searched
+  // Mark transaction as searched. A successful manual refresh also clears any
+  // prior search error so the row leaves the retry pool.
   await sb
     .from("transactions")
     .update({
       gmail_searched_at: new Date().toISOString(),
-      gmail_match_count: matches.length
+      gmail_match_count: matches.length,
+      gmail_search_error: null
     })
     .eq("id", transaction_id);
 
