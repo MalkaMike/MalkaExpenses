@@ -1,9 +1,18 @@
 "use client";
 import { useState } from "react";
 import {
-  Check, X, ExternalLink, Paperclip, ShieldCheck, FileText, Loader2, Inbox, CheckCheck
+  Check, X, ExternalLink, Paperclip, ShieldCheck, FileText, Loader2, Inbox, CheckCheck,
+  Briefcase, Shield, Tag
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
+
+export type ReimbursementTag = {
+  id: string;
+  slug: string;   // 'kenlo' | 'laik' | 'insurance'
+  name: string;
+  color: string;  // 'accent' | 'info' | 'purple' | 'fg' | ...
+  icon: string;   // 'briefcase' | 'shield' | 'tag'
+};
 
 export type FoundReceipt = {
   receiptId: string;
@@ -28,19 +37,58 @@ export type FoundReceipt = {
 
 export type DayGroup = { day: string; items: FoundReceipt[] };
 
+// ── Color maps for reimbursement tag pills ───────────────────────────────────
+// DB `color` token → Tailwind classes (default/selected states)
+const tagColorMap: Record<string, { base: string; selected: string }> = {
+  accent:  { base: "border-primary/30 text-primary",           selected: "bg-primary text-on-primary border-primary" },
+  info:    { base: "border-sky-400/40 text-sky-600",            selected: "bg-sky-500 text-white border-sky-500" },
+  purple:  { base: "border-purple-400/40 text-purple-600",      selected: "bg-purple-500 text-white border-purple-500" },
+  warning: { base: "border-amber-400/40 text-amber-600",        selected: "bg-amber-500 text-white border-amber-500" },
+  fg:      { base: "border-outline-variant text-on-surface-variant", selected: "bg-on-surface text-surface border-on-surface" },
+};
+const tagColors = (color: string, selected: boolean) => {
+  const c = tagColorMap[color] ?? tagColorMap.fg;
+  return selected ? c.selected : c.base;
+};
+
+const TagIcon = ({ icon, size = 10 }: { icon: string; size?: number }) => {
+  if (icon === "briefcase") return <Briefcase size={size} />;
+  if (icon === "shield")    return <Shield size={size} />;
+  return <Tag size={size} />;
+};
+
 const dayLabel = (d: string) => {
-  // d = "YYYY-MM-DD" → "8 de jun"
   const [y, m, day] = d.split("-").map(Number);
   const months = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
   return `${day} de ${months[(m ?? 1) - 1]} de ${y}`;
 };
 
-export function NotasEncontradasClient({ groups }: { groups: DayGroup[] }) {
+export function NotasEncontradasClient({
+  groups,
+  reimbursementTags
+}: {
+  groups: DayGroup[];
+  reimbursementTags: ReimbursementTag[];
+}) {
   // Receipts the admin has triaged this session — hidden optimistically.
   const [done, setDone] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Per-receipt selected reimbursement tag slug (undefined = no tag).
+  const [selectedTags, setSelectedTags] = useState<Map<string, string>>(new Map());
+
+  function toggleTag(receiptId: string, slug: string) {
+    setSelectedTags((prev) => {
+      const next = new Map(prev);
+      if (next.get(receiptId) === slug) {
+        next.delete(receiptId); // toggle off
+      } else {
+        next.set(receiptId, slug);
+      }
+      return next;
+    });
+  }
 
   function markDone(ids: string[]) {
     setDone((prev) => {
@@ -48,7 +96,14 @@ export function NotasEncontradasClient({ groups }: { groups: DayGroup[] }) {
       ids.forEach((id) => next.add(id));
       return next;
     });
+    // Clean up tag selections for accepted/discarded rows.
+    setSelectedTags((prev) => {
+      const next = new Map(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
   }
+
   function setRowBusy(id: string, on: boolean) {
     setBusy((prev) => {
       const next = new Set(prev);
@@ -58,14 +113,16 @@ export function NotasEncontradasClient({ groups }: { groups: DayGroup[] }) {
     });
   }
 
-  async function triage(receiptId: string, confirmed: boolean) {
+  async function triage(receiptId: string, confirmed: boolean, tagSlug?: string) {
     setErr(null);
     setRowBusy(receiptId, true);
     try {
+      const body: Record<string, unknown> = { receipt_id: receiptId, confirmed };
+      if (confirmed && tagSlug) body.reimbursement_tag_slug = tagSlug;
       const r = await fetch("/api/admin/gmail/confirm-receipt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ receipt_id: receiptId, confirmed })
+        body: JSON.stringify(body)
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
@@ -152,6 +209,7 @@ export function NotasEncontradasClient({ groups }: { groups: DayGroup[] }) {
             {g.items.map((it) => {
               const isVerified = it.confidence === "verified";
               const rowBusy = busy.has(it.receiptId);
+              const selectedTag = selectedTags.get(it.receiptId);
               return (
                 <li
                   key={it.receiptId}
@@ -204,6 +262,31 @@ export function NotasEncontradasClient({ groups }: { groups: DayGroup[] }) {
                       )}
                     </div>
 
+                    {/* Reimbursement tag picker — click one BEFORE accepting.
+                        A tag marks this expense for reimbursement (e.g. Kenlo work
+                        expense, health insurance claim). Leave unselected for no
+                        reimbursement needed. */}
+                    {reimbursementTags.length > 0 && (
+                      <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
+                        <span className="text-[10px] text-on-surface-variant mr-0.5">Reembolso:</span>
+                        {reimbursementTags.map((tag) => {
+                          const isSelected = selectedTag === tag.slug;
+                          return (
+                            <button
+                              key={tag.slug}
+                              onClick={() => toggleTag(it.receiptId, tag.slug)}
+                              disabled={rowBusy}
+                              title={isSelected ? `Remover tag ${tag.name}` : `Marcar para reembolso: ${tag.name}`}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-semibold transition disabled:opacity-40 ${tagColors(tag.color, isSelected)}`}
+                            >
+                              <TagIcon icon={tag.icon} size={9} />
+                              {tag.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     {/* Actions */}
                     <div className="flex items-center gap-2 mt-2.5">
                       <a
@@ -225,13 +308,17 @@ export function NotasEncontradasClient({ groups }: { groups: DayGroup[] }) {
                         Descartar
                       </button>
                       <button
-                        onClick={() => triage(it.receiptId, true)}
+                        onClick={() => triage(it.receiptId, true, selectedTag)}
                         disabled={rowBusy}
-                        title="Esta é a nota fiscal correta"
-                        className="px-3 py-1.5 rounded-lg bg-secondary text-on-secondary hover:opacity-85 text-[11px] font-semibold flex items-center gap-1.5 transition disabled:opacity-40"
+                        title={selectedTag ? `Aceitar e marcar reembolso ${selectedTag}` : "Esta é a nota fiscal correta"}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold flex items-center gap-1.5 transition disabled:opacity-40 ${
+                          selectedTag
+                            ? "bg-secondary/80 text-on-secondary ring-2 ring-secondary/30 hover:bg-secondary"
+                            : "bg-secondary text-on-secondary hover:opacity-85"
+                        }`}
                       >
                         {rowBusy ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
-                        Aceitar
+                        {selectedTag ? "Aceitar + Reembolso" : "Aceitar"}
                       </button>
                     </div>
                   </div>

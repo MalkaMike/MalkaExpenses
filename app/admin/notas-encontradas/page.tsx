@@ -3,7 +3,7 @@ import { getRole } from "@/lib/auth/admin";
 import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
-import { NotasEncontradasClient, type FoundReceipt, type DayGroup } from "./notas-encontradas-client";
+import { NotasEncontradasClient, type FoundReceipt, type DayGroup, type ReimbursementTag } from "./notas-encontradas-client";
 
 export const dynamic = "force-dynamic";
 
@@ -36,36 +36,49 @@ export default async function NotasEncontradasPage() {
   const rows = receipts ?? [];
 
   // 2) Resolve the related transactions in one query.
+  //    Also fetch shared_amount + is_transfer + status so we can filter
+  //    out receipts for hidden or transfer transactions — no point reviewing
+  //    a Gmail receipt for a transaction you already decided to hide.
   const txIds = [...new Set(rows.map((r) => r.transaction_id as string))];
   const txById = new Map<
     string,
-    { date: string; description_raw: string; real_amount: number; account_id: string }
+    { date: string; description_raw: string; real_amount: number; account_id: string; visible: boolean }
   >();
   if (txIds.length > 0) {
     const { data: txs } = await sb
       .from("transactions")
-      .select("id, date, description_raw, real_amount, account_id")
+      .select("id, date, description_raw, real_amount, account_id, shared_amount, is_transfer, status")
       .in("id", txIds);
     for (const t of txs ?? []) {
+      // A transaction is "visible" for review if:
+      //   • not a transfer
+      //   • not explicitly hidden (shared_amount = 0 AND not pending_review)
+      const isHidden =
+        Number(t.shared_amount) === 0 && t.status !== "pending_review";
+      const visible = !t.is_transfer && !isHidden;
       txById.set(t.id as string, {
         date: t.date as string,
         description_raw: t.description_raw as string,
         real_amount: Number(t.real_amount),
-        account_id: t.account_id as string
+        account_id: t.account_id as string,
+        visible
       });
     }
   }
 
-  // 3) Account names.
-  const { data: accounts } = await sb.from("accounts").select("id, name");
+  // 3) Account names + reimbursement tags (loaded in parallel).
+  const [{ data: accounts }, { data: reimbTags }] = await Promise.all([
+    sb.from("accounts").select("id, name"),
+    sb.from("reimbursement_tags").select("id, slug, name, color, icon").order("name")
+  ]);
   const accountNameById = new Map<string, string>();
   for (const a of accounts ?? []) accountNameById.set(a.id as string, a.name as string);
 
-  // 4) Build display rows, dropping any receipt whose transaction vanished.
+  // 4) Build display rows, dropping receipts whose transaction vanished or is hidden/transfer.
   const items: FoundReceipt[] = [];
   for (const r of rows) {
     const tx = txById.get(r.transaction_id as string);
-    if (!tx) continue;
+    if (!tx || !tx.visible) continue;
     items.push({
       receiptId: r.id as string,
       gmailUrl: `https://mail.google.com/mail/u/0/#inbox/${r.gmail_message_id}`,
@@ -110,7 +123,7 @@ export default async function NotasEncontradasPage() {
           O robô busca no Gmail toda manhã. Aqui ficam as notas que ele achou e
           você ainda não revisou — aceite as corretas (saem da fila) ou descarte.
         </p>
-        <NotasEncontradasClient groups={groups} />
+        <NotasEncontradasClient groups={groups} reimbursementTags={(reimbTags ?? []) as ReimbursementTag[]} />
       </div>
     </>
   );
