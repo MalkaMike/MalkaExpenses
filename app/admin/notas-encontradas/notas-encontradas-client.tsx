@@ -2,9 +2,17 @@
 import { useState } from "react";
 import {
   Check, X, ExternalLink, Paperclip, ShieldCheck, FileText, Loader2, Inbox, CheckCheck,
-  Briefcase, Shield, Tag
+  Briefcase, Shield, Tag, ChevronRight, Pencil, CheckCheck as CheckCheckIcon
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
+
+// ── Shared types (also imported by the server page) ─────────────────────────
+
+export type Category = {
+  id: string;
+  name: string;
+  slug: string;
+};
 
 export type ReimbursementTag = {
   id: string;
@@ -31,19 +39,20 @@ export type FoundReceipt = {
   txId: string;
   txDate: string;
   merchantName: string;
+  merchantKey: string;  // canonical_key — used for category changes + merchant page link
   txAmount: number;
   accountName: string;
+  categoryId: string | null;  // current category from merchant_clusters
 };
 
 export type DayGroup = { day: string; items: FoundReceipt[] };
 
-// ── Color maps for reimbursement tag pills ───────────────────────────────────
-// DB `color` token → Tailwind classes (default/selected states)
+// ── Reimbursement tag color map ──────────────────────────────────────────────
 const tagColorMap: Record<string, { base: string; selected: string }> = {
-  accent:  { base: "border-primary/30 text-primary",           selected: "bg-primary text-on-primary border-primary" },
-  info:    { base: "border-sky-400/40 text-sky-600",            selected: "bg-sky-500 text-white border-sky-500" },
-  purple:  { base: "border-purple-400/40 text-purple-600",      selected: "bg-purple-500 text-white border-purple-500" },
-  warning: { base: "border-amber-400/40 text-amber-600",        selected: "bg-amber-500 text-white border-amber-500" },
+  accent:  { base: "border-primary/30 text-primary",            selected: "bg-primary text-on-primary border-primary" },
+  info:    { base: "border-sky-400/40 text-sky-600",             selected: "bg-sky-500 text-white border-sky-500" },
+  purple:  { base: "border-purple-400/40 text-purple-600",       selected: "bg-purple-500 text-white border-purple-500" },
+  warning: { base: "border-amber-400/40 text-amber-600",         selected: "bg-amber-500 text-white border-amber-500" },
   fg:      { base: "border-outline-variant text-on-surface-variant", selected: "bg-on-surface text-surface border-on-surface" },
 };
 const tagColors = (color: string, selected: boolean) => {
@@ -63,31 +72,141 @@ const dayLabel = (d: string) => {
   return `${day} de ${months[(m ?? 1) - 1]} de ${y}`;
 };
 
+// ── Category picker component ────────────────────────────────────────────────
+// Shows the current category as a chip. Click the pencil to open an inline
+// <select>. On change → calls bulk_categorize_merchant (propagates to ALL
+// past + future transactions of that merchant).
+function CategoryPicker({
+  merchantKey,
+  merchantName,
+  currentCategoryId,
+  categories,
+  onSaved
+}: {
+  merchantKey: string;
+  merchantName: string;
+  currentCategoryId: string | null;
+  categories: Category[];
+  onSaved: (merchantKey: string, categoryId: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const current = categories.find((c) => c.id === currentCategoryId);
+
+  async function handleChange(categoryId: string) {
+    if (!categoryId) return;
+    setSaving(true);
+    setErr(null);
+    try {
+      const r = await fetch("/api/admin/merchants/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_key: merchantKey, category_id: categoryId })
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `Erro ${r.status}`);
+      }
+      onSaved(merchantKey, categoryId);
+      setEditing(false);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+        <select
+          autoFocus
+          defaultValue={currentCategoryId ?? ""}
+          onChange={(e) => { if (e.target.value) handleChange(e.target.value); }}
+          onBlur={() => { if (!saving) setEditing(false); }}
+          disabled={saving}
+          className="text-[11px] rounded-lg border border-primary/40 bg-surface px-2 py-1 text-on-surface focus:outline-none focus:ring-1 focus:ring-primary flex-1 min-w-0 disabled:opacity-50"
+        >
+          <option value="" disabled>Escolher categoria…</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        {saving && <Loader2 size={11} className="animate-spin text-primary shrink-0" />}
+        <button
+          onClick={() => setEditing(false)}
+          className="text-on-surface-variant hover:text-on-surface transition shrink-0"
+          title="Cancelar"
+        >
+          <X size={12} />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+      {current ? (
+        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-surface-container border border-outline-variant text-on-surface-variant truncate max-w-[140px]">
+          {current.name}
+        </span>
+      ) : (
+        <span className="text-[10px] text-on-surface-variant/60 italic">Sem categoria</span>
+      )}
+      {saved ? (
+        <span className="text-[10px] text-secondary flex items-center gap-0.5 shrink-0">
+          <Check size={10} /> Salvo p/ todos
+        </span>
+      ) : (
+        <button
+          onClick={() => setEditing(true)}
+          title="Mudar categoria (aplica a todos os movimentos deste fornecedor)"
+          className="text-on-surface-variant/50 hover:text-primary transition shrink-0"
+        >
+          <Pencil size={11} />
+        </button>
+      )}
+      {err && <span className="text-[10px] text-error ml-1">{err}</span>}
+    </div>
+  );
+}
+
+// ── Main component ───────────────────────────────────────────────────────────
+
 export function NotasEncontradasClient({
   groups,
-  reimbursementTags
+  reimbursementTags,
+  categories
 }: {
   groups: DayGroup[];
   reimbursementTags: ReimbursementTag[];
+  categories: Category[];
 }) {
-  // Receipts the admin has triaged this session — hidden optimistically.
   const [done, setDone] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  // Per-receipt selected reimbursement tag slug (undefined = no tag).
+  // Per-receipt selected reimbursement tag slug.
   const [selectedTags, setSelectedTags] = useState<Map<string, string>>(new Map());
+  // When category changes for a merchant, all cards for that merchant update.
+  // Map: merchantKey → categoryId
+  const [categoryOverrides, setCategoryOverrides] = useState<Map<string, string>>(new Map());
 
   function toggleTag(receiptId: string, slug: string) {
     setSelectedTags((prev) => {
       const next = new Map(prev);
-      if (next.get(receiptId) === slug) {
-        next.delete(receiptId); // toggle off
-      } else {
-        next.set(receiptId, slug);
-      }
+      next.get(receiptId) === slug ? next.delete(receiptId) : next.set(receiptId, slug);
       return next;
     });
+  }
+
+  function handleCategorySaved(merchantKey: string, categoryId: string) {
+    setCategoryOverrides((prev) => new Map(prev).set(merchantKey, categoryId));
   }
 
   function markDone(ids: string[]) {
@@ -96,7 +215,6 @@ export function NotasEncontradasClient({
       ids.forEach((id) => next.add(id));
       return next;
     });
-    // Clean up tag selections for accepted/discarded rows.
     setSelectedTags((prev) => {
       const next = new Map(prev);
       ids.forEach((id) => next.delete(id));
@@ -107,8 +225,7 @@ export function NotasEncontradasClient({
   function setRowBusy(id: string, on: boolean) {
     setBusy((prev) => {
       const next = new Set(prev);
-      if (on) next.add(id);
-      else next.delete(id);
+      on ? next.add(id) : next.delete(id);
       return next;
     });
   }
@@ -157,7 +274,6 @@ export function NotasEncontradasClient({
     }
   }
 
-  // Recompute visible groups after optimistic triage.
   const visibleGroups = groups
     .map((g) => ({ day: g.day, items: g.items.filter((it) => !done.has(it.receiptId)) }))
     .filter((g) => g.items.length > 0);
@@ -186,7 +302,6 @@ export function NotasEncontradasClient({
 
       {visibleGroups.map((g) => (
         <section key={g.day}>
-          {/* Day header */}
           <div className="flex items-center justify-between mb-2 px-1">
             <h2 className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">
               {dayLabel(g.day)} · {g.items.length} {g.items.length === 1 ? "nota" : "notas"}
@@ -196,11 +311,7 @@ export function NotasEncontradasClient({
               disabled={bulkBusy === g.day}
               className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-secondary/40 text-secondary hover:bg-secondary/5 text-[11px] font-medium transition disabled:opacity-40"
             >
-              {bulkBusy === g.day ? (
-                <Loader2 size={12} className="animate-spin" />
-              ) : (
-                <CheckCheck size={12} />
-              )}
+              {bulkBusy === g.day ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
               Aceitar todas ({g.items.length})
             </button>
           </div>
@@ -210,17 +321,41 @@ export function NotasEncontradasClient({
               const isVerified = it.confidence === "verified";
               const rowBusy = busy.has(it.receiptId);
               const selectedTag = selectedTags.get(it.receiptId);
+              // Use category override if admin changed it this session, else fall back to DB value.
+              const effectiveCategoryId = categoryOverrides.get(it.merchantKey) ?? it.categoryId;
+
               return (
                 <li
                   key={it.receiptId}
                   className="rounded-xl border border-outline-variant bg-surface-container-lowest soft-ambient-shadow overflow-hidden"
                 >
                   <div className="p-3.5">
-                    {/* Transaction line */}
-                    <div className="flex items-center justify-between gap-3 mb-2.5">
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-on-surface truncate">{it.merchantName}</p>
-                        <p className="text-[11px] text-on-surface-variant">
+                    {/* Merchant + category row */}
+                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                      <div className="min-w-0 flex-1">
+                        {/* Merchant name + merchant page link */}
+                        <div className="flex items-center gap-1.5 mb-1">
+                          <p className="text-sm font-semibold text-on-surface truncate">{it.merchantName}</p>
+                          <a
+                            href={`/admin/merchants/${it.merchantKey}`}
+                            title="Ver detalhes do merchant (fundir, renomear, etc.)"
+                            className="text-on-surface-variant/40 hover:text-primary transition shrink-0"
+                          >
+                            <ChevronRight size={13} />
+                          </a>
+                        </div>
+                        {/* Category picker — changing it here applies to ALL transactions of this merchant */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] text-on-surface-variant shrink-0">Categoria:</span>
+                          <CategoryPicker
+                            merchantKey={it.merchantKey}
+                            merchantName={it.merchantName}
+                            currentCategoryId={effectiveCategoryId}
+                            categories={categories}
+                            onSaved={handleCategorySaved}
+                          />
+                        </div>
+                        <p className="text-[11px] text-on-surface-variant mt-0.5">
                           {formatDate(it.txDate)} · {it.accountName}
                         </p>
                       </div>
@@ -233,7 +368,7 @@ export function NotasEncontradasClient({
                       </span>
                     </div>
 
-                    {/* Receipt card */}
+                    {/* Gmail receipt card */}
                     <div className="rounded-lg bg-surface-container border border-outline-variant/60 p-2.5">
                       <div className="flex items-center justify-between gap-2 mb-1.5">
                         <span
@@ -262,10 +397,7 @@ export function NotasEncontradasClient({
                       )}
                     </div>
 
-                    {/* Reimbursement tag picker — click one BEFORE accepting.
-                        A tag marks this expense for reimbursement (e.g. Kenlo work
-                        expense, health insurance claim). Leave unselected for no
-                        reimbursement needed. */}
+                    {/* Reimbursement tag picker */}
                     {reimbursementTags.length > 0 && (
                       <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
                         <span className="text-[10px] text-on-surface-variant mr-0.5">Reembolso:</span>
