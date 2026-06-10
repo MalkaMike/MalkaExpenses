@@ -2,6 +2,7 @@ import "server-only";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import type { Role } from "@/lib/auth/admin";
+import { fromDb } from "@/lib/money";
 
 export type TxLite = {
   id: string;
@@ -71,8 +72,8 @@ export async function getDashboardData(role: Role): Promise<DashboardData> {
   let realStartingSum = 0;
   let sharedStartingSum = 0;
   for (const a of accList) {
-    sharedStartingSum += Number(a.shared_starting_balance);
-    realStartingSum += Number(a.real_starting_balance);
+    sharedStartingSum += fromDb(Number(a.shared_starting_balance));
+    realStartingSum += fromDb(Number(a.real_starting_balance));
   }
 
   let totalRealAdj: number | null = null;
@@ -93,13 +94,13 @@ export async function getDashboardData(role: Role): Promise<DashboardData> {
 
     let realSum = 0;
     txs = (data ?? []).map((r) => {
-      realSum += Number(r.real_amount);
+      realSum += fromDb(Number(r.real_amount));
       return {
         id: r.id,
         account_id: r.account_id,
         date: r.date,
         description: r.description_clean ?? r.description_raw,
-        amount: Number(r.shared_amount),
+        amount: fromDb(Number(r.shared_amount)),
         category_slug: r.category_id ? catMap.get(r.category_id) ?? null : null,
         is_transfer: r.is_transfer
       };
@@ -117,7 +118,7 @@ export async function getDashboardData(role: Role): Promise<DashboardData> {
       account_id: r.account_id,
       date: r.date,
       description: r.description ?? "",
-      amount: Number(r.amount),
+      amount: fromDb(Number(r.amount)),
       category_slug: r.category_slug,
       is_transfer: r.is_transfer
     }));

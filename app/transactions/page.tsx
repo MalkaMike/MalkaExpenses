@@ -5,6 +5,7 @@ import { getLang } from "@/lib/i18n/server";
 import { t } from "@/lib/i18n/translations";
 import { TransactionsClient } from "./transactions-client";
 import { formatInt } from "@/lib/format";
+import { fromDb } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -52,7 +53,7 @@ export default async function TransactionsPage({
       account_id: r.account_id,
       date: r.date,
       description: r.description ?? "",
-      amountShared: Number(r.amount),
+      amountShared: fromDb(Number(r.amount)),
       amountReal: null,
       categorySlug: r.category_slug,
       isFake: false,
@@ -84,8 +85,8 @@ export default async function TransactionsPage({
       account_id: r.account_id,
       date: r.date,
       description: r.description_clean ?? r.description_raw,
-      amountShared: Number(r.shared_amount),
-      amountReal: Number(r.real_amount),
+      amountShared: fromDb(Number(r.shared_amount)),
+      amountReal: fromDb(Number(r.real_amount)),
       categorySlug: Array.isArray(r.categories)
         ? r.categories[0]?.slug ?? null
         : r.categories?.slug ?? null,

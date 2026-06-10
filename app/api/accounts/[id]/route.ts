@@ -3,6 +3,7 @@ import { z } from "zod";
 import { serverClient } from "@/lib/supabase/server";
 import { getRole } from "@/lib/auth/admin";
 import { safeJson } from "@/lib/http";
+import { toDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -27,7 +28,10 @@ export async function PATCH(
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
 
   const sb = serverClient();
-  const { error } = await sb.from("accounts").update(parsed.data).eq("id", id);
+  const update: Record<string, unknown> = { ...parsed.data };
+  if (parsed.data.real_starting_balance !== undefined) update.real_starting_balance = toDb(parsed.data.real_starting_balance);
+  if (parsed.data.shared_starting_balance !== undefined) update.shared_starting_balance = toDb(parsed.data.shared_starting_balance);
+  const { error } = await sb.from("accounts").update(update).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });
 }

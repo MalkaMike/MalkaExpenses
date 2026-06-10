@@ -4,6 +4,7 @@ import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { formatBRL, monthLabel } from "@/lib/format";
+import { fromDb } from "@/lib/money";
 import { MonthlyTrend } from "@/components/charts/monthly-trend";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +41,7 @@ export default async function MonthsPage() {
       .order("date", { ascending: false });
     for (const r of data ?? []) {
       const m = (r.date as string).slice(0, 7);
-      const amt = Number(r.amount);
+      const amt = fromDb(Number(r.amount));
       if (amt > 0) add(m, amt, 0);
       else add(m, 0, -amt);
     }
@@ -54,8 +55,8 @@ export default async function MonthsPage() {
       .order("date", { ascending: false });
     for (const r of data ?? []) {
       const m = (r.date as string).slice(0, 7);
-      const sh = Number(r.shared_amount);
-      const re = Number(r.real_amount);
+      const sh = fromDb(Number(r.shared_amount));
+      const re = fromDb(Number(r.real_amount));
       const shInc = sh > 0 ? sh : 0;
       const shExp = sh < 0 ? -sh : 0;
       const reInc = re > 0 ? re : 0;

@@ -12,6 +12,7 @@ import {
 import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
 import { isCcPaymentDescription } from "@/lib/reconciliation/cc-matcher";
 import { mapPluggyCategory } from "@/lib/pluggy/mappers";
+import { toDb, fromDb } from "@/lib/money";
 
 type SB = ReturnType<typeof serverClient>;
 
@@ -133,7 +134,7 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
           date: isoToDate(t.date),
           description_raw: desc,
           description_clean: desc,
-          real_amount: amt,
+          real_amount: toDb(amt),
           // Staged: shared_amount=0 keeps it OUT of the household portal (the
           // security view filters shared_amount<>0) until the admin accepts it.
           shared_amount: 0,
@@ -165,7 +166,7 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
           id: r.id as string,
           date: r.date as string,
           description: r.description_raw as string,
-          amount: Number(r.real_amount),
+          amount: fromDb(Number(r.real_amount)),
           pluggyCategory: pluggyCatById.get(r.external_id as string) ?? null
         }));
       }
@@ -179,10 +180,10 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     //    entries, so its balance must not leak the real total.
     if (isNew) {
       const sumImported = insertedIds.reduce((s, r) => s + r.amount, 0);
-      const starting = Number((pa.balance - sumImported).toFixed(2));
+      const starting = pa.balance - sumImported;
       await sb
         .from("accounts")
-        .update({ real_starting_balance: starting, shared_starting_balance: 0 })
+        .update({ real_starting_balance: toDb(starting), shared_starting_balance: 0 })
         .eq("id", accountId);
     }
 

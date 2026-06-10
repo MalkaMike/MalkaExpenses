@@ -3,6 +3,7 @@ import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { rawDescriptionsForKeyDirect, preloadClusters, clusterFor } from "@/lib/merchants/clusters";
 import { getValidAccessToken } from "@/lib/gmail/oauth";
+import { fromDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -133,8 +134,8 @@ export async function POST(
     const displayName = t.description_clean ?? t.description_raw;
     const catName  = t.category_id ? catById.get(t.category_id)     ?? "—" : "—";
     const accName  = accountById.get(t.account_id) ?? "—";
-    const realAmt  = Number(t.real_amount);
-    const shared   = Number(t.shared_amount);
+    const realAmt  = fromDb(Number(t.real_amount));
+    const shared   = fromDb(Number(t.shared_amount));
 
     const cols = isAdmin
       ? [

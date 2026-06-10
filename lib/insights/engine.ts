@@ -3,6 +3,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import { getCategoryMeta } from "@/lib/categories/meta";
 import type { Role } from "@/lib/auth/admin";
+import { fromDb } from "@/lib/money";
 
 // ============================================================================
 // Smart Facts — rule-based insights generated from current data.
@@ -55,7 +56,9 @@ export async function getInsights(role: Role): Promise<Insight[]> {
       .from("shared_transactions_v")
       .select("date, amount, category_slug, description, is_transfer")
       .gte("date", sinceIso);
-    txs = ((data ?? []) as Tx[]).filter((t) => !t.is_transfer);
+    txs = ((data ?? []) as Array<Tx>)
+      .map((t) => ({ ...t, amount: fromDb(t.amount) }))
+      .filter((t) => !t.is_transfer);
   } else {
     const { data } = await sb
       .from("transactions")
@@ -70,7 +73,7 @@ export async function getInsights(role: Role): Promise<Insight[]> {
       categories: { slug: string } | { slug: string }[] | null;
     }) => ({
       date: r.date,
-      amount: Number(r.shared_amount),
+      amount: fromDb(Number(r.shared_amount)),
       is_transfer: r.is_transfer,
       description: r.description_clean ?? r.description_raw,
       category_slug: Array.isArray(r.categories) ? r.categories[0]?.slug ?? null : r.categories?.slug ?? null

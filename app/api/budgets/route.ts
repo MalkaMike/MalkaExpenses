@@ -3,6 +3,7 @@ import { z } from "zod";
 import { serverClient } from "@/lib/supabase/server";
 import { getRole } from "@/lib/auth/admin";
 import { safeJson } from "@/lib/http";
+import { toDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
   if (!cat) return NextResponse.json({ error: "categoria não encontrada" }, { status: 400 });
   const { error } = await sb.from("budgets").insert({
     category_id: cat.id,
-    monthly_limit: parsed.data.monthly_limit
+    monthly_limit: toDb(parsed.data.monthly_limit)
   });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true });

@@ -2,6 +2,7 @@ import "server-only";
 import { serverClient } from "@/lib/supabase/server";
 import { sharedClient } from "@/lib/supabase/shared-client";
 import type { Role } from "@/lib/auth/admin";
+import { fromDb } from "@/lib/money";
 
 export type AccountWithBalances = {
   id: string;
@@ -34,7 +35,7 @@ export async function getAccountsWithBalances(role: Role): Promise<AccountWithBa
 
   const sharedSum = new Map<string, number>();
   for (const r of sharedRows ?? []) {
-    sharedSum.set(r.account_id, (sharedSum.get(r.account_id) ?? 0) + Number(r.amount));
+    sharedSum.set(r.account_id, (sharedSum.get(r.account_id) ?? 0) + fromDb(Number(r.amount)));
   }
 
   const realSum = new Map<string, number>();
@@ -46,7 +47,7 @@ export async function getAccountsWithBalances(role: Role): Promise<AccountWithBa
       .eq("is_fake", false);
     if (rErr) throw rErr;
     for (const r of realRows ?? []) {
-      realSum.set(r.account_id, (realSum.get(r.account_id) ?? 0) + Number(r.real_amount));
+      realSum.set(r.account_id, (realSum.get(r.account_id) ?? 0) + fromDb(Number(r.real_amount)));
     }
   }
 
@@ -55,10 +56,10 @@ export async function getAccountsWithBalances(role: Role): Promise<AccountWithBa
     name: a.name,
     bank: a.bank,
     type: a.type,
-    sharedBalance: Number(a.shared_starting_balance) + (sharedSum.get(a.id) ?? 0),
+    sharedBalance: fromDb(Number(a.shared_starting_balance)) + (sharedSum.get(a.id) ?? 0),
     realBalance:
       role === "admin"
-        ? Number(a.real_starting_balance) + (realSum.get(a.id) ?? 0)
+        ? fromDb(Number(a.real_starting_balance)) + (realSum.get(a.id) ?? 0)
         : null
   }));
 }

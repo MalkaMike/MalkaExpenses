@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { verifyCronSecret } from "@/lib/auth/cron";
+import { fromDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -99,8 +100,8 @@ export async function GET(req: NextRequest) {
     transaction_count: txRes.rows.length,
     account_count: accRes.rows.length,
     cluster_count: clusterRes.rows.length,
-    total_real_balance: txs.reduce((s, t) => s + Number(t.real_amount), 0),
-    total_shared_balance: txs.reduce((s, t) => s + Number(t.shared_amount), 0),
+    total_real_balance: txs.reduce((s, t) => s + fromDb(Number(t.real_amount)), 0),
+    total_shared_balance: txs.reduce((s, t) => s + fromDb(Number(t.shared_amount)), 0),
     categorized_count: txs.filter((t) => t.category_id).length,
     pluggy_source_count: txs.filter((t) => t.source === "pluggy").length,
     pdf_source_count: txs.filter((t) => t.source === "pdf").length,

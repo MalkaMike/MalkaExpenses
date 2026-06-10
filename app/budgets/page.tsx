@@ -7,6 +7,7 @@ import { getLang } from "@/lib/i18n/server";
 import { t } from "@/lib/i18n/translations";
 import { BudgetsClient, type BudgetRow } from "./budgets-client";
 import { WeeklySpendBar, type WeekBar } from "@/components/charts/weekly-spend-bar";
+import { fromDb } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +35,10 @@ export default async function BudgetsPage() {
       .gte("date", start)
       .eq("is_transfer", false);
     for (const r of data ?? []) {
-      if (Number(r.amount) >= 0) continue;
+      const amt = fromDb(Number(r.amount));
+      if (amt >= 0) continue;
       const slug = r.category_slug ?? "outros";
-      catSpend.set(slug, (catSpend.get(slug) ?? 0) + -Number(r.amount));
+      catSpend.set(slug, (catSpend.get(slug) ?? 0) + -amt);
     }
   } else {
     const { data } = await sb
@@ -50,7 +52,7 @@ export default async function BudgetsPage() {
       is_transfer: boolean;
       categories: { slug: string } | { slug: string }[] | null;
     }[]) {
-      const amt = Number(r.shared_amount);
+      const amt = fromDb(Number(r.shared_amount));
       if (amt >= 0) continue;
       const slug =
         (Array.isArray(r.categories) ? r.categories[0]?.slug : r.categories?.slug) ??
@@ -69,7 +71,7 @@ export default async function BudgetsPage() {
     const cat = Array.isArray(b.categories) ? b.categories[0] : b.categories;
     const slug = cat?.slug ?? "outros";
     const spent = catSpend.get(slug) ?? 0;
-    const limit = Number(b.monthly_limit);
+    const limit = fromDb(Number(b.monthly_limit));
     return {
       id: b.id,
       categoryId: b.category_id,
@@ -122,16 +124,18 @@ export default async function BudgetsPage() {
         .eq("is_transfer", false)
     ]);
     for (const r of curData ?? []) {
-      if (Number(r.amount) >= 0) continue;
+      const amt = fromDb(Number(r.amount));
+      if (amt >= 0) continue;
       const day = new Date(r.date as string).getUTCDate();
       const wi = weekIndex(day);
-      weekTotals[wi] += -Number(r.amount);
+      weekTotals[wi] += -amt;
     }
     for (const r of prevData ?? []) {
-      if (Number(r.amount) >= 0) continue;
+      const amt = fromDb(Number(r.amount));
+      if (amt >= 0) continue;
       const day = new Date(r.date as string).getUTCDate();
       const wi = weekIndex(day);
-      prevWeekTotals[wi] += -Number(r.amount);
+      prevWeekTotals[wi] += -amt;
     }
   } else {
     const [{ data: curData }, { data: prevData }] = await Promise.all([
@@ -149,14 +153,14 @@ export default async function BudgetsPage() {
         .eq("is_transfer", false)
     ]);
     for (const r of (curData ?? []) as { shared_amount: number; date: string; is_transfer: boolean }[]) {
-      const amt = Number(r.shared_amount);
+      const amt = fromDb(Number(r.shared_amount));
       if (amt >= 0) continue;
       const day = new Date(r.date).getUTCDate();
       const wi = weekIndex(day);
       weekTotals[wi] += -amt;
     }
     for (const r of (prevData ?? []) as { shared_amount: number; date: string; is_transfer: boolean }[]) {
-      const amt = Number(r.shared_amount);
+      const amt = fromDb(Number(r.shared_amount));
       if (amt >= 0) continue;
       const day = new Date(r.date).getUTCDate();
       const wi = weekIndex(day);

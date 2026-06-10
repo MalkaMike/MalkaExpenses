@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireAdmin, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/http";
+import { toDb, fromDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
   const { data: updated, error: rpcErr } = await sb.rpc("bulk_share_merchant", {
     p_canonical_key: canonical_key,
     p_mode: mode,
-    p_value: value ?? null
+    p_value: value !== undefined ? toDb(value) : null
   });
 
   if (rpcErr) {
@@ -84,13 +85,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "cluster not found or empty" }, { status: 404 });
   }
 
-  // (c) Compute aggregate impact for the modification log
-  const totalBefore = beforeRows.reduce((s, r) => s + Number(r.shared_amount), 0);
+  // (c) Compute aggregate impact for the modification log (in BRL)
+  const totalBefore = beforeRows.reduce((s, r) => s + fromDb(Number(r.shared_amount)), 0);
   const totalAfter =
     mode === "hide"
       ? 0
       : mode === "show"
-        ? beforeRows.reduce((s, r) => s + Number(r.real_amount), 0)
+        ? beforeRows.reduce((s, r) => s + fromDb(Number(r.real_amount)), 0)
         : (value ?? 0) * beforeRows.length;
   const impact = Number((totalAfter - totalBefore).toFixed(2));
 

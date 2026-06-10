@@ -3,6 +3,7 @@ import { z } from "zod";
 import { serverClient } from "@/lib/supabase/server";
 import { getRole, writeAudit } from "@/lib/auth/admin";
 import { safeJson } from "@/lib/http";
+import { toDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,12 @@ export async function POST(req: NextRequest) {
   const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   const sb = serverClient();
-  const { data, error } = await sb.from("accounts").insert(parsed.data).select("id").single();
+  const { real_starting_balance, shared_starting_balance, ...rest } = parsed.data;
+  const { data, error } = await sb.from("accounts").insert({
+    ...rest,
+    real_starting_balance: toDb(real_starting_balance),
+    shared_starting_balance: toDb(shared_starting_balance)
+  }).select("id").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   await writeAudit("account.create", { newValue: { id: data.id, ...parsed.data } });
   return NextResponse.json(data);

@@ -4,6 +4,7 @@ import { getRole, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { householdSafeTransaction } from "@/lib/security/sanitize";
 import { safeJson } from "@/lib/http";
+import { toDb, fromDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -64,8 +65,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (b.description_clean !== undefined) patch.description_clean = b.description_clean;
 
   if (role === "admin") {
-    if (b.shared_amount !== undefined) patch.shared_amount = b.shared_amount;
-    if (b.real_amount !== undefined) patch.real_amount = b.real_amount;
+    if (b.shared_amount !== undefined) patch.shared_amount = toDb(b.shared_amount);
+    if (b.real_amount !== undefined) patch.real_amount = toDb(b.real_amount);
     if (b.is_transfer !== undefined) patch.is_transfer = b.is_transfer;
     if (b.is_fake !== undefined) patch.is_fake = b.is_fake;
     if (b.notes_private !== undefined) patch.notes_private = b.notes_private;
@@ -133,10 +134,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       target_id: id,
       target_name: desc.slice(0, 200),
       field: "shared_amount",
-      before_value: { value: oldShared },
-      after_value: { value: newShared },
+      before_value: { value: fromDb(oldShared) },
+      after_value: { value: fromDb(newShared) },
       affected_count: 1,
-      impact_brl: Number((newShared - oldShared).toFixed(2))
+      impact_brl: fromDb(newShared) - fromDb(oldShared)
     });
   }
 

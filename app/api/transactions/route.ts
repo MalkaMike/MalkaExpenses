@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getRole, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/http";
+import { toDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -53,8 +54,8 @@ export async function POST(req: NextRequest) {
       date: b.date,
       description_raw: b.description,
       description_clean: b.description,
-      real_amount: realAmount,
-      shared_amount: b.shared_amount,
+      real_amount: toDb(realAmount),
+      shared_amount: toDb(b.shared_amount),
       category_id: categoryId,
       source: "manual",
       status: "user_edited",

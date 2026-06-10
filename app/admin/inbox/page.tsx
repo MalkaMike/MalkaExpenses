@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { InboxClient, type InboxRow } from "./inbox-client";
 import { formatInt } from "@/lib/format";
+import { fromDb } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ export default async function InboxPage() {
     accountName: accountMap.get(r.account_id) ?? "—",
     date: r.date,
     description: r.description_clean ?? r.description_raw,
-    amountReal: Number(r.real_amount),
+    amountReal: fromDb(Number(r.real_amount)),
     isTransfer: r.is_transfer,
     categorySlug: Array.isArray(r.categories)
       ? r.categories[0]?.slug ?? "outros"
