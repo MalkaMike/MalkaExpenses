@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, Send, X, Loader2, Trash2, RotateCcw } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
+import { DataTable, type Column } from "@/components/data-table";
 
 export type TagSummary = {
   pendingCount: number;
@@ -39,6 +40,145 @@ const statusMeta: Record<ReembolsoRow["status"], { label: string; dot: string; t
 const STATUS_LABELS: Record<string, string> = {
   all: "Todas", pending: "Pendentes", submitted: "Enviadas", reimbursed: "Recebidas", declined: "Negadas"
 };
+
+// Sort order that follows the claim lifecycle, not the alphabet.
+const STATUS_RANK: Record<ReembolsoRow["status"], number> = {
+  pending: 0, submitted: 1, reimbursed: 2, declined: 3
+};
+
+function buildColumns(
+  busy: string | null,
+  setStatus: (id: string, status: ReembolsoRow["status"]) => void,
+  untag: (id: string) => void
+): Column<ReembolsoRow>[] {
+  return [
+    {
+      key: "status",
+      header: "Status",
+      sortValue: (r) => STATUS_RANK[r.status],
+      cell: (r) => {
+        const meta = statusMeta[r.status];
+        return (
+          <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest whitespace-nowrap ${meta.text}`}>
+            <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
+            {meta.label}
+          </span>
+        );
+      }
+    },
+    {
+      key: "date",
+      header: "Data",
+      sortValue: (r) => r.date,
+      cell: (r) => <span className="text-[11px] text-on-surface-variant whitespace-nowrap">{formatDate(r.date)}</span>
+    },
+    {
+      key: "description",
+      header: "Descrição",
+      sortValue: (r) => r.description.toLowerCase(),
+      cell: (r) => (
+        <div className="min-w-0">
+          <p className="font-semibold text-sm text-on-surface truncate max-w-[260px]" title={r.description}>
+            {r.description}
+          </p>
+          <p className="text-[10px] text-on-surface-variant truncate max-w-[260px]">
+            {r.accountName} · {r.categoryName}
+          </p>
+          {r.notes && <p className="text-[10px] text-on-surface-variant italic truncate max-w-[260px]">{r.notes}</p>}
+        </div>
+      )
+    },
+    {
+      key: "expense",
+      header: "Despesa",
+      align: "right",
+      hideBelow: "md",
+      sortValue: (r) => r.transactionAmount,
+      cell: (r) => (
+        <span className="tabular-nums text-xs text-on-surface font-medium whitespace-nowrap">
+          {formatBRL(r.transactionAmount)}
+        </span>
+      )
+    },
+    {
+      key: "claim",
+      header: "A receber",
+      align: "right",
+      sortValue: (r) => r.claimAmount,
+      cell: (r) => {
+        const meta = statusMeta[r.status];
+        return (
+          <span className="whitespace-nowrap">
+            <span className={`tabular-nums text-sm font-semibold ${meta.text}`}>{formatBRL(r.claimAmount)}</span>
+            {r.claimAmount !== r.transactionAmount && (
+              <span className="ml-1 text-[10px] text-[#f59e0b] font-medium">(parcial)</span>
+            )}
+          </span>
+        );
+      }
+    },
+    {
+      key: "actions",
+      header: "Ações",
+      align: "right",
+      cell: (r) => {
+        const isBusy = busy === r.id;
+        return (
+          <span className="inline-flex items-center gap-1">
+            {r.status === "pending" && (
+              <button
+                onClick={() => setStatus(r.id, "submitted")}
+                disabled={isBusy}
+                title="Marcar como enviado"
+                className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-[#0ea5e9]"
+              >
+                {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              </button>
+            )}
+            {(r.status === "pending" || r.status === "submitted") && (
+              <button
+                onClick={() => setStatus(r.id, "reimbursed")}
+                disabled={isBusy}
+                title="Marcar como recebido"
+                className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-secondary"
+              >
+                {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+              </button>
+            )}
+            {r.status === "submitted" && (
+              <button
+                onClick={() => setStatus(r.id, "declined")}
+                disabled={isBusy}
+                title="Marcar como negado"
+                className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-error"
+              >
+                <X size={14} />
+              </button>
+            )}
+            {(r.status === "reimbursed" || r.status === "declined") && (
+              <button
+                onClick={() => setStatus(r.id, "pending")}
+                disabled={isBusy}
+                title="Reabrir"
+                className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-on-surface-variant"
+              >
+                <RotateCcw size={14} />
+              </button>
+            )}
+            <button
+              onClick={() => untag(r.id)}
+              disabled={isBusy}
+              title="Remover tag"
+              className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-on-surface-variant hover:text-error"
+            >
+              <Trash2 size={14} />
+            </button>
+          </span>
+        );
+      }
+    }
+  ];
+}
 
 export function ReembolsosClient({
   tagSlug, tagName, activeStatus, summary, rows
@@ -162,121 +302,20 @@ export function ReembolsosClient({
           </p>
         </div>
       ) : (
-        <div className="bg-surface-container-lowest border border-outline-variant rounded-xl overflow-hidden soft-ambient-shadow">
-          {/* Table header */}
-          <div className="px-5 py-3 border-b border-outline-variant bg-surface-container-low grid grid-cols-[auto_1fr_auto_auto] gap-3 items-center">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Status</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Descrição</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Valor</span>
-            <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Ações</span>
-          </div>
-
-          <ul className="divide-y divide-outline-variant">
-            {rows.map((r) => {
-              const meta = statusMeta[r.status];
-              const isBusy = busy === r.id;
-              return (
-                <li key={r.id} className={`px-5 py-4 hover:bg-surface-container transition-colors ${r.status === "declined" ? "bg-error/5" : ""}`}>
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      {/* Status + meta */}
-                      <div className="flex items-center gap-2 flex-wrap mb-1.5">
-                        <span className={`flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ${meta.text}`}>
-                          <span className={`w-2 h-2 rounded-full ${meta.dot}`} />
-                          {meta.label}
-                        </span>
-                        <span className="text-[10px] text-on-surface-variant">{formatDate(r.date)}</span>
-                        <span className="text-[10px] text-on-surface-variant">·</span>
-                        <span className="text-[10px] text-on-surface-variant truncate">{r.accountName}</span>
-                        <span className="text-[10px] text-on-surface-variant">·</span>
-                        <span className="text-[10px] text-on-surface-variant">{r.categoryName}</span>
-                      </div>
-                      {/* Description */}
-                      <p className="font-semibold text-sm text-on-surface truncate" title={r.description}>
-                        {r.description}
-                      </p>
-                      {/* Amounts */}
-                      <div className="mt-1 flex items-center gap-3 text-xs">
-                        <span className="text-on-surface-variant">
-                          Despesa: <span className="tabular-nums text-on-surface font-medium">{formatBRL(r.transactionAmount)}</span>
-                        </span>
-                        <span className="text-on-surface-variant">
-                          A receber: <span className={`tabular-nums font-semibold ${meta.text}`}>{formatBRL(r.claimAmount)}</span>
-                        </span>
-                        {r.claimAmount !== r.transactionAmount && (
-                          <span className="text-[10px] text-[#f59e0b] font-medium">(parcial)</span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      {r.status === "pending" && (
-                        <button
-                          onClick={() => setStatus(r.id, "submitted")}
-                          disabled={isBusy}
-                          title="Marcar como enviado"
-                          className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-[#0ea5e9]"
-                        >
-                          {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                        </button>
-                      )}
-                      {(r.status === "pending" || r.status === "submitted") && (
-                        <button
-                          onClick={() => setStatus(r.id, "reimbursed")}
-                          disabled={isBusy}
-                          title="Marcar como recebido"
-                          className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-secondary"
-                        >
-                          {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                        </button>
-                      )}
-                      {r.status === "submitted" && (
-                        <button
-                          onClick={() => setStatus(r.id, "declined")}
-                          disabled={isBusy}
-                          title="Marcar como negado"
-                          className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-error"
-                        >
-                          <X size={14} />
-                        </button>
-                      )}
-                      {(r.status === "reimbursed" || r.status === "declined") && (
-                        <button
-                          onClick={() => setStatus(r.id, "pending")}
-                          disabled={isBusy}
-                          title="Reabrir"
-                          className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-on-surface-variant"
-                        >
-                          <RotateCcw size={14} />
-                        </button>
-                      )}
-                      <button
-                        onClick={() => untag(r.id)}
-                        disabled={isBusy}
-                        title="Remover tag"
-                        className="p-2 rounded-lg hover:bg-surface-container-highest transition-all active:scale-90 text-on-surface-variant hover:text-error"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {r.notes && (
-                    <p className="mt-2 text-xs text-on-surface-variant italic">{r.notes}</p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-
-          {/* Table footer */}
-          <div className="px-5 py-3 border-t border-outline-variant bg-surface-container-low/50">
-            <span className="text-xs text-on-surface-variant">
-              {formatInt(rows.length)} {rows.length === 1 ? "despesa" : "despesas"}
-            </span>
-          </div>
-        </div>
+        <>
+          <DataTable
+            columns={buildColumns(busy, setStatus, untag)}
+            rows={rows}
+            rowKey={(r) => r.id}
+            defaultSort={{ key: "date", dir: "desc" }}
+            rowClassName={(r) =>
+              r.status === "declined" ? "bg-error/5 hover:bg-surface-container/30" : "hover:bg-surface-container/30"
+            }
+          />
+          <p className="mt-2 px-1 text-xs text-on-surface-variant">
+            {formatInt(rows.length)} {rows.length === 1 ? "despesa" : "despesas"}
+          </p>
+        </>
       )}
     </>
   );
