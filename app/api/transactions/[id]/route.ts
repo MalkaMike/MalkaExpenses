@@ -4,7 +4,7 @@ import { getRole, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { householdSafeTransaction } from "@/lib/security/sanitize";
 import { safeJson } from "@/lib/http";
-import { toDb, fromDb } from "@/lib/money";
+import { toDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -42,7 +42,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   const b = parsed.data;
   const sb = serverClient();
 
-  // Fetch existing for audit + role-enforcement
+  // Fetch existing for role-enforcement, privacy wall, and audit trail
   const { data: existing, error: getErr } = await sb
     .from("transactions")
     .select("*")
@@ -99,12 +99,15 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     patch.status = "user_edited";
   }
 
-  const { data: updated, error: updErr } = await sb
-    .from("transactions")
-    .update(patch)
-    .eq("id", id)
-    .select()
-    .single();
+  // Atomic RPC: applies the patch + inserts admin_modifications if
+  // shared_amount changed — both commit or both roll back.
+  const desc = (existing.description_clean as string | null) ?? (existing.description_raw as string);
+  const { data: updated, error: updErr } = await sb.rpc("apply_transaction_patch", {
+    p_id: id,
+    p_patch: patch,
+    p_old_shared: Number(existing.shared_amount),
+    p_target_name: desc
+  });
   if (updErr) {
     return NextResponse.json({ error: updErr.message }, { status: 500 });
   }
@@ -115,35 +118,8 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     newValue: updated
   });
 
-  // If shared_amount changed and we're admin, log it to admin_modifications so
-  // /admin/historico can show what was overridden vs the wife's view.
-  const oldShared = Number(existing.shared_amount);
-  const newShared = Number((updated as Record<string, unknown>).shared_amount);
-  if (role === "admin" && oldShared !== newShared) {
-    const realAmt = Number(existing.real_amount);
-    const action =
-      newShared === 0
-        ? "hide"
-        : newShared === realAmt
-          ? "show"
-          : "adjust";
-    const desc = (existing.description_clean as string | null) ?? (existing.description_raw as string);
-    await sb.from("admin_modifications").insert({
-      action,
-      scope: "transaction",
-      target_id: id,
-      target_name: desc.slice(0, 200),
-      field: "shared_amount",
-      before_value: { value: fromDb(oldShared) },
-      after_value: { value: fromDb(newShared) },
-      affected_count: 1,
-      impact_brl: fromDb(newShared) - fromDb(oldShared)
-    });
-  }
-
   // SECURITY WALL: a household caller (allowed to edit category/description)
   // must never receive real_amount / is_fake / notes_private in the response.
-  // .select() returns every column, so sanitize before returning to non-admins.
   const safeTransaction =
     role === "admin"
       ? updated
@@ -155,7 +131,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   if (role === "admin" && b.category_id && existing.category_id !== b.category_id && existing.description_raw) {
     const pattern = String(existing.description_raw).split(/\s+/).slice(0, 3).join(" ");
     if (pattern.length >= 3) {
-      // Check if rule already exists for this pattern
       const { data: existingRule } = await sb
         .from("merchant_rules")
         .select("id")
