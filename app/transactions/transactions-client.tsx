@@ -5,6 +5,8 @@ import { toast } from "sonner";
 import { Search, X, TrendingUp, TrendingDown, EyeOff, Undo2, Loader2 } from "lucide-react";
 import { TransactionRow } from "@/components/transaction-row";
 import { TransactionEditModal, type EditableTx } from "@/components/transaction-edit-modal";
+import { CategoryChip } from "@/components/category-chip";
+import { DataTable, type Column } from "@/components/data-table";
 import { CATEGORY_META, getCategoryTree } from "@/lib/categories/meta";
 import type { Role } from "@/lib/auth/admin";
 import { useLang } from "@/lib/i18n/context";
@@ -209,13 +211,41 @@ export function TransactionsClient({
         </div>
       </div>
 
-      {/* Grouped list */}
+      {/* Empty state (shared by both layouts) */}
       {grouped.length === 0 && (
         <div className="text-center py-12 text-sm text-muted">
           {anyFilter ? t("tx.empty_filtered", lang) : `${t("tx.empty", lang)}.`}
         </div>
       )}
-      <div className="space-y-5">
+
+      {/* Desktop: sortable datatable. Mobile keeps the date-grouped cards below
+          — Ayelet's phone flow is untouched (breakpoint split, not replacement). */}
+      {filtered.length > 0 && (
+        <div className="hidden md:block">
+          <DesktopTable
+            rows={filtered}
+            role={role}
+            accountMap={accountMap}
+            busyId={busyId}
+            onEdit={(r) =>
+              setEditing({
+                id: r.id,
+                date: r.date,
+                description: r.description,
+                amountShared: r.amountShared,
+                amountReal: r.amountReal,
+                categorySlug: r.categorySlug,
+                isFake: r.isFake,
+                isTransfer: r.isTransfer
+              })
+            }
+            onToggleHide={quickToggleHide}
+          />
+        </div>
+      )}
+
+      {/* Mobile: date-grouped cards */}
+      <div className="space-y-5 md:hidden">
         {grouped.map(([date, list]) => (
           <div key={date}>
             <h3 className="text-[11px] uppercase tracking-wider text-muted mb-2 px-1">
@@ -283,6 +313,129 @@ export function TransactionsClient({
 
       <TransactionEditModal tx={editing} role={role} onClose={() => setEditing(null)} />
     </>
+  );
+}
+
+// Desktop-only sortable table view of the same filtered rows. Row click opens
+// the same edit modal as the mobile cards; the trailing column keeps the
+// admin-only quick hide/unhide action.
+function DesktopTable({
+  rows,
+  role,
+  accountMap,
+  busyId,
+  onEdit,
+  onToggleHide
+}: {
+  rows: Row[];
+  role: Role;
+  accountMap: Map<string, string>;
+  busyId: string | null;
+  onEdit: (r: Row) => void;
+  onToggleHide: (r: Row) => void;
+}) {
+  const { lang } = useLang();
+  const columns: Column<Row>[] = [
+    {
+      key: "date",
+      header: "Data",
+      sortValue: (r) => r.date,
+      cell: (r) => (
+        <span className="text-[11px] text-muted whitespace-nowrap">{dayHeader(r.date, lang)}</span>
+      )
+    },
+    {
+      key: "description",
+      header: "Descrição",
+      sortValue: (r) => r.description.toLowerCase(),
+      cell: (r) => (
+        <span className="flex items-center gap-1.5 min-w-0">
+          <span className="text-sm truncate max-w-[280px]" title={r.description}>
+            {r.description}
+          </span>
+          {r.isTransfer && (
+            <span className="text-[9px] px-1 py-0.5 rounded-full bg-fg/5 text-muted shrink-0">TRANSF</span>
+          )}
+          {role === "admin" && r.amountShared === 0 && (
+            <span className="text-[9px] px-1 py-0.5 rounded-full bg-warning/15 text-warning shrink-0">OCULTA</span>
+          )}
+        </span>
+      )
+    },
+    {
+      key: "account",
+      header: "Conta",
+      hideBelow: "lg",
+      sortValue: (r) => accountMap.get(r.account_id) ?? "",
+      cell: (r) => (
+        <span className="text-[11px] text-muted truncate max-w-[140px] block">
+          {accountMap.get(r.account_id) ?? "—"}
+        </span>
+      )
+    },
+    {
+      key: "category",
+      header: "Categoria",
+      sortValue: (r) => r.categorySlug ?? "outros",
+      cell: (r) => <CategoryChip slug={r.categorySlug} size="sm" />
+    },
+    {
+      key: "amount",
+      header: "Valor",
+      align: "right",
+      sortValue: (r) => r.amountShared,
+      cell: (r) => (
+        <span
+          className={`tabular-nums text-sm font-medium whitespace-nowrap ${
+            r.amountShared > 0 ? "text-accent" : r.amountShared === 0 ? "text-muted" : "text-fg"
+          }`}
+        >
+          {formatBRL(r.amountShared)}
+        </span>
+      )
+    }
+  ];
+
+  if (role === "admin") {
+    columns.push({
+      key: "actions",
+      header: "",
+      align: "right",
+      cell: (r) => (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleHide(r);
+          }}
+          disabled={busyId === r.id}
+          title={r.amountShared === 0 ? "Trazer de volta ao portal" : "Tirar do portal"}
+          aria-label={r.amountShared === 0 ? "Trazer de volta" : "Tirar do portal"}
+          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition disabled:opacity-50 ${
+            r.amountShared === 0
+              ? "border-accent/30 text-accent bg-accent/5 hover:bg-accent/10"
+              : "border-border text-muted hover:text-danger hover:border-danger/40"
+          }`}
+        >
+          {busyId === r.id ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : r.amountShared === 0 ? (
+            <Undo2 size={14} />
+          ) : (
+            <EyeOff size={14} />
+          )}
+        </button>
+      )
+    });
+  }
+
+  return (
+    <DataTable
+      columns={columns}
+      rows={rows}
+      rowKey={(r) => r.id}
+      defaultSort={{ key: "date", dir: "desc" }}
+      onRowClick={onEdit}
+    />
   );
 }
 
