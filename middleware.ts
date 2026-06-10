@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { packToken, unpackToken } from "./lib/auth/tokens";
 
 // ============================================================================
-// Middleware — multi-role auth gate (runs on the edge runtime; uses Web Crypto).
+// Middleware — multi-role auth gate (runs on the edge runtime).
 //
 // Roles and path access:
 //   admin      pf_admin      → all paths
@@ -12,6 +13,7 @@ import { NextResponse, type NextRequest } from "next/server";
 //
 // Secretary reaching a non-queue path → redirected to /admin/health/queue.
 // Health reaching a non-health admin path → redirected to /admin/health.
+// Crypto: shared lib/auth/tokens.ts (Web Crypto, works edge + Node).
 // ============================================================================
 
 const ADMIN_COOKIE = "pf_admin";
@@ -23,82 +25,30 @@ const ADMIN_TIMEOUT_MIN = Number(process.env.ADMIN_TIMEOUT_MINUTES ?? "480");
 const HOUSEHOLD_TIMEOUT_DAYS = 90;
 const HEALTH_TIMEOUT_DAYS = 90;
 const SECRETARY_TIMEOUT_DAYS = 90;
-const FUTURE_SKEW_MS = 60_000;
-const MIN_SECRET_LENGTH = 32;
-
-const enc = new TextEncoder();
-let keyPromise: Promise<CryptoKey> | null = null;
-
-function getKey(): Promise<CryptoKey> {
-  if (!keyPromise) {
-    const secret = process.env.MODE_COOKIE_SECRET ?? "";
-    if (secret.length < MIN_SECRET_LENGTH) {
-      keyPromise = Promise.reject(
-        new Error(`MODE_COOKIE_SECRET missing or < ${MIN_SECRET_LENGTH} chars — fail-closed.`)
-      );
-      const p = keyPromise;
-      p.catch(() => { keyPromise = null; });
-      return p;
-    }
-    keyPromise = crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
-  }
-  return keyPromise;
-}
-
-function toHex(buf: ArrayBuffer): string {
-  const b = new Uint8Array(buf);
-  let s = "";
-  for (let i = 0; i < b.length; i++) s += b[i].toString(16).padStart(2, "0");
-  return s;
-}
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let r = 0;
-  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return r === 0;
-}
-
-async function verifyToken(token: string, expectedRole: string, maxAgeMs: number): Promise<boolean> {
-  const parts = token.split(".");
-  if (parts.length !== 4 || parts[0] !== "v2" || parts[1] !== expectedRole) return false;
-  const payload = `${parts[0]}.${parts[1]}.${parts[2]}`;
-  let expected: string;
-  try {
-    const key = await getKey();
-    const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-    expected = toHex(sig);
-  } catch {
-    return false;
-  }
-  if (!constantTimeEqual(expected, parts[3])) return false;
-  const ms = Number(parts[2]);
-  if (!Number.isFinite(ms)) return false;
-  if (ms > Date.now() + FUTURE_SKEW_MS) return false;
-  return Date.now() - ms <= maxAgeMs;
-}
 
 async function hasAdmin(req: NextRequest): Promise<boolean> {
   const t = req.cookies.get(ADMIN_COOKIE)?.value;
-  return t ? verifyToken(t, "admin", ADMIN_TIMEOUT_MIN * 60 * 1000) : false;
+  if (!t) return false;
+  const ms = await unpackToken(t, "admin");
+  return ms !== null && (Date.now() - ms) <= ADMIN_TIMEOUT_MIN * 60 * 1000;
 }
 async function hasHousehold(req: NextRequest): Promise<boolean> {
   const t = req.cookies.get(HOUSEHOLD_COOKIE)?.value;
-  return t ? verifyToken(t, "household", HOUSEHOLD_TIMEOUT_DAYS * 86400 * 1000) : false;
+  if (!t) return false;
+  const ms = await unpackToken(t, "household");
+  return ms !== null && (Date.now() - ms) / 86400000 <= HOUSEHOLD_TIMEOUT_DAYS;
 }
 async function hasHealth(req: NextRequest): Promise<boolean> {
   const t = req.cookies.get(HEALTH_COOKIE)?.value;
-  return t ? verifyToken(t, "health", HEALTH_TIMEOUT_DAYS * 86400 * 1000) : false;
+  if (!t) return false;
+  const ms = await unpackToken(t, "health");
+  return ms !== null && (Date.now() - ms) / 86400000 <= HEALTH_TIMEOUT_DAYS;
 }
 async function hasSecretary(req: NextRequest): Promise<boolean> {
   const t = req.cookies.get(SECRETARY_COOKIE)?.value;
-  return t ? verifyToken(t, "secretary", SECRETARY_TIMEOUT_DAYS * 86400 * 1000) : false;
-}
-
-async function createAdminToken(): Promise<string> {
-  const payload = `v2.admin.${Date.now()}`;
-  const key = await getKey();
-  const sig = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-  return `${payload}.${toHex(sig)}`;
+  if (!t) return false;
+  const ms = await unpackToken(t, "secretary");
+  return ms !== null && (Date.now() - ms) / 86400000 <= SECRETARY_TIMEOUT_DAYS;
 }
 
 function isAlwaysOpen(pathname: string): boolean {
@@ -142,7 +92,7 @@ export async function middleware(req: NextRequest) {
   if (admin) {
     const response = NextResponse.next();
     try {
-      const newToken = await createAdminToken();
+      const newToken = await packToken("admin");
       response.cookies.set(ADMIN_COOKIE, newToken, {
         httpOnly: true, secure: true, sameSite: "lax", path: "/",
         maxAge: ADMIN_TIMEOUT_MIN * 60,

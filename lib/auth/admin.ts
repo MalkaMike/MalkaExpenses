@@ -1,8 +1,8 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
-import { createHmac, timingSafeEqual } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { env } from "@/lib/env";
+import { packToken, unpackToken } from "./tokens";
 import { hasHouseholdCookie } from "./household";
 import { hasHealthCookie } from "./health";
 import { hasSecretaryCookie } from "./secretary";
@@ -28,33 +28,6 @@ import { hasSecretaryCookie } from "./secretary";
 export type Role = "public" | "household" | "admin" | "health" | "secretary";
 export const COOKIE_NAME = "pf_admin";
 const TOKEN_ROLE = "admin" as const;
-const FUTURE_SKEW_MS = 60_000;
-
-function sign(payload: string): string {
-  return createHmac("sha256", env.MODE_COOKIE_SECRET).update(payload).digest("hex");
-}
-
-function verify(payload: string, sig: string): boolean {
-  const expected = sign(payload);
-  if (expected.length !== sig.length) return false;
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(sig));
-}
-
-function packToken(lastActivityMs: number): string {
-  const payload = `v2.${TOKEN_ROLE}.${lastActivityMs}`;
-  return `${payload}.${sign(payload)}`;
-}
-
-function unpackToken(token: string): { lastActivity: Date } | null {
-  const parts = token.split(".");
-  if (parts.length !== 4 || parts[0] !== "v2" || parts[1] !== TOKEN_ROLE) return null;
-  const payload = `${parts[0]}.${parts[1]}.${parts[2]}`;
-  if (!verify(payload, parts[3])) return null;
-  const ms = Number(parts[2]);
-  if (!Number.isFinite(ms)) return null;
-  if (ms > Date.now() + FUTURE_SKEW_MS) return null;
-  return { lastActivity: new Date(ms) };
-}
 
 export async function getRole(): Promise<Role> {
   const c = await cookies();
@@ -62,9 +35,9 @@ export async function getRole(): Promise<Role> {
   // Admin (sliding-window, highest privilege)
   const adminToken = c.get(COOKIE_NAME)?.value;
   if (adminToken) {
-    const parsed = unpackToken(adminToken);
-    if (parsed) {
-      const elapsedMin = (Date.now() - parsed.lastActivity.getTime()) / 60000;
+    const ms = await unpackToken(adminToken, TOKEN_ROLE);
+    if (ms !== null) {
+      const elapsedMin = (Date.now() - ms) / 60000;
       if (elapsedMin <= env.ADMIN_TIMEOUT_MINUTES) return "admin";
     }
   }
@@ -92,7 +65,7 @@ export async function validatePassword(password: string): Promise<boolean> {
 
 export async function loginAdmin(): Promise<void> {
   const c = await cookies();
-  const token = packToken(Date.now());
+  const token = await packToken(TOKEN_ROLE, Date.now());
   c.set(COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -113,14 +86,14 @@ export async function refreshAdmin(): Promise<void> {
   const c = await cookies();
   const token = c.get(COOKIE_NAME)?.value;
   if (!token) return;
-  const parsed = unpackToken(token);
-  if (!parsed) return;
-  const elapsedMin = (Date.now() - parsed.lastActivity.getTime()) / 60000;
+  const ms = await unpackToken(token, TOKEN_ROLE);
+  if (ms === null) return;
+  const elapsedMin = (Date.now() - ms) / 60000;
   if (elapsedMin > env.ADMIN_TIMEOUT_MINUTES) {
     c.delete(COOKIE_NAME);
     return;
   }
-  c.set(COOKIE_NAME, packToken(Date.now()), {
+  c.set(COOKIE_NAME, await packToken(TOKEN_ROLE, Date.now()), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
