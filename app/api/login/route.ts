@@ -14,7 +14,12 @@ const AYELET_USERNAME = "Ayelet_Malka";   // health_admin — /admin/health + ma
 const CELINA_USERNAME = "Celine";          // secretary — /admin/health/queue only
 
 const WINDOW_MIN = 15;
-const MAX_FAILS_PER_IP = 20;
+// Strict limit keys on the (ip, username) PAIR — a shared household IP can't
+// lock one user out because another mistyped their own password. The pure-IP
+// cap stays only as a wide DoS backstop, and per-username catches cross-IP
+// credential stuffing.
+const MAX_FAILS_PER_IP_USER = 8;
+const MAX_FAILS_PER_IP = 50;
 const MAX_FAILS_PER_USERNAME = 8;
 const FAIL_DELAY_MS = 600;
 
@@ -40,11 +45,16 @@ async function isRateLimited(ip: string, username: string): Promise<boolean> {
   try {
     const sb = serverClient();
     const since = new Date(Date.now() - WINDOW_MIN * 60_000).toISOString();
-    const [{ count: ipFails }, { count: userFails }] = await Promise.all([
+    const [{ count: ipUserFails }, { count: ipFails }, { count: userFails }] = await Promise.all([
+      sb.from("login_attempts").select("id", { count: "exact", head: true }).eq("ip", ip).eq("username", username).eq("success", false).gte("attempted_at", since),
       sb.from("login_attempts").select("id", { count: "exact", head: true }).eq("ip", ip).eq("success", false).gte("attempted_at", since),
       sb.from("login_attempts").select("id", { count: "exact", head: true }).eq("username", username).eq("success", false).gte("attempted_at", since)
     ]);
-    return (ipFails ?? 0) >= MAX_FAILS_PER_IP || (userFails ?? 0) >= MAX_FAILS_PER_USERNAME;
+    return (
+      (ipUserFails ?? 0) >= MAX_FAILS_PER_IP_USER ||
+      (ipFails ?? 0) >= MAX_FAILS_PER_IP ||
+      (userFails ?? 0) >= MAX_FAILS_PER_USERNAME
+    );
   } catch {
     return false; // fail-open on store blip
   }

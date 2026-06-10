@@ -107,6 +107,7 @@ function isAlwaysOpen(pathname: string): boolean {
     pathname === "/admin" ||
     pathname === "/admin/" ||
     pathname === "/api/login" ||
+    pathname === "/api/logout" ||
     pathname === "/api/household/login" ||
     pathname === "/api/household/logout" ||
     pathname === "/api/admin/login" ||

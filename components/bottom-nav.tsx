@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, ListChecks, PieChart, Target, Stethoscope } from "lucide-react";
+import { Home, ListChecks, PieChart, Target, Stethoscope, LogOut } from "lucide-react";
 import type { Role } from "@/lib/auth/admin";
 import { useLang } from "@/lib/i18n/context";
 import { t } from "@/lib/i18n/translations";
@@ -33,6 +33,17 @@ export function BottomNav({ role }: { role: Role }) {
             <span className="tracking-wide">Saúde</span>
             {active && <span className="absolute bottom-0 left-1/4 right-1/4 h-0.5 rounded-full bg-primary" />}
           </Link>
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch("/api/logout", { method: "POST" });
+              window.location.href = "/login";
+            }}
+            className="flex-1 flex flex-col items-center gap-1 py-3 text-[10px] font-medium text-on-surface-variant hover:text-on-surface transition-colors"
+          >
+            <LogOut size={20} strokeWidth={1.5} />
+            <span className="tracking-wide">Sair</span>
+          </button>
         </div>
       </nav>
     );

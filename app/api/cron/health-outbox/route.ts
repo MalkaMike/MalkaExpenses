@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
+import { verifyCronSecret } from "@/lib/auth/cron";
+import { getRole } from "@/lib/auth/admin";
 import { sendEmail, type Attachment } from "@/lib/gmail/send";
 import { readFile } from "fs/promises";
 import { join } from "path";
@@ -12,10 +14,8 @@ export const maxDuration = 90;
 // Outbox worker — picks pending health_email_outbox rows and sends them via
 // Gmail (gmail.send scope). Idempotent via the UNIQUE idempotency_key.
 //
-// Schedule: Vercel cron every 2 minutes (vercel.json).
-// Manual trigger: GET /api/cron/health-outbox?force=1 from an authenticated
-// admin session (the existing middleware lets /api/cron through with a Vercel
-// cron header; in dev we accept admin cookie + ?force=1).
+// Schedule: Vercel cron (vercel.json) — authenticated via CRON_SECRET bearer.
+// Manual trigger: GET /api/cron/health-outbox?force=1 requires an admin cookie.
 //
 // File reads: still local /private/* until Phase 4 migrates to Supabase Storage.
 // ============================================================================
@@ -200,16 +200,22 @@ async function processOne(row: OutboxRow): Promise<{
   }
 }
 
-// Trigger guard — Vercel sets the x-vercel-cron header on scheduled runs.
-// In dev we accept ?force=1 (combined with an authenticated admin cookie via
-// the existing middleware on /api/cron).
-function isAuthorized(req: NextRequest): boolean {
-  if (req.headers.get("x-vercel-cron")) return true;
-  return req.nextUrl.searchParams.get("force") === "1";
+// Trigger guard. Two legitimate callers:
+//   1. Vercel cron — sends `Authorization: Bearer <CRON_SECRET>` (constant-time check).
+//   2. Manual trigger — an authenticated ADMIN session with ?force=1.
+// The old x-vercel-cron header check was removed: that header is client-supplied
+// and spoofable, and ?force=1 had no cookie check (middleware lets /api/cron/*
+// through unauthenticated), leaving this worker open to anyone on the internet.
+async function isAuthorized(req: NextRequest): Promise<boolean> {
+  if (verifyCronSecret(req)) return true;
+  if (req.nextUrl.searchParams.get("force") === "1") {
+    return (await getRole()) === "admin";
+  }
+  return false;
 }
 
 export async function GET(req: NextRequest) {
-  if (!isAuthorized(req)) {
+  if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 

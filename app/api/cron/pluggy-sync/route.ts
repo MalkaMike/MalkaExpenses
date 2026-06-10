@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { syncPluggyItem } from "@/lib/pluggy/sync";
+import { verifyCronSecret } from "@/lib/auth/cron";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -10,9 +11,7 @@ export const maxDuration = 300;
 // `Authorization: Bearer <CRON_SECRET>` when CRON_SECRET is set; we require it
 // so the endpoint can't be hit by anyone. Returns 404 when unauthorized.
 export async function GET(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  const auth = req.headers.get("authorization");
-  if (!secret || auth !== `Bearer ${secret}`) {
+  if (!verifyCronSecret(req)) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 

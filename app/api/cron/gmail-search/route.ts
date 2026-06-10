@@ -3,6 +3,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { getValidAccessToken } from "@/lib/gmail/oauth";
 import { preloadClusters } from "@/lib/merchants/clusters";
 import { searchOneTransaction } from "@/lib/gmail/search-one";
+import { verifyCronSecret } from "@/lib/auth/cron";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // Pro plan allows 300s
@@ -20,11 +21,8 @@ export const maxDuration = 300; // Pro plan allows 300s
 // not transfers). Self-throttling: bails after ~250s to stay under the 300s
 // timeout; unfinished work is picked up the next day.
 export async function GET(req: NextRequest) {
-  // Fail CLOSED: require CRON_SECRET to be set AND match the Vercel-cron header.
-  // (Previously an unset secret left this route open to anyone.)
-  const secret = process.env.CRON_SECRET;
-  const authHeader = req.headers.get("authorization");
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+  // Fail CLOSED: require CRON_SECRET to be set AND match (constant-time).
+  if (!verifyCronSecret(req)) {
     return new NextResponse("unauthorized", { status: 401 });
   }
 

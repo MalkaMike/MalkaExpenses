@@ -14,6 +14,11 @@ const schema = z.object({
   CELINA_PASSWORD_HASH: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_GENAI_API_KEY: z.string().optional(),
+  // Vercel cron auth — sent as `Authorization: Bearer <CRON_SECRET>` on
+  // scheduled runs. Routes fail CLOSED when unset (lib/auth/cron.ts).
+  // No min-length here: the value is "sensitive" in Vercel (unreadable via API),
+  // and a failed parse would crash the whole app at boot.
+  CRON_SECRET: z.string().optional(),
   // Gmail OAuth for nota fiscal lookup (admin only)
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
@@ -32,6 +37,7 @@ export const env = schema.parse({
   CELINA_PASSWORD_HASH: process.env.CELINA_PASSWORD_HASH,
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   GOOGLE_GENAI_API_KEY: process.env.GOOGLE_GENAI_API_KEY,
+  CRON_SECRET: process.env.CRON_SECRET,
   GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
   GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME

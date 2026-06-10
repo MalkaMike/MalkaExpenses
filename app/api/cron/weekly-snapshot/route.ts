@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
+import { verifyCronSecret } from "@/lib/auth/cron";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -45,10 +46,8 @@ async function loadAll(
 }
 
 export async function GET(req: NextRequest) {
-  // Authenticate cron call
-  const auth = req.headers.get("authorization") ?? "";
-  const secret = process.env.CRON_SECRET ?? "";
-  if (!secret || auth !== `Bearer ${secret}`) {
+  // Authenticate cron call (constant-time, fail-closed)
+  if (!verifyCronSecret(req)) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
 
