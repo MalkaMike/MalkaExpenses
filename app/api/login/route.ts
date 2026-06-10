@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { z } from "zod";
 import { loginAdmin, validatePassword } from "@/lib/auth/admin";
 import { loginHousehold, validateHouseholdPassword } from "@/lib/auth/household";
@@ -56,8 +57,24 @@ async function isRateLimited(ip: string, username: string): Promise<boolean> {
       (ipFails ?? 0) >= MAX_FAILS_PER_IP ||
       (userFails ?? 0) >= MAX_FAILS_PER_USERNAME
     );
-  } catch {
-    return false; // fail-open on store blip
+  } catch (e) {
+    // Fail CLOSED: if the attempt store is unreachable we cannot count
+    // failures, and login itself doesn't need the DB (bcrypt vs env hash) —
+    // failing open would hand an attacker an unthrottled brute-force window
+    // for exactly as long as the outage lasts.
+    console.error("[login] rate-limit store unreachable — refusing logins:", (e as Error).message);
+    return true;
+  }
+}
+
+// One person can hold several role passwords (Ayelet: household + health).
+// A successful login makes the NEW role the only active one — stale sibling
+// cookies would otherwise survive and confuse role precedence and audit
+// attribution (getRole picks the highest-ranked valid cookie).
+async function clearOtherRoleCookies(keep: string): Promise<void> {
+  const jar = await cookies();
+  for (const name of ["pf_admin", "pf_health", "pf_secretary", "pf_household"]) {
+    if (name !== keep) jar.delete(name);
   }
 }
 
@@ -83,6 +100,7 @@ export async function POST(req: NextRequest) {
     const ok = await validatePassword(password);
     await recordAttempt(ip, username, ok);
     if (!ok) return rejectInvalid();
+    await clearOtherRoleCookies("pf_admin");
     await loginAdmin();
     return NextResponse.json({ ok: true, role: "admin" });
   }
@@ -91,6 +109,7 @@ export async function POST(req: NextRequest) {
     const ok = await validateHouseholdPassword(password);
     await recordAttempt(ip, username, ok);
     if (!ok) return rejectInvalid();
+    await clearOtherRoleCookies("pf_household");
     await loginHousehold();
     return NextResponse.json({ ok: true, role: "household" });
   }
@@ -99,6 +118,7 @@ export async function POST(req: NextRequest) {
     const ok = await validateHealthPassword(password);
     await recordAttempt(ip, username, ok);
     if (!ok) return rejectInvalid();
+    await clearOtherRoleCookies("pf_health");
     await loginHealth();
     return NextResponse.json({ ok: true, role: "health" });
   }
@@ -107,6 +127,7 @@ export async function POST(req: NextRequest) {
     const ok = await validateSecretaryPassword(password);
     await recordAttempt(ip, username, ok);
     if (!ok) return rejectInvalid();
+    await clearOtherRoleCookies("pf_secretary");
     await loginSecretary();
     return NextResponse.json({ ok: true, role: "secretary" });
   }

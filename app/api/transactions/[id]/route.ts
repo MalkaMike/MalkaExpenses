@@ -18,8 +18,8 @@ export const runtime = "nodejs";
 const Body = z.object({
   category_id: z.string().uuid().nullable().optional(),
   description_clean: z.string().max(500).optional(),
-  shared_amount: z.number().optional(),
-  real_amount: z.number().optional(),
+  shared_amount: z.number().finite().optional(),
+  real_amount: z.number().finite().optional(),
   is_transfer: z.boolean().optional(),
   is_fake: z.boolean().optional(),
   notes_private: z.string().max(2000).nullable().optional(),
@@ -48,6 +48,13 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     .eq("id", id)
     .single();
   if (getErr || !existing) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  // PRIVACY WALL: rows hidden from the portal (shared_amount=0) do not exist
+  // for the household role — even with a known/cached UUID. 404, not 403, so
+  // the response doesn't confirm the row exists.
+  if (role === "household" && Number(existing.shared_amount) === 0) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
@@ -141,8 +148,10 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       ? updated
       : householdSafeTransaction(updated as Record<string, unknown>);
 
-  // Learn merchant rule from category corrections (best-effort)
-  if (b.category_id && existing.category_id !== b.category_id && existing.description_raw) {
+  // Learn merchant rule from category corrections (best-effort).
+  // Admin-only: a household correction must never silently retrain the
+  // categorization of the WHOLE ledger (including rows she can't see).
+  if (role === "admin" && b.category_id && existing.category_id !== b.category_id && existing.description_raw) {
     const pattern = String(existing.description_raw).split(/\s+/).slice(0, 3).join(" ");
     if (pattern.length >= 3) {
       // Check if rule already exists for this pattern
@@ -176,7 +185,10 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   const role = await getRole();
   if (role !== "admin") return NextResponse.json({ error: "admin only" }, { status: 403 });
   const sb = serverClient();
-  const { data: existing } = await sb.from("transactions").select("*").eq("id", id).single();
+  // maybeSingle distinguishes "row absent" (404) from a DB failure (500) —
+  // an operational error must not masquerade as not-found.
+  const { data: existing, error: getErr } = await sb.from("transactions").select("*").eq("id", id).maybeSingle();
+  if (getErr) return NextResponse.json({ error: getErr.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
   const { error } = await sb.from("transactions").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
