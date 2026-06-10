@@ -2,8 +2,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
-  ChevronDown,
-  ChevronRight,
   EyeOff,
   Eye,
   Pencil,
@@ -12,6 +10,7 @@ import {
   ExternalLink
 } from "lucide-react";
 import { formatBRL, formatInt } from "@/lib/format";
+import { DataTable, type Column } from "@/components/data-table";
 
 export type ModRow = {
   id: string;
@@ -73,170 +72,153 @@ function fullTime(iso: string): string {
   });
 }
 
-export function HistoricoClient({ rows }: { rows: ModRow[] }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  function toggle(id: string) {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  if (rows.length === 0) {
+function DiffCell({ r }: { r: ModRow }) {
+  if (r.action === "rename") {
     return (
-      <div className="rounded-2xl bg-card border border-dashed border-border p-12 text-center">
-        <p className="text-sm text-muted">
-          Nenhuma modificação no período. Tudo que você ajustar aqui vai aparecer.
-        </p>
-      </div>
+      <span className="flex items-center gap-1.5 text-xs text-muted min-w-0">
+        <span className="line-through truncate max-w-[100px]">{r.beforeValue?.name ?? "—"}</span>
+        <ArrowRight size={11} className="shrink-0" />
+        <span className="text-fg font-medium truncate max-w-[100px]">{r.afterValue?.name ?? "—"}</span>
+      </span>
     );
   }
-
+  const after = r.afterValue?.value ?? r.afterValue?.total ?? 0;
   return (
-    <ul className="space-y-2">
-      {rows.map((r) => {
+    <span className="flex items-center gap-1.5 text-xs text-muted whitespace-nowrap">
+      <span className="tabular-nums">{formatBRL(r.beforeValue?.value ?? r.beforeValue?.total ?? 0)}</span>
+      <ArrowRight size={11} className="shrink-0" />
+      <span className={`tabular-nums font-medium ${after === 0 ? "text-warning" : "text-fg"}`}>
+        {formatBRL(after)}
+      </span>
+    </span>
+  );
+}
+
+export function HistoricoClient({ rows }: { rows: ModRow[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+
+  const columns: Column<ModRow>[] = [
+    {
+      key: "when",
+      header: "Quando",
+      sortValue: (r) => r.createdAt,
+      cell: (r) => (
+        <span className="text-[11px] text-muted whitespace-nowrap" title={fullTime(r.createdAt)}>
+          {relativeTime(r.createdAt)}
+        </span>
+      )
+    },
+    {
+      key: "action",
+      header: "Ação",
+      sortValue: (r) => r.action,
+      cell: (r) => {
         const meta = actionMeta[r.action];
         const Icon = meta.Icon;
-        const isOpen = expanded.has(r.id);
-        const isMerchant = r.scope === "merchant";
-        const targetHref = isMerchant
-          ? `/admin/merchants/${encodeURIComponent(r.targetId)}`
-          : null; // single-tx clicks could go to inbox/edit later
-
         return (
-          <li
-            key={r.id}
-            className={`rounded-2xl border transition ${
-              r.reverted
-                ? "bg-card/40 border-border/40 opacity-60"
-                : "bg-card border-border"
-            }`}
-          >
-            <button
-              onClick={() => toggle(r.id)}
-              className="w-full text-left px-4 py-3.5 flex items-start gap-3 hover:bg-fg/[0.03] active:bg-fg/[0.06] transition rounded-2xl"
-            >
-              <div
-                className={`shrink-0 w-10 h-10 rounded-xl ${meta.bg} flex items-center justify-center`}
-              >
-                <Icon size={16} className={meta.fg} />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${meta.bg} ${meta.fg}`}
-                  >
-                    {meta.label}
-                  </span>
-                  {r.scope === "merchant" && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-fg/5 text-muted">
-                      MERCHANT · {formatInt(r.affectedCount)}{" "}
-                      {r.affectedCount === 1 ? "tx" : "tx"}
-                    </span>
-                  )}
-                  <span className="text-[10px] text-muted ml-auto" title={fullTime(r.createdAt)}>
-                    {relativeTime(r.createdAt)}
-                  </span>
-                </div>
-
-                <p className="font-medium text-sm truncate" title={r.targetName}>
-                  {r.targetName}
-                </p>
-
-                {/* Diff line */}
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                  {r.action === "rename" ? (
-                    <>
-                      <span className="line-through truncate max-w-[40%]">
-                        {r.beforeValue?.name ?? "—"}
-                      </span>
-                      <ArrowRight size={11} className="shrink-0" />
-                      <span className="text-fg font-medium truncate max-w-[40%]">
-                        {r.afterValue?.name ?? "—"}
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="tabular-nums">
-                        {formatBRL(
-                          r.beforeValue?.value ??
-                            r.beforeValue?.total ??
-                            0
-                        )}
-                      </span>
-                      <ArrowRight size={11} className="shrink-0" />
-                      <span
-                        className={`tabular-nums font-medium ${
-                          (r.afterValue?.value ?? r.afterValue?.total ?? 0) === 0
-                            ? "text-warning"
-                            : "text-fg"
-                        }`}
-                      >
-                        {formatBRL(
-                          r.afterValue?.value ?? r.afterValue?.total ?? 0
-                        )}
-                      </span>
-                      {r.impactBrl != null && r.impactBrl !== 0 && (
-                        <span
-                          className={`ml-2 tabular-nums font-medium ${
-                            r.impactBrl < 0 ? "text-danger" : "text-accent"
-                          }`}
-                        >
-                          ({r.impactBrl > 0 ? "+" : ""}
-                          {formatBRL(r.impactBrl)})
-                        </span>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="shrink-0 text-muted mt-2">
-                {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-              </div>
-            </button>
-
-            {isOpen && (
-              <div className="px-4 pb-4 pt-1 border-t border-border/60 text-xs space-y-3">
-                <DetailRow label="Data" value={fullTime(r.createdAt)} />
-                <DetailRow label="Tipo" value={r.scope === "merchant" ? "Cluster de merchant" : "Transação única"} />
-                <DetailRow label="Campo" value={r.field} mono />
-                {r.scope === "merchant" && (
-                  <DetailRow
-                    label="Transações afetadas"
-                    value={`${formatInt(r.affectedCount)} ${r.affectedCount === 1 ? "linha" : "linhas"}`}
-                  />
-                )}
-                {r.action === "adjust" && r.afterValue?.per_row_value != null && (
-                  <DetailRow
-                    label="Valor aplicado em cada tx"
-                    value={formatBRL(r.afterValue.per_row_value)}
-                  />
-                )}
-
-                <div className="pt-2 flex gap-2">
-                  {targetHref && (
-                    <Link
-                      href={targetHref}
-                      className="px-3 py-1.5 rounded-lg border border-border text-muted hover:text-fg hover:border-fg/30 transition text-[11px] flex items-center gap-1.5"
-                    >
-                      <ExternalLink size={11} /> Ir para o merchant
-                    </Link>
-                  )}
-                  {r.reverted && (
-                    <span className="text-[10px] text-muted self-center">
-                      (revertido)
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-          </li>
+          <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${meta.bg} ${meta.fg} whitespace-nowrap`}>
+            <Icon size={10} /> {meta.label}
+          </span>
         );
-      })}
-    </ul>
+      }
+    },
+    {
+      key: "target",
+      header: "Alvo",
+      sortValue: (r) => r.targetName.toLowerCase(),
+      cell: (r) => (
+        <span className="flex items-center gap-1.5 min-w-0">
+          <span className="font-medium text-sm truncate max-w-[220px]" title={r.targetName}>
+            {r.targetName}
+          </span>
+          {r.scope === "merchant" && (
+            <span className="text-[9px] px-1 py-0.5 rounded-full bg-fg/5 text-muted shrink-0">MERCHANT</span>
+          )}
+        </span>
+      )
+    },
+    {
+      key: "diff",
+      header: "Antes → depois",
+      hideBelow: "sm",
+      cell: (r) => <DiffCell r={r} />
+    },
+    {
+      key: "affected",
+      header: "Tx",
+      align: "right",
+      hideBelow: "md",
+      sortValue: (r) => r.affectedCount,
+      cell: (r) => <span className="tabular-nums text-[11px] text-muted">{formatInt(r.affectedCount)}</span>
+    },
+    {
+      key: "impact",
+      header: "Impacto",
+      align: "right",
+      sortValue: (r) => r.impactBrl ?? 0,
+      cell: (r) =>
+        r.impactBrl != null && r.impactBrl !== 0 ? (
+          <span className={`tabular-nums text-xs font-medium whitespace-nowrap ${r.impactBrl < 0 ? "text-danger" : "text-accent"}`}>
+            {r.impactBrl > 0 ? "+" : ""}
+            {formatBRL(r.impactBrl)}
+          </span>
+        ) : (
+          <span className="text-xs text-muted">—</span>
+        )
+    }
+  ];
+
+  return (
+    <DataTable
+      columns={columns}
+      rows={rows}
+      rowKey={(r) => r.id}
+      defaultSort={{ key: "when", dir: "desc" }}
+      onRowClick={(r) => setExpanded((cur) => (cur === r.id ? null : r.id))}
+      expandedKey={expanded}
+      rowClassName={(r) => (r.reverted ? "opacity-50 hover:bg-surface-container/30" : "hover:bg-surface-container/30")}
+      renderExpanded={(r) => <ExpandedDetail r={r} />}
+      empty={
+        <div className="rounded-2xl bg-card border border-dashed border-border p-12 text-center">
+          <p className="text-sm text-muted">
+            Nenhuma modificação no período. Tudo que você ajustar aqui vai aparecer.
+          </p>
+        </div>
+      }
+    />
+  );
+}
+
+function ExpandedDetail({ r }: { r: ModRow }) {
+  const targetHref =
+    r.scope === "merchant" ? `/admin/merchants/${encodeURIComponent(r.targetId)}` : null;
+  return (
+    <div className="text-xs space-y-3">
+      <DetailRow label="Data" value={fullTime(r.createdAt)} />
+      <DetailRow label="Tipo" value={r.scope === "merchant" ? "Cluster de merchant" : "Transação única"} />
+      <DetailRow label="Campo" value={r.field} mono />
+      {r.scope === "merchant" && (
+        <DetailRow
+          label="Transações afetadas"
+          value={`${formatInt(r.affectedCount)} ${r.affectedCount === 1 ? "linha" : "linhas"}`}
+        />
+      )}
+      {r.action === "adjust" && r.afterValue?.per_row_value != null && (
+        <DetailRow label="Valor aplicado em cada tx" value={formatBRL(r.afterValue.per_row_value)} />
+      )}
+      <div className="pt-2 flex gap-2">
+        {targetHref && (
+          <Link
+            href={targetHref}
+            onClick={(e) => e.stopPropagation()}
+            className="px-3 py-1.5 rounded-lg border border-border text-muted hover:text-fg hover:border-fg/30 transition text-[11px] flex items-center gap-1.5"
+          >
+            <ExternalLink size={11} /> Ir para o merchant
+          </Link>
+        )}
+        {r.reverted && <span className="text-[10px] text-muted self-center">(revertido)</span>}
+      </div>
+    </div>
   );
 }
 
