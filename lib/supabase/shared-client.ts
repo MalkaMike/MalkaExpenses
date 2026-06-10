@@ -1,5 +1,5 @@
 import "server-only";
-import { serverClient } from "./server";
+import { anonClient } from "./anon";
 import { assertSafeTable, assertSafeColumns } from "./guard";
 
 // ============================================================================
@@ -12,10 +12,15 @@ import { assertSafeTable, assertSafeColumns } from "./guard";
 // If any leak guard fails, the request crashes before any HTTP response
 // is sent. The guard predicates live in ./guard (pure, unit-tested); the
 // integration leak-guard test will catch regressions in CI.
+//
+// Uses the anon key (not service_role) so Postgres enforces the same
+// constraints at the DB layer (0028_rls_policies): anon cannot read
+// real_amount/notes_private/is_fake (column grants) and cannot see hidden
+// rows (shared_amount = 0 RLS policy) even if the runtime guards are bypassed.
 // ============================================================================
 
 export function sharedClient() {
-  const sb = serverClient();
+  const sb = anonClient();
   return {
     from(table: string) {
       assertSafeTable(table);
