@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink, Undo2, ArrowUpDown } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { ReceiptFinderButton } from "@/components/receipt-finder-button";
 import { MoveDescriptionButton } from "@/components/move-description-button";
@@ -32,6 +32,7 @@ type ReimbTag = {
 };
 
 type ClusterOption = { key: string; name: string };
+type MergeHistoryItem = { id: string; sourceName: string; createdAt: string; hasDescriptions: boolean };
 
 type Props = {
   canonicalKey: string;
@@ -43,6 +44,7 @@ type Props = {
   currentName: string;
   tags: ReimbTag[];
   allClusters: ClusterOption[];
+  mergeHistory: MergeHistoryItem[];
   role: "admin" | "health";  // health = Ayelet: read-only, no ocultar/aprovar controls
 };
 
@@ -56,6 +58,7 @@ export function MerchantDetailClient({
   currentName,
   tags,
   allClusters,
+  mergeHistory,
   role
 }: Props) {
   const router = useRouter();
@@ -97,6 +100,51 @@ export function MerchantDetailClient({
   // Reimbursement tag bulk-apply state
   const [tagBusy, setTagBusy] = useState<string | null>(null);
   const [tagDone, setTagDone] = useState<string | null>(null);
+
+  // Transaction table sort
+  const [sortBy, setSortBy] = useState<"date" | "amount">("date");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  // Undo merge state
+  const [undoBusy, setUndoBusy] = useState<string | null>(null);
+  const [undoErr, setUndoErr] = useState<string | null>(null);
+  const [undoDone, setUndoDone] = useState<string | null>(null);
+
+  function toggleSort(col: "date" | "amount") {
+    if (sortBy === col) setSortDir(d => d === "desc" ? "asc" : "desc");
+    else { setSortBy(col); setSortDir("desc"); }
+  }
+
+  const sortedRows = [...rows].sort((a, b) => {
+    if (sortBy === "date") {
+      const diff = a.date.localeCompare(b.date);
+      return sortDir === "desc" ? -diff : diff;
+    }
+    const diff = Math.abs(a.amount) - Math.abs(b.amount);
+    return sortDir === "desc" ? -diff : diff;
+  });
+
+  async function undoMerge(modId: string) {
+    setUndoBusy(modId);
+    setUndoErr(null);
+    setUndoDone(null);
+    try {
+      const r = await fetch("/api/admin/merchants/merge/undo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modification_id: modId })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((j as { error?: string }).error ?? `Erro ${r.status}`);
+      const jj = j as { source_name?: string; restored_descriptions?: number };
+      setUndoDone(`"${jj.source_name}" separado novamente (${jj.restored_descriptions} descrições restauradas)`);
+      router.refresh();
+    } catch (e) {
+      setUndoErr((e as Error).message);
+    } finally {
+      setUndoBusy(null);
+    }
+  }
 
   async function bulkTag(tagSlug: string, action: "add" | "remove") {
     setTagBusy(tagSlug);
@@ -631,6 +679,42 @@ export function MerchantDetailClient({
             <Check size={13} /> {multiMergeDone}
           </p>
         )}
+
+        {/* Merge history — undo past merges */}
+        {mergeHistory.length > 0 && !editingName && (
+          <div className="mt-3 pt-3 border-t border-outline-variant">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+              Absorções anteriores
+            </p>
+            <div className="flex flex-col gap-1.5">
+              {mergeHistory.map((m) => (
+                <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-surface-container border border-outline-variant">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <GitMerge size={11} className="text-on-surface-variant shrink-0" />
+                    <span className="text-xs text-on-surface font-medium truncate">{m.sourceName}</span>
+                    <span className="text-[10px] text-on-surface-variant shrink-0">{formatDate(m.createdAt)}</span>
+                  </div>
+                  <button
+                    onClick={() => undoMerge(m.id)}
+                    disabled={undoBusy !== null || !m.hasDescriptions}
+                    title={m.hasDescriptions ? `Separar "${m.sourceName}" de volta` : "Merge antigo — histórico de descrições não disponível"}
+                    className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition
+                      ${!m.hasDescriptions
+                        ? "border-outline-variant text-on-surface-variant/40 cursor-not-allowed"
+                        : undoBusy === m.id
+                          ? "border-primary/20 text-primary cursor-wait"
+                          : "border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30"}`}
+                  >
+                    {undoBusy === m.id ? <Loader2 size={11} className="animate-spin" /> : <Undo2 size={11} />}
+                    {undoBusy === m.id ? "Desfazendo…" : "Desfazer"}
+                  </button>
+                </div>
+              ))}
+            </div>
+            {undoDone && <p className="mt-2 text-xs text-secondary font-medium flex items-center gap-1.5"><Check size={12} /> {undoDone}</p>}
+            {undoErr && <p className="mt-2 text-xs text-error">{undoErr}</p>}
+          </div>
+        )}
       </section>}
 
       {/* ── Aprovar todas + Ocultar comerciante — admin only ─────────────── */}
@@ -855,130 +939,150 @@ export function MerchantDetailClient({
         </p>
       </section>}
 
-      {/* ── Transactions list ─────────────────────────────────────────────── */}
+      {/* ── Transactions datatable ───────────────────────────────────────── */}
       <section>
         <div className="flex items-center justify-between mb-2 px-1">
-          <h2 className="text-xs uppercase tracking-wider text-muted">Histórico</h2>
-          <div className="flex items-center gap-3">
-            {role === "admin" && (
-              <p className="text-[10px] text-muted hidden sm:block">
-                Clique no olho 👁 pra esconder/mostrar individualmente
+          <h2 className="text-xs uppercase tracking-wider text-muted">
+            Histórico
+            <span className="ml-1.5 font-normal normal-case text-on-surface-variant">
+              — clique nas colunas para ordenar
+            </span>
+          </h2>
+          <div className="flex flex-col items-end gap-1">
+            <button
+              onClick={openInSheets}
+              disabled={sheetsBusy || rows.length === 0}
+              title="Criar planilha no Google Sheets com todas as transações"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30 text-[11px] font-medium transition disabled:opacity-30"
+            >
+              {sheetsBusy ? <Loader2 size={12} className="animate-spin" /> : <ExternalLink size={12} />}
+              {sheetsBusy ? "Gerando…" : "Abrir no Sheets"}
+            </button>
+            {sheetsErr && (
+              <p className="text-[10px] text-danger max-w-[240px] text-right">
+                {sheetsErr.includes("Conta Google") ? "Conta Google não conectada — configure em Admin." : sheetsErr}
               </p>
             )}
-            <div className="flex flex-col items-end gap-1">
-              <button
-                onClick={openInSheets}
-                disabled={sheetsBusy || rows.length === 0}
-                title="Criar planilha no Google Sheets com todas as transações"
-                className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30 text-[11px] font-medium transition disabled:opacity-30"
-              >
-                {sheetsBusy ? (
-                  <Loader2 size={12} className="animate-spin" />
-                ) : (
-                  <ExternalLink size={12} />
-                )}
-                {sheetsBusy ? "Gerando…" : "Abrir no Sheets"}
-              </button>
-              {sheetsErr && (
-                <p className="text-[10px] text-danger max-w-[240px] text-right">
-                  {sheetsErr.includes("Conta Google")
-                    ? "Conta Google não conectada — configure em Admin."
-                    : sheetsErr}
-                </p>
-              )}
-            </div>
           </div>
         </div>
-        <div className="rounded-2xl bg-card border border-border overflow-hidden">
-          <ul className="divide-y divide-border text-sm">
-            {rows.map((r) => {
-              const effShared = localShared[r.id] ?? r.sharedAmount;
-              const hidden = effShared === 0;
-              const isBusy = rowBusy === r.id;
-              return (
-                <li
-                  key={r.id}
-                  className="px-4 py-3 flex items-center gap-3 transition"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">
-                      {r.description}
-                    </p>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-muted tabular-nums">
-                        {formatDate(r.date)}
-                      </span>
-                      <span className="text-[10px] text-muted">·</span>
-                      <span className="text-[10px] text-muted truncate">
-                        {r.accountName}
-                      </span>
-                      <span className="text-[10px] text-muted">·</span>
-                      <span
-                        className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                          r.categoryName === "Outros"
-                            ? "bg-warning/15 text-warning"
-                            : "bg-fg/5 text-muted"
-                        }`}
-                      >
-                        {r.categoryName}
-                      </span>
-                      {hidden && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-warning/15 text-warning">
-                          ESCONDIDO
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <span
-                    className={`tabular-nums font-medium shrink-0 ${
-                      r.amount < 0 ? "text-danger" : "text-accent"
-                    }`}
+
+        <div className="rounded-2xl border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr className="bg-bg/70 border-b border-border">
+                  <th
+                    onClick={() => toggleSort("date")}
+                    className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted cursor-pointer select-none hover:text-fg whitespace-nowrap"
                   >
-                    {formatBRL(r.amount)}
-                  </span>
-                  {/* Admin-only per-row controls */}
+                    <span className="flex items-center gap-1">
+                      Data
+                      <ArrowUpDown size={10} className={sortBy === "date" ? "text-accent" : "opacity-25"} />
+                    </span>
+                  </th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted">Descrição</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted hidden md:table-cell">Conta</th>
+                  <th className="px-4 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-muted hidden lg:table-cell">Categoria</th>
+                  <th
+                    onClick={() => toggleSort("amount")}
+                    className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-muted cursor-pointer select-none hover:text-fg whitespace-nowrap"
+                  >
+                    <span className="flex items-center justify-end gap-1">
+                      Valor
+                      <ArrowUpDown size={10} className={sortBy === "amount" ? "text-accent" : "opacity-25"} />
+                    </span>
+                  </th>
                   {role === "admin" && (
-                    <>
-                      {/* Move to another merchant */}
-                      <MoveDescriptionButton
-                        descriptionRaw={r.descriptionRaw}
-                        currentName={currentName}
-                        allClusters={allClusters}
-                      />
-                      {/* Gmail receipt finder */}
-                      <ReceiptFinderButton
-                        transactionId={r.id}
-                        merchantName={currentName}
-                        searched={r.gmailSearched}
-                        matchCount={r.gmailMatchCount}
-                      />
-                      {/* Per-row hide/show toggle */}
-                      <button
-                        onClick={() => toggleRowHide(r)}
-                        disabled={isBusy}
-                        aria-label={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
-                        title={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
-                        className={`shrink-0 w-8 h-8 rounded-lg border flex items-center justify-center transition
-                          ${isBusy
-                            ? "border-border text-muted cursor-wait"
-                            : hidden
-                              ? "border-warning/30 text-warning hover:bg-warning/5"
-                              : "border-border text-muted hover:text-fg hover:border-fg/30"}`}
-                      >
-                        {isBusy ? (
-                          <Loader2 size={14} className="animate-spin" />
-                        ) : hidden ? (
-                          <EyeOff size={14} />
-                        ) : (
-                          <Eye size={14} />
-                        )}
-                      </button>
-                    </>
+                    <th className="px-4 py-2.5 text-right text-[10px] font-bold uppercase tracking-wider text-muted hidden sm:table-cell whitespace-nowrap">
+                      Portal
+                    </th>
                   )}
-                </li>
-              );
-            })}
-          </ul>
+                  {role === "admin" && <th className="px-2 py-2.5 w-24" />}
+                </tr>
+              </thead>
+              <tbody>
+                {sortedRows.map((r) => {
+                  const effShared = localShared[r.id] ?? r.sharedAmount;
+                  const hidden = effShared === 0;
+                  const isBusy = rowBusy === r.id;
+                  return (
+                    <tr
+                      key={r.id}
+                      className={`border-b border-border last:border-0 transition-colors ${hidden ? "bg-warning/[0.03]" : "hover:bg-surface-container/30"}`}
+                    >
+                      <td className="px-4 py-3 text-[11px] text-muted tabular-nums whitespace-nowrap align-middle">
+                        {formatDate(r.date)}
+                      </td>
+                      <td className="px-4 py-3 align-middle">
+                        <p className="font-medium text-on-surface truncate max-w-[200px]">{r.description}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          {hidden && (
+                            <span className="inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full font-bold bg-warning/15 text-warning">
+                              <EyeOff size={8} /> OCULTO
+                            </span>
+                          )}
+                          <span className={`inline-block text-[9px] px-1.5 py-0.5 rounded-full font-medium lg:hidden ${r.categoryName === "Outros" ? "bg-warning/15 text-warning" : "bg-fg/5 text-muted"}`}>
+                            {r.categoryName}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-[11px] text-muted truncate max-w-[120px] hidden md:table-cell align-middle">
+                        {r.accountName}
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell align-middle">
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${r.categoryName === "Outros" ? "bg-warning/15 text-warning" : "bg-fg/5 text-muted"}`}>
+                          {r.categoryName}
+                        </span>
+                      </td>
+                      <td className={`px-4 py-3 text-right tabular-nums font-semibold whitespace-nowrap align-middle ${r.amount < 0 ? "text-danger" : "text-accent"}`}>
+                        {formatBRL(r.amount)}
+                      </td>
+                      {role === "admin" && (
+                        <td className="px-4 py-3 text-right tabular-nums text-[11px] hidden sm:table-cell align-middle whitespace-nowrap">
+                          {hidden
+                            ? <span className="text-warning font-medium">Oculto</span>
+                            : effShared !== r.amount
+                              ? <span className="text-on-surface-variant">{formatBRL(effShared)}</span>
+                              : <span className="text-on-surface-variant/40">—</span>}
+                        </td>
+                      )}
+                      {role === "admin" && (
+                        <td className="px-2 py-2 align-middle">
+                          <div className="flex items-center justify-end gap-1">
+                            <MoveDescriptionButton
+                              descriptionRaw={r.descriptionRaw}
+                              currentName={currentName}
+                              allClusters={allClusters}
+                            />
+                            <ReceiptFinderButton
+                              transactionId={r.id}
+                              merchantName={currentName}
+                              searched={r.gmailSearched}
+                              matchCount={r.gmailMatchCount}
+                            />
+                            <button
+                              onClick={() => toggleRowHide(r)}
+                              disabled={isBusy}
+                              aria-label={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
+                              title={hidden ? "Mostrar para Ayelet" : "Esconder do portal"}
+                              className={`shrink-0 w-7 h-7 rounded-lg border flex items-center justify-center transition
+                                ${isBusy ? "border-border text-muted cursor-wait"
+                                  : hidden ? "border-warning/30 text-warning hover:bg-warning/5"
+                                  : "border-border text-muted hover:text-fg hover:border-fg/30"}`}
+                            >
+                              {isBusy ? <Loader2 size={12} className="animate-spin" />
+                                : hidden ? <EyeOff size={12} />
+                                : <Eye size={12} />}
+                            </button>
+                          </div>
+                        </td>
+                      )}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
           {rows.length === 0 && (
             <p className="px-4 py-6 text-center text-sm text-muted">
               Nenhuma transação encontrada para este comerciante.

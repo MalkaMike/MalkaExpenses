@@ -215,6 +215,27 @@ export default async function MerchantDetailPage({
     name: c.name as string
   }));
 
+  // Merge history — past merges where this cluster was the target (absorbed others)
+  const mergeHistory: { id: string; sourceName: string; createdAt: string; hasDescriptions: boolean }[] = [];
+  if (role === "admin") {
+    const { data: mergeRows } = await sb
+      .from("admin_modifications")
+      .select("id, before_value, created_at")
+      .eq("action", "merge")
+      .eq("target_id", key)
+      .is("reverted_at", null)
+      .order("created_at", { ascending: false });
+    for (const m of mergeRows ?? []) {
+      const bv = m.before_value as { source_name?: string; descriptions?: string[] } | null;
+      mergeHistory.push({
+        id: m.id as string,
+        sourceName: bv?.source_name ?? "?",
+        createdAt: m.created_at as string,
+        hasDescriptions: Array.isArray(bv?.descriptions) && (bv?.descriptions?.length ?? 0) > 0
+      });
+    }
+  }
+
   return (
     <>
     <PageHeader
@@ -280,6 +301,7 @@ export default async function MerchantDetailPage({
         currentName={displayName}
         tags={tagList}
         allClusters={allClusters}
+        mergeHistory={mergeHistory}
         role={role as "admin" | "health"}
       />
     </div>
