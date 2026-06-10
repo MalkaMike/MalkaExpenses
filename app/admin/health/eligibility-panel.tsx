@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ShieldCheck, AlertTriangle, Loader2, CheckCircle2, XCircle, MinusCircle,
   AlertCircle, Sparkles, Lock, RotateCw, Eye, ExternalLink, PencilLine, X,
+  Wrench, Send, ChevronDown, ChevronRight,
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 import { SourceQuote } from "./source-quote";
@@ -112,6 +113,25 @@ const GATE_LABELS: Record<GateName, string> = {
   payment_proof: "Comprovante de pagamento",
 };
 
+// What to DO about each failed gate — concrete next action, honest when there
+// is nothing to be done. Rendered in the "O que fazer" box.
+const GATE_FIX: Record<GateName, { action: string; fixable: boolean }> = {
+  filing_deadline: { action: "O prazo de 2 anos da APRIL estourou — este claim não pode mais ser enviado.", fixable: false },
+  patient_covered: { action: "O paciente da nota não consta na apólice. Se for um dos beneficiários, corrija o nome do paciente na NF; se não for, não há cobertura.", fixable: true },
+  zona: { action: "Atendimento fora da Zona 2 de cobertura. Verifique o país do prestador — fora da zona não há reembolso.", fixable: false },
+  exclusion: { action: "Este tratamento está na lista de exclusões da apólice — sem cobertura. Veja a citação da regra acima.", fixable: false },
+  deductible: { action: "Verifique a franquia aplicável na apólice.", fixable: true },
+  waiting_period: { action: "Ainda dentro da carência para este tipo de tratamento. Aguarde o fim da carência — notas emitidas depois dessa data são elegíveis.", fixable: false },
+  prescription: { action: "Anexe o pedido/receita médica (datado ANTES da emissão da nota). Peça ao médico se não tiver — sem ele a APRIL recusa.", fixable: true },
+  preauth: { action: "Este tratamento exige pré-autorização da APRIL. Para tratamentos futuros, solicite ANTES pelo app Easy Claim ou care@april-international.com. Para esta nota, envie mesmo assim com justificativa médica — a APRIL pode aceitar.", fixable: true },
+  payment_proof: { action: "Anexe o comprovante de pagamento (a APRIL só reembolsa despesa já paga).", fixable: true },
+};
+
+type Filing = {
+  how_to_submit: { title: string | null; text: string }[];
+  required_documents: string[];
+};
+
 function gateIcon(status: GateStatus) {
   if (status === "pass") return <CheckCircle2 size={12} className="text-[#10b981] shrink-0" />;
   if (status === "fail") return <XCircle size={12} className="text-red-400 shrink-0" />;
@@ -148,6 +168,7 @@ export function EligibilityPanel({
   compact?: boolean;
 }) {
   const [claim, setClaim] = useState<Claim | null>(null);
+  const [filing, setFiling] = useState<Filing | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -157,7 +178,7 @@ export function EligibilityPanel({
     setLoading(true);
     fetch(`/api/admin/health/claims/${nfId}/eligibility`)
       .then((r) => r.json())
-      .then((d) => setClaim(d.claim ?? null))
+      .then((d) => { setClaim(d.claim ?? null); setFiling(d.filing ?? null); })
       .catch(() => setClaim(null))
       .finally(() => setLoading(false));
   }, [nfId]);
@@ -373,6 +394,37 @@ export function EligibilityPanel({
         </div>
       )}
 
+      {/* O que fazer — concrete next actions for every failed/warn gate */}
+      {detail && (() => {
+        const blockers = detail.gates.filter((g) => g.status === "fail" || g.status === "warn");
+        if (blockers.length === 0) return null;
+        return (
+          <div className="p-2.5 rounded-lg border border-[#f59e0b]/30 bg-[#f59e0b]/5">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#f59e0b] flex items-center gap-1.5 mb-1.5">
+              <Wrench size={11} /> O que fazer
+            </p>
+            <ul className="space-y-1">
+              {blockers.map((g, i) => {
+                const fix = GATE_FIX[g.name];
+                return (
+                  <li key={`fix-${g.name}-${i}`} className="text-[11px] text-on-surface flex items-start gap-1.5">
+                    {fix.fixable
+                      ? <CheckCircle2 size={11} className="text-[#f59e0b] mt-0.5 shrink-0" />
+                      : <XCircle size={11} className="text-red-400 mt-0.5 shrink-0" />}
+                    <span>{fix.action}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        );
+      })()}
+
+      {/* Como enviar o claim — filing channels + document checklist */}
+      {filing && eligibility !== "not_eligible" && eligibility !== "out_of_filing_window" && (
+        <FilingGuide filing={filing} needsPreauth={detail?.gates.some((g) => g.name === "preauth" && g.status !== "n/a") ?? false} />
+      )}
+
       {/* Deadline */}
       {detail?.deadline_date && (
         <p className="text-[10px] text-on-surface-variant/70">
@@ -394,6 +446,56 @@ export function EligibilityPanel({
           onClose={() => setShowConfirm(false)}
           onDone={() => { setShowConfirm(false); load(); }}
         />
+      )}
+    </div>
+  );
+}
+
+function FilingGuide({ filing, needsPreauth }: { filing: Filing; needsPreauth: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-outline-variant bg-surface-container-lowest overflow-hidden">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="w-full px-2.5 py-2 flex items-center gap-1.5 text-left hover:bg-surface-container transition"
+      >
+        {open ? <ChevronDown size={11} className="text-on-surface-variant shrink-0" /> : <ChevronRight size={11} className="text-on-surface-variant shrink-0" />}
+        <Send size={11} className="text-[#0ea5e9] shrink-0" />
+        <span className="text-[11px] font-medium text-on-surface">Como enviar o claim na APRIL</span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 space-y-2.5">
+          {filing.how_to_submit.length > 0 && (
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Canais</p>
+              {filing.how_to_submit.map((h, i) => (
+                <p key={i} className="text-[11px] text-on-surface leading-snug">
+                  {h.title && h.title !== "How to submit" ? <span className="font-medium">{h.title}: </span> : null}
+                  {h.text}
+                </p>
+              ))}
+            </div>
+          )}
+          {filing.required_documents.length > 0 && (
+            <div>
+              <p className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Checklist de documentos</p>
+              <ul className="space-y-0.5">
+                {filing.required_documents.map((d, i) => (
+                  <li key={i} className="text-[11px] text-on-surface flex items-start gap-1.5">
+                    <CheckCircle2 size={11} className="text-on-surface-variant/60 mt-0.5 shrink-0" />
+                    {d}
+                  </li>
+                ))}
+                {needsPreauth && (
+                  <li className="text-[11px] text-on-surface flex items-start gap-1.5">
+                    <AlertTriangle size={11} className="text-[#f59e0b] mt-0.5 shrink-0" />
+                    Este benefício exige o formulário de pré-autorização aprovado pelo departamento médico da APRIL.
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

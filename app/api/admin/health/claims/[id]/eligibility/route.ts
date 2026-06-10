@@ -264,7 +264,25 @@ export async function GET(_req: NextRequest, { params }: Params) {
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!data) return NextResponse.json({ claim: null });
-  return NextResponse.json({ claim: data });
+
+  // Filing instructions (how to submit + required documents) from the active
+  // policy's terms — the panel renders these so the user knows exactly how to
+  // file the APRIL claim without opening the policy page.
+  const { data: filingTerms } = await sb
+    .from("policy_terms")
+    .select("term_type, title, text")
+    .in("term_type", ["claim_rule", "required_document"])
+    .order("term_type");
+  const filing = {
+    how_to_submit: (filingTerms ?? [])
+      .filter((t) => t.term_type === "claim_rule")
+      .map((t) => ({ title: t.title as string | null, text: t.text as string })),
+    required_documents: (filingTerms ?? [])
+      .filter((t) => t.term_type === "required_document")
+      .map((t) => t.text as string),
+  };
+
+  return NextResponse.json({ claim: data, filing });
 }
 
 // ── PATCH: manual confirm / override ─────────────────────────────────────────
