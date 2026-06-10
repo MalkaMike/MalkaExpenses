@@ -11,6 +11,7 @@ import { CATEGORY_META, getCategoryTree } from "@/lib/categories/meta";
 import type { Role } from "@/lib/auth/admin";
 import { useLang } from "@/lib/i18n/context";
 import { t, type Lang } from "@/lib/i18n/translations";
+import { safeJson } from "@/lib/http";
 
 type Row = {
   id: string;
@@ -74,7 +75,7 @@ export function TransactionsClient({
         body: JSON.stringify({ hide: hiding })
       });
       if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
+        const j = await safeJson(res);
         toast.error(j.error ?? "erro");
         return;
       }

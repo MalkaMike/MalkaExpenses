@@ -4,6 +4,7 @@ import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { syncPluggyItem } from "@/lib/pluggy/sync";
 import { PluggyConfigError } from "@/lib/pluggy/client";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -16,7 +17,7 @@ export async function POST(req: NextRequest) {
   if ((await getRole()) !== "admin") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }

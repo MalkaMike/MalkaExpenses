@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { RefreshCw, ChevronRight, Loader2 } from "lucide-react";
+import { safeJson } from "@/lib/http";
 
 // Admin tool: re-pull transactions for every connected Pluggy bank.
 export function PluggySyncButton() {
@@ -18,7 +19,7 @@ export function PluggySyncButton() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({})
       });
-      const j = await r.json().catch(() => ({}));
+      const j = await safeJson(r);
       if (r.status === 503) {
         toast.error("Open Finance não configurado (faltam as chaves Pluggy).", { id: tid });
         return;

@@ -8,6 +8,7 @@ import { getCategoryMeta, getCategoryTree, CATEGORY_META } from "@/lib/categorie
 import { formatBRL } from "@/lib/format";
 import { useLang } from "@/lib/i18n/context";
 import { t, type Lang } from "@/lib/i18n/translations";
+import { safeJson } from "@/lib/http";
 
 export type BudgetRow = {
   id: string;
@@ -46,7 +47,7 @@ export function BudgetsClient({ rows, canEdit }: { rows: BudgetRow[]; canEdit: b
         })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         toast.error(j.error ?? t("budget.toast_err", lang));
         return;
       }

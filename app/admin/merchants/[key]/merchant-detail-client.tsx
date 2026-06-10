@@ -5,6 +5,7 @@ import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerg
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { ReceiptFinderButton } from "@/components/receipt-finder-button";
 import { MoveDescriptionButton } from "@/components/move-description-button";
+import { safeJson } from "@/lib/http";
 
 type Row = {
   id: string;
@@ -134,7 +135,7 @@ export function MerchantDetailClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ modification_id: modId })
       });
-      const j = await r.json().catch(() => ({}));
+      const j = await safeJson(r);
       if (!r.ok) throw new Error((j as { error?: string }).error ?? `Erro ${r.status}`);
       const jj = j as { source_name?: string; restored_descriptions?: number };
       setUndoDone(`"${jj.source_name}" separado novamente (${jj.restored_descriptions} descrições restauradas)`);
@@ -160,7 +161,7 @@ export function MerchantDetailClient({
         })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       const j = await r.json();
@@ -193,7 +194,7 @@ export function MerchantDetailClient({
         })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       const j = await r.json();
@@ -221,7 +222,7 @@ export function MerchantDetailClient({
         })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       const j = await r.json();
@@ -269,7 +270,7 @@ export function MerchantDetailClient({
         })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       // Navigate to the surviving (target) cluster — it now contains all txs
@@ -305,7 +306,7 @@ export function MerchantDetailClient({
         body: JSON.stringify({ canonical_key: canonicalKey, name: trimmed })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       setEditingName(false);
@@ -345,7 +346,7 @@ export function MerchantDetailClient({
           })
         });
         if (!r.ok) {
-          const j = await r.json().catch(() => ({}));
+          const j = await safeJson(r);
           const name = selectedForMerge.get(key)?.name ?? key;
           throw new Error(`Erro ao fundir "${name}": ${j.error ?? r.status}`);
         }
@@ -359,7 +360,7 @@ export function MerchantDetailClient({
           body: JSON.stringify({ canonical_key: canonicalKey, name: trimmed })
         });
         if (!r.ok) {
-          const j = await r.json().catch(() => ({}));
+          const j = await safeJson(r);
           throw new Error(`Erro ao renomear: ${j.error ?? r.status}`);
         }
       }
@@ -436,7 +437,7 @@ export function MerchantDetailClient({
         body: JSON.stringify({ hide: willHide })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       // Don't refresh whole page — keep the local optimistic state until next

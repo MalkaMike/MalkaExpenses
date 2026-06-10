@@ -17,6 +17,7 @@ import { formatBRL, formatDate } from "@/lib/format";
 import type { Role } from "@/lib/auth/admin";
 import { useLang } from "@/lib/i18n/context";
 import { t } from "@/lib/i18n/translations";
+import { safeJson } from "@/lib/http";
 
 export type EditableTx = {
   id: string;
@@ -81,7 +82,7 @@ export function TransactionEditModal({
         body: JSON.stringify(body)
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         toast.error(j.error ?? "erro ao salvar");
         return;
       }

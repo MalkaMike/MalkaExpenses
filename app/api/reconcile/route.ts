@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { runReconcileScan } from "@/lib/reconciliation/run";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
   if ((await getRole()) !== "admin") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }

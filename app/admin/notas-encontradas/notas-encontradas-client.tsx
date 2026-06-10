@@ -5,6 +5,7 @@ import {
   Briefcase, Shield, Tag, ChevronRight, Pencil, CheckCheck as CheckCheckIcon
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
+import { safeJson } from "@/lib/http";
 
 // ── Shared types (also imported by the server page) ─────────────────────────
 
@@ -107,7 +108,7 @@ function CategoryPicker({
         body: JSON.stringify({ canonical_key: merchantKey, category_id: categoryId })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       onSaved(merchantKey, categoryId);
@@ -242,7 +243,7 @@ export function NotasEncontradasClient({
         body: JSON.stringify(body)
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       markDone([receiptId]);
@@ -263,7 +264,7 @@ export function NotasEncontradasClient({
         body: JSON.stringify({ receipt_ids: ids, confirmed: true })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       markDone(ids);

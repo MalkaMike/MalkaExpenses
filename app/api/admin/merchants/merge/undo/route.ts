@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { invalidateCache } from "@/lib/merchants/clusters";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   await requireAdmin();
 
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) return NextResponse.json({ error: "bad input" }, { status: 400 });
   const { modification_id } = parsed.data;
 

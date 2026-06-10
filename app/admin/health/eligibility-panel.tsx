@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 import { SourceQuote } from "./source-quote";
+import { safeJson } from "@/lib/http";
 
 // ============================================================================
 // The "AI explains" panel — the user's #1 ask.
@@ -199,7 +200,7 @@ export function EligibilityPanel({
         return;
       }
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error || `HTTP ${r.status}`);
       }
       load();
@@ -560,7 +561,7 @@ function ConfirmModal({
         }),
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error || `HTTP ${r.status}`);
       }
       onDone();

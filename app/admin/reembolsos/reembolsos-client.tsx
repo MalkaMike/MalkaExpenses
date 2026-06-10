@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, Send, X, Loader2, Trash2, RotateCcw } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { DataTable, type Column } from "@/components/data-table";
+import { safeJson } from "@/lib/http";
 
 export type TagSummary = {
   pendingCount: number;
@@ -201,7 +202,7 @@ export function ReembolsosClient({
         body: JSON.stringify({ status })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? "Erro");
       }
       router.refresh();

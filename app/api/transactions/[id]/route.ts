@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getRole, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { householdSafeTransaction } from "@/lib/security/sanitize";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   }

@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Landmark, Loader2 } from "lucide-react";
+import { safeJson } from "@/lib/http";
 
 // The widget touches `window`, so load it client-only.
 const PluggyConnect = dynamic(
@@ -46,7 +47,7 @@ export function PluggyConnectButton() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: item.id })
       });
-      const j = await r.json().catch(() => ({}));
+      const j = await safeJson(r);
       if (!r.ok) {
         toast.error(j.error ?? "Falha ao sincronizar.", { id: tid });
         return;

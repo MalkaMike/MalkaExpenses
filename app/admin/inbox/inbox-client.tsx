@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Check, EyeOff, Pencil, Plus, X, Loader2, Save, CheckCheck } from "lucide-react";
 import { getCategoryMeta, getCategoryTree } from "@/lib/categories/meta";
 import { formatBRL, formatDate } from "@/lib/format";
+import { safeJson } from "@/lib/http";
 
 export type InboxRow = {
   id: string;
@@ -51,7 +52,7 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
       body: JSON.stringify(body)
     });
     if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
+      const j = await safeJson(r);
       throw new Error(j.error ?? "erro");
     }
   }
@@ -353,7 +354,7 @@ function AddEntry({
         body: JSON.stringify({ account_id: accountId, date, description: description.trim(), shared_amount: shared, category_slug: slug, is_fake: isFake })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         toast.error(j.error ?? "erro ao criar");
         return;
       }

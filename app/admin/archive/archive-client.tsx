@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { Undo2, Trash2, Loader2 } from "lucide-react";
 import { CategoryIcon } from "@/components/category-chip";
 import { formatBRL, formatDate } from "@/lib/format";
+import { safeJson } from "@/lib/http";
 
 export type ArchivedRow = {
   id: string;
@@ -36,7 +37,7 @@ export function ArchiveClient({ rows: initial }: { rows: ArchivedRow[] }) {
         body: JSON.stringify({ hide: false })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         toast.error(j.error ?? "erro ao restaurar");
         return;
       }

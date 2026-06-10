@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -24,7 +25,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   await requireAdmin();
 
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) {
     return NextResponse.json({ error: "bad input" }, { status: 400 });
   }

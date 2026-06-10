@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, GitMerge, X, RefreshCw, ChevronRight, Sparkles } from "lucide-react";
 import { formatInt } from "@/lib/format";
+import { safeJson } from "@/lib/http";
 
 type Suggestion = {
   cluster_a: { key: string; name: string; txCount: number };
@@ -59,7 +60,7 @@ export function SuggestionsClient() {
         })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       // Remove this suggestion + any other suggestion involving cluster B
@@ -106,7 +107,7 @@ export function SuggestionsClient() {
           })
         });
         if (!r.ok) {
-          const j = await r.json().catch(() => ({}));
+          const j = await safeJson(r);
           console.error(`Erro ao fundir ${s.cluster_b.name}: ${j.error ?? r.status}`);
         } else {
           setData((prev) =>

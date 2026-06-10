@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeftRight, ChevronRight, Loader2 } from "lucide-react";
+import { safeJson } from "@/lib/http";
 
 // Admin tool: scan existing bank outflows and mark credit-card bill payments
 // as transfers (so they don't double-count against the card's own line items).
@@ -19,7 +20,7 @@ export function ReconcileButton() {
         body: JSON.stringify({})
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         toast.error(j.error ?? "erro ao reconciliar");
         return;
       }

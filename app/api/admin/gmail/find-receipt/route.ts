@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getValidAccessToken } from "@/lib/gmail/oauth";
 import { findReceiptsForTransactionV2 } from "@/lib/gmail/find-receipt-v2";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -20,7 +21,7 @@ const Body = z.object({
 export async function POST(req: NextRequest) {
   await requireAdmin();
 
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) {
     return NextResponse.json({ error: "bad input" }, { status: 400 });
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { serverClient } from "@/lib/supabase/server";
 import { getRole } from "@/lib/auth/admin";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,7 @@ export async function POST(req: NextRequest) {
   if (role !== "admin" && role !== "household") {
     return NextResponse.json({ error: "auth required" }, { status: 401 });
   }
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) return NextResponse.json({ error: parsed.error.message }, { status: 400 });
   const sb = serverClient();
   const { data: cat } = await sb

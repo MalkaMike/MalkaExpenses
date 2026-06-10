@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -19,7 +20,7 @@ const Body = z.object({
 // "remove". Idempotent (ON CONFLICT DO NOTHING for add).
 export async function POST(req: NextRequest) {
   await requireAdmin();
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) return NextResponse.json({ error: "bad input" }, { status: 400 });
   const { transaction_ids, tag_slug, action } = parsed.data;
 

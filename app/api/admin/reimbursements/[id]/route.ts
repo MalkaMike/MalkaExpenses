@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -22,7 +23,7 @@ export async function PATCH(
 ) {
   await requireAdmin();
   const { id } = await ctx.params;
-  const parsed = PatchBody.safeParse(await req.json().catch(() => ({})));
+  const parsed = PatchBody.safeParse(await safeJson(req));
   if (!parsed.success) return NextResponse.json({ error: "bad input" }, { status: 400 });
   const b = parsed.data;
 

@@ -5,6 +5,7 @@ import { loginHousehold, validateHouseholdPassword } from "@/lib/auth/household"
 import { loginHealth, validateHealthPassword } from "@/lib/auth/health";
 import { loginSecretary, validateSecretaryPassword } from "@/lib/auth/secretary";
 import { serverClient } from "@/lib/supabase/server";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -66,7 +67,7 @@ async function rejectInvalid(): Promise<NextResponse> {
 }
 
 export async function POST(req: NextRequest) {
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   if (!parsed.success) return NextResponse.json({ error: "bad input" }, { status: 400 });
 
   const { username, password } = parsed.data;

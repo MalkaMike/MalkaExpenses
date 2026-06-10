@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRightLeft, Loader2, Search, X, Plus, ChevronRight } from "lucide-react";
+import { safeJson } from "@/lib/http";
 
 type ClusterOption = { key: string; name: string };
 
@@ -56,7 +57,7 @@ export function MoveDescriptionButton({ descriptionRaw, currentName, allClusters
         })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       const j = await r.json();
@@ -86,7 +87,7 @@ export function MoveDescriptionButton({ descriptionRaw, currentName, allClusters
         })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
       const j = await r.json();

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { getRole } from "@/lib/auth/admin";
 import { createConnectToken, PluggyConfigError } from "@/lib/pluggy/client";
+import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
 
@@ -13,7 +14,7 @@ export async function POST(req: NextRequest) {
   if ((await getRole()) !== "admin") {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  const parsed = Body.safeParse(await req.json().catch(() => ({})));
+  const parsed = Body.safeParse(await safeJson(req));
   const itemId = parsed.success ? parsed.data.itemId : undefined;
 
   try {

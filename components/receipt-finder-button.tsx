@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Paperclip, Loader2, ExternalLink, X, Check, RefreshCw, FileSearch, ShieldCheck, FileText, Eye } from "lucide-react";
 import { formatDate } from "@/lib/format";
+import { safeJson } from "@/lib/http";
 
 type Match = {
   id?: string;
@@ -55,7 +56,7 @@ export function ReceiptFinderButton({ transactionId, merchantName, searched, mat
         body: JSON.stringify({ transaction_id: transactionId, merchant_name: merchantName, refresh })
       });
       if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
+        const j = await safeJson(r);
         if (r.status === 412) throw new Error("Gmail não conectado");
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
