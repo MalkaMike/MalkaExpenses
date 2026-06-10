@@ -27,7 +27,7 @@ import { hasSecretaryCookie } from "./secretary";
 
 export type Role = "public" | "household" | "admin" | "health" | "secretary";
 export const COOKIE_NAME = "pf_admin";
-const TOKEN_ROLE: "admin" = "admin";
+const TOKEN_ROLE = "admin" as const;
 const FUTURE_SKEW_MS = 60_000;
 
 function sign(payload: string): string {

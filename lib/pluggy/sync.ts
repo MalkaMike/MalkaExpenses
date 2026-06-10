@@ -79,7 +79,7 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
 
     let accountId: string;
     let isNew = false;
-    let lastSync: string | null = existing?.pluggy_last_sync ?? null;
+    const lastSync: string | null = existing?.pluggy_last_sync ?? null;
 
     if (existing) {
       accountId = existing.id as string;

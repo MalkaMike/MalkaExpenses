@@ -12,7 +12,7 @@ import { env } from "@/lib/env";
 
 export const SECRETARY_COOKIE_NAME = "pf_secretary";
 const SECRETARY_TIMEOUT_DAYS = 90;
-const TOKEN_ROLE: "secretary" = "secretary";
+const TOKEN_ROLE = "secretary" as const;
 const FUTURE_SKEW_MS = 60_000;
 
 function sign(payload: string): string {

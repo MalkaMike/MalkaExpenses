@@ -571,7 +571,10 @@ export function NotaFiscaisClient() {
       fetch(`/api/admin/nota-fiscais/${selected.id}`)
         .then((r) => r.json())
         .then(setDetail)
-        .catch(() => {});
+        .catch((e) => {
+          // Non-critical refresh (list already re-fetches), but never silent.
+          console.warn("[nota-fiscais] detail refresh failed:", (e as Error).message);
+        });
     }
   }, [selected?.id]);
 

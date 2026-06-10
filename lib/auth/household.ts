@@ -18,7 +18,7 @@ import { env } from "@/lib/env";
 
 export const HOUSEHOLD_COOKIE_NAME = "pf_household";
 const HOUSEHOLD_TIMEOUT_DAYS = 90; // long-lived; wife shouldn't have to re-enter weekly
-const TOKEN_ROLE: "household" = "household";
+const TOKEN_ROLE = "household" as const;
 const FUTURE_SKEW_MS = 60_000;
 
 function sign(payload: string): string {

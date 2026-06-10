@@ -12,7 +12,7 @@ import { env } from "@/lib/env";
 
 export const HEALTH_COOKIE_NAME = "pf_health";
 const HEALTH_TIMEOUT_DAYS = 90;
-const TOKEN_ROLE: "health" = "health";
+const TOKEN_ROLE = "health" as const;
 const FUTURE_SKEW_MS = 60_000;
 
 function sign(payload: string): string {

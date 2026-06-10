@@ -131,8 +131,12 @@ export async function clusterForAsync(rawDescription: string): Promise<ClusterEn
 /** Sync fallback (uses JSON only). Prefer clusterForAsync. */
 export function clusterFor(rawDescription: string): ClusterEntry {
   if (!primaryLoaded) {
-    // Fire-and-forget; first call returns JSON, subsequent get DB
-    ensureLoaded().catch(() => {});
+    // Fire-and-forget warm-up; first call returns JSON, subsequent get DB.
+    // A load failure is survivable (JSON fallback keeps working) but must be
+    // visible in logs, not swallowed.
+    ensureLoaded().catch((e) => {
+      console.warn("[clusters] DB cluster load failed, serving JSON fallback:", (e as Error).message);
+    });
     return clusterLookup(rawDescription, /*forceJson*/ true);
   }
   return clusterLookup(rawDescription);

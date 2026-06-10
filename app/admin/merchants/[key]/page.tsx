@@ -40,7 +40,7 @@ export default async function MerchantDetailPage({
 
   // Pull transactions: either by description match (if we have the cluster map)
   // or by exact description if the key was a fallback
-  let txs: Array<{
+  const txs: Array<{
     id: string;
     date: string;
     description_raw: string;

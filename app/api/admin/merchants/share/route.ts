@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   const descList = (rawDescs ?? []).map((r) => r.description_raw as string);
 
   type TxBefore = { id: string; shared_amount: number; real_amount: number };
-  let beforeRows: TxBefore[] = [];
+  const beforeRows: TxBefore[] = [];
   if (descList.length > 0) {
     for (let i = 0; i < descList.length; i += 200) {
       const slice = descList.slice(i, i + 200);
