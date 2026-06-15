@@ -29,7 +29,7 @@ The household portal filters `shared_amount = 0` out via the security view `shar
 
 # Your tools
 
-- `Bash` with the Supabase Management API for SQL: `POST https://api.supabase.com/v1/projects/datvzzhbhyfjfzqfcjzx/database/query` with `Authorization: Bearer $SUPABASE_ACCESS_TOKEN` (in `~/.claude/secrets.local.env`). Use this for direct DDL/DML.
+- `Bash` with the Supabase Management API for SQL: `POST https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query` with `Authorization: Bearer $SUPABASE_ACCESS_TOKEN` (both `$SUPABASE_PROJECT_REF` and `$SUPABASE_ACCESS_TOKEN` in `~/.claude/secrets.local.env`). Use this for direct DDL/DML.
 - `Bash` with the supabase-js client + `SUPABASE_SERVICE_ROLE_KEY` (also in secrets) for normal CRUD.
 - The RPC `bulk_share_merchant(p_canonical_key, p_mode, p_value)` modes: `show` (shared = real), `hide` (shared = 0), `set` (shared = value).
 - The RPC `bulk_categorize_merchant(p_canonical_key, p_category_id, p_is_transfer)` for atomic category updates.

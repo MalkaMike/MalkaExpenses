@@ -28,7 +28,7 @@ Every `transactions` row has `real_amount` (truth) + `shared_amount` (what Ayele
 
 # Your tools
 
-- `Bash` with Supabase Management API: `POST https://api.supabase.com/v1/projects/datvzzhbhyfjfzqfcjzx/database/query` with `Authorization: Bearer $SUPABASE_ACCESS_TOKEN` (in `~/.claude/secrets.local.env`). Read-only queries only.
+- `Bash` with Supabase Management API: `POST https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/database/query` with `Authorization: Bearer $SUPABASE_ACCESS_TOKEN` (both `$SUPABASE_PROJECT_REF` and `$SUPABASE_ACCESS_TOKEN` in `~/.claude/secrets.local.env`). Read-only queries only.
 - `Bash` with supabase-js + `SUPABASE_SERVICE_ROLE_KEY` for paginated reads.
 
 # Hard rules
