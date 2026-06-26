@@ -6,19 +6,23 @@ import { syncPluggyItem } from "@/lib/pluggy/sync";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// POST /api/pluggy/webhook?token=SECRET
+// POST /api/pluggy/webhook
 // Pluggy calls this on item/transaction changes. Per Pluggy's contract we MUST
 // return 2XX within 5 seconds — so we acknowledge immediately and run the heavy
 // sync (fetch accounts + transactions + AI categorization, easily >5s) AFTER the
 // response via Next's after(), which keeps the work alive on Vercel.
 //
-// Guarded by a shared secret in the query string (PLUGGY_WEBHOOK_SECRET, set on
-// both Vercel and the Pluggy dashboard webhook URL). Returns 404 when missing/
-// wrong — no signal the endpoint exists. Credentials (PLUGGY_CLIENT_ID/SECRET)
-// live only in env; this handler never touches them directly.
+// Auth: reads PLUGGY_WEBHOOK_SECRET from env and accepts it via:
+//   1. Header: X-Pluggy-Signature (preferred — never logged by proxies/CDNs)
+//   2. Query string: ?token=SECRET (legacy fallback — remove once Pluggy dashboard
+//      webhook URL is updated to drop the ?token= param)
+// Returns 404 when missing/wrong — no signal the endpoint exists.
+// Credentials (PLUGGY_CLIENT_ID/SECRET) live only in env; never touched here.
 export async function POST(req: NextRequest) {
   const secret = process.env.PLUGGY_WEBHOOK_SECRET;
-  const token = req.nextUrl.searchParams.get("token");
+  const token =
+    req.headers.get("x-pluggy-signature") ??
+    req.nextUrl.searchParams.get("token");
   if (!secret || token !== secret) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
