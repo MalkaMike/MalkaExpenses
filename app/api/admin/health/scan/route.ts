@@ -6,6 +6,7 @@ import { recomputeOne } from "@/lib/eligibility/recompute";
 import { maybeQueueSecretaryEmail } from "@/lib/health/lifecycle";
 import { randomUUID } from "crypto";
 import { uploadFile } from "@/lib/storage/supabase-storage";
+import { fromDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -205,7 +206,7 @@ export async function POST(req: NextRequest) {
         .eq("is_fake", false);
       const provTokens = tokens(nf.provider_name ?? "");
       const cand = (txs ?? []).filter((t) => {
-        const amt = Math.abs(Number(t.real_amount));
+        const amt = Math.abs(fromDb(Number(t.real_amount)));
         const amtOk = Math.abs(amt - A) <= Math.max(5, A * 0.05);
         const desc = (t.description_clean ?? "").toUpperCase();
         const merchOk = provTokens.some((tok) => desc.includes(tok));

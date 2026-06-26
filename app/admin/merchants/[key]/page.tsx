@@ -3,6 +3,7 @@ import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, rawDescriptionsForKeyDirect, preloadClusters } from "@/lib/merchants/clusters";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
+import { fromDb } from "@/lib/money";
 import { MerchantDetailClient } from "./merchant-detail-client";
 
 export const dynamic = "force-dynamic";
@@ -101,8 +102,8 @@ export default async function MerchantDetailPage({
   for (const a of accounts ?? []) accountNameById.set(a.id as string, a.name as string);
 
   // Stats
-  const totalAbs = txs.reduce((s, t) => s + Math.abs(Number(t.real_amount)), 0);
-  const totalSigned = txs.reduce((s, t) => s + Number(t.real_amount), 0);
+  const totalAbs = txs.reduce((s, t) => s + Math.abs(fromDb(Number(t.real_amount))), 0);
+  const totalSigned = txs.reduce((s, t) => s + fromDb(Number(t.real_amount)), 0);
   const oldest = txs.length > 0 ? txs[txs.length - 1].date : null;
   const newest = txs.length > 0 ? txs[0].date : null;
 
@@ -129,8 +130,8 @@ export default async function MerchantDetailPage({
     date: t.date,
     description: t.description_clean ?? t.description_raw,
     descriptionRaw: t.description_raw,
-    amount: Number(t.real_amount),
-    sharedAmount: Number(t.shared_amount),
+    amount: fromDb(Number(t.real_amount)),
+    sharedAmount: fromDb(Number(t.shared_amount)),
     accountName: accountNameById.get(t.account_id) ?? "—",
     categoryName: t.category_id ? catNameById.get(t.category_id) ?? "—" : "—",
     source: t.source,
@@ -141,7 +142,7 @@ export default async function MerchantDetailPage({
 
   // Aggregate the current shared state across the cluster — used to seed the
   // "Compartilhar com Ayelet" panel default selection.
-  const totalShared = txs.reduce((s, t) => s + Number(t.shared_amount), 0);
+  const totalShared = txs.reduce((s, t) => s + fromDb(Number(t.shared_amount)), 0);
   const allHidden = txs.every((t) => Number(t.shared_amount) === 0);
   const allShown = txs.every(
     (t) => Number(t.shared_amount) === Number(t.real_amount)

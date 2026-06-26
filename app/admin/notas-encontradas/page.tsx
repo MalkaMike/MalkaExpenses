@@ -3,6 +3,7 @@ import { getRole } from "@/lib/auth/admin";
 import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
+import { fromDb } from "@/lib/money";
 import {
   NotasEncontradasClient,
   type FoundReceipt,
@@ -63,7 +64,7 @@ export default async function NotasEncontradasPage() {
       txById.set(t.id as string, {
         date: t.date as string,
         description_raw: t.description_raw as string,
-        real_amount: Number(t.real_amount),
+        real_amount: fromDb(Number(t.real_amount)),
         account_id: t.account_id as string,
         visible
       });

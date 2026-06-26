@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/page-header";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { formatBRL, formatInt } from "@/lib/format";
+import { fromDb } from "@/lib/money";
 import { ReembolsosClient, type ReembolsoRow, type TagSummary } from "./reembolsos-client";
 
 export const dynamic = "force-dynamic";
@@ -75,7 +76,7 @@ export default async function ReembolsosPage({
           .select("id, real_amount")
           .in("id", slice);
         for (const t of txs ?? []) {
-          realAmtById.set(t.id as string, Math.abs(Number(t.real_amount)));
+          realAmtById.set(t.id as string, Math.abs(fromDb(Number(t.real_amount))));
         }
       }
     }
@@ -141,7 +142,7 @@ export default async function ReembolsosPage({
   const rows: ReembolsoRow[] = (reimbs ?? []).map((r) => {
     const reimb = r as ReimbDb;
     const tx = txMap.get(reimb.transaction_id);
-    const realAmt = tx ? Math.abs(Number(tx.real_amount)) : 0;
+    const realAmt = tx ? Math.abs(fromDb(Number(tx.real_amount))) : 0;
     const claimAmt =
       reimb.reimbursement_amount != null
         ? Math.abs(Number(reimb.reimbursement_amount))

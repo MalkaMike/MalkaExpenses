@@ -5,6 +5,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { getValidAccessToken } from "@/lib/gmail/oauth";
 import { findReceiptsForTransactionV2 } from "@/lib/gmail/find-receipt-v2";
 import { safeJson } from "@/lib/http";
+import { fromDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -39,7 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "transaction not found" }, { status: 404 });
   }
 
-  const absAmount = Math.abs(Number(tx.real_amount));
+  const absAmount = Math.abs(fromDb(Number(tx.real_amount)));
 
   // Return cached results unless refresh=true
   if (!refresh) {

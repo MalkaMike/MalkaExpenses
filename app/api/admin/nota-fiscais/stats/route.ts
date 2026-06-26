@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
+import { fromDb } from "@/lib/money";
 
 export const runtime = "nodejs";
 
@@ -103,7 +104,7 @@ export async function GET() {
       transaction_id: tx.id,
       date: tx.date,
       description: tx.description_clean,
-      amount: Math.abs(Number(tx.real_amount)),
+      amount: Math.abs(fromDb(Number(tx.real_amount))),
     })),
     missing_nf_count: missingNfs.length,
     unmatched_pending: unmatchedPending,

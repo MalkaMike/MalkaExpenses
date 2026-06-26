@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters, invalidateCache } from "@/lib/merchants/clusters";
 import { formatBRL, formatInt } from "@/lib/format";
+import { fromDb } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
@@ -83,7 +84,7 @@ export default async function MerchantsPage({
 
   const filtered = all.filter((t) => {
     if (!includeTransfers && t.is_transfer) return false;
-    const amt = Number(t.real_amount);
+    const amt = fromDb(Number(t.real_amount));
     if (direction === "out") return amt < 0;
     if (direction === "in") return amt > 0;
     return true;
@@ -107,8 +108,8 @@ export default async function MerchantsPage({
     }
     const g = groups.get(c.key)!;
     g.txCount++;
-    const amt = Number(t.real_amount);
-    const sharedAmt = Number(t.shared_amount);
+    const amt = fromDb(Number(t.real_amount));
+    const sharedAmt = fromDb(Number(t.shared_amount));
     g.totalAbs += Math.abs(amt);
     g.totalSigned += amt;
     g.uniqueDescriptions.add(t.description_raw);

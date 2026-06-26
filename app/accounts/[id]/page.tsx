@@ -7,6 +7,7 @@ import { sharedClient } from "@/lib/supabase/shared-client";
 import { TransactionRow } from "@/components/transaction-row";
 import { BankSquare } from "@/components/bank-square";
 import { formatBRL, formatInt, monthLabel } from "@/lib/format";
+import { fromDb } from "@/lib/money";
 import { getLang } from "@/lib/i18n/server";
 import { t, type Lang, type StringKey } from "@/lib/i18n/translations";
 import { AccountEditPanel } from "./account-edit-panel";
@@ -60,8 +61,8 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
   };
 
   let rows: RowOut[] = [];
-  let sharedBalance = Number(account.shared_starting_balance);
-  let realBalance: number | null = role === "admin" ? Number(account.real_starting_balance) : null;
+  let sharedBalance = fromDb(Number(account.shared_starting_balance));
+  let realBalance: number | null = role === "admin" ? fromDb(Number(account.real_starting_balance)) : null;
 
   if (role !== "admin") {
     const sh = sharedClient();
@@ -71,12 +72,12 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
       .eq("account_id", id)
       .order("date", { ascending: false })
       .limit(300);
-    for (const r of data ?? []) sharedBalance += Number(r.amount);
+    for (const r of data ?? []) sharedBalance += fromDb(Number(r.amount));
     rows = (data ?? []).map((r) => ({
       id: r.id,
       date: r.date,
       description: r.description ?? "",
-      amountShared: Number(r.amount),
+      amountShared: fromDb(Number(r.amount)),
       amountReal: null,
       isFake: false,
       isTransfer: r.is_transfer,
@@ -93,8 +94,8 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
       .order("date", { ascending: false })
       .limit(300);
     for (const r of data ?? []) {
-      sharedBalance += Number(r.shared_amount);
-      if (realBalance !== null) realBalance += Number(r.real_amount);
+      sharedBalance += fromDb(Number(r.shared_amount));
+      if (realBalance !== null) realBalance += fromDb(Number(r.real_amount));
     }
     rows = (data ?? []).map((r: {
       id: string;
@@ -110,8 +111,8 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
       id: r.id,
       date: r.date,
       description: r.description_clean ?? r.description_raw,
-      amountShared: Number(r.shared_amount),
-      amountReal: Number(r.real_amount),
+      amountShared: fromDb(Number(r.shared_amount)),
+      amountReal: fromDb(Number(r.real_amount)),
       isFake: r.is_fake,
       isTransfer: r.is_transfer,
       categorySlug: Array.isArray(r.categories)
