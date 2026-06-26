@@ -195,9 +195,8 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
                             }}
                             disabled={isBusy}
                             title={allTagged ? `Remover tag ${t.name}` : `Marcar todas como ${t.name}`}
-                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border flex items-center gap-0.5 transition select-none
-                              ${isBusy ? colors.busy + " cursor-wait" : allTagged ? colors.active : colors.ghost + " hover:opacity-90"}
-                              ${!allTagged && !isBusy ? "opacity-50 hover:opacity-100" : ""}
+                            className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border flex items-center gap-0.5 transition select-none
+                              ${isBusy ? colors.busy + " cursor-wait" : allTagged ? colors.active : colors.ghost}
                             `}
                           >
                             {isBusy ? <Loader2 size={8} className="animate-spin" /> : <TagIcon icon={t.icon} size={8} />}
