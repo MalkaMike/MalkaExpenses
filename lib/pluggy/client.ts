@@ -79,7 +79,48 @@ async function authedFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 type Paged<T> = { results: T[]; total: number; totalPages: number; page: number };
 
+// ── Enrichment API (separate base URL) ──────────────────────────────────────
+const PLUGGY_ENRICH_BASE = "https://enrichment-api.pluggy.ai";
+
+export type PluggyEnrichedTransaction = {
+  id: string;
+  category: string | null;
+  merchant: {
+    name: string | null;
+    businessName: string | null;
+    cnpj: string | null;
+  } | null;
+};
+
 // ── API surface ──────────────────────────────────────────────────────────────
+
+/**
+ * Enrich up to 5000 transactions via Pluggy's Enrichment API.
+ * Returns cleaned merchant name + standardized category per transaction.
+ * Uses a different base URL (enrichment-api.pluggy.ai) but the same API key.
+ */
+export async function enrichTransactions(
+  transactions: Array<{ id: string; amount: number; date: string; description: string }>,
+  opts?: { accountType?: "CHECKING" | "CREDIT_CARD" }
+): Promise<PluggyEnrichedTransaction[]> {
+  if (transactions.length === 0) return [];
+  const apiKey = await getApiKey();
+  const res = await fetch(`${PLUGGY_ENRICH_BASE}/categorize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-KEY": apiKey },
+    body: JSON.stringify({
+      transactions,
+      accountType: opts?.accountType ?? "CHECKING",
+      isBusiness: false
+    })
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Pluggy enrich failed (${res.status}): ${body.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as { results: PluggyEnrichedTransaction[] };
+  return json.results ?? [];
+}
 
 /** Short-lived token the front-end Connect widget needs. */
 export async function createConnectToken(options?: {

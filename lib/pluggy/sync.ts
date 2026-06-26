@@ -4,10 +4,12 @@ import {
   getItem,
   listAccounts,
   listTransactions,
+  enrichTransactions,
   signedAmount,
   mapAccountType,
   mapBankKey,
-  type PluggyTransaction
+  type PluggyTransaction,
+  type PluggyEnrichedTransaction
 } from "@/lib/pluggy/client";
 import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
 import { isCcPaymentDescription } from "@/lib/reconciliation/cc-matcher";
@@ -124,30 +126,60 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
       .eq("source", "pluggy");
     const seen = new Set((existingTx ?? []).map((r) => r.external_id as string));
 
-    const newRows = pluggyTx
-      .filter((t) => !seen.has(t.id))
-      .map((t) => {
-        const amt = signedAmount(t);
-        const desc = t.description || t.descriptionRaw || "—";
-        return {
-          account_id: accountId,
-          date: isoToDate(t.date),
-          description_raw: desc,
-          description_clean: desc,
-          real_amount: toDb(amt),
-          // Staged: shared_amount=0 keeps it OUT of the household portal (the
-          // security view filters shared_amount<>0) until the admin accepts it.
-          shared_amount: 0,
-          source: "pluggy" as const,
-          status: "pending_review" as const,
-          created_by: "import" as const,
-          external_id: t.id
-        };
-      });
+    // Build rows keyed by pluggy id so we can apply enrichment before insert.
+    const newTxById = new Map(
+      pluggyTx.filter((t) => !seen.has(t.id)).map((t) => [t.id, t])
+    );
+    const newRows = Array.from(newTxById.values()).map((t) => {
+      const amt = signedAmount(t);
+      const desc = t.description || t.descriptionRaw || "—";
+      return {
+        account_id: accountId,
+        date: isoToDate(t.date),
+        description_raw: desc,
+        description_clean: desc,
+        real_amount: toDb(amt),
+        // Staged: shared_amount=0 keeps it OUT of the household portal (the
+        // security view filters shared_amount<>0) until the admin accepts it.
+        shared_amount: 0,
+        source: "pluggy" as const,
+        status: "pending_review" as const,
+        created_by: "import" as const,
+        external_id: t.id
+      };
+    });
 
     // Pluggy's own category per transaction id — used as a categorization prior.
     const pluggyCatById = new Map<string, string | null>();
     for (const t of pluggyTx) pluggyCatById.set(t.id, t.category ?? null);
+
+    // Enrich new transactions: get clean merchant name + better category from
+    // Pluggy's enrichment model. Non-fatal — falls back to the standard pipeline.
+    const enrichById = new Map<string, PluggyEnrichedTransaction>();
+    if (newTxById.size > 0) {
+      try {
+        const accountType = pa.type === "CREDIT" ? "CREDIT_CARD" : "CHECKING";
+        const enriched = await enrichTransactions(
+          Array.from(newTxById.values()).map((t) => ({
+            id: t.id,
+            amount: signedAmount(t),
+            date: t.date,
+            description: t.description || t.descriptionRaw || ""
+          })),
+          { accountType }
+        );
+        for (const e of enriched) enrichById.set(e.id, e);
+      } catch {
+        // enrichment failure is non-fatal — rows still get categorized via merchant rules / AI
+      }
+    }
+
+    // Apply enriched merchant name to description_clean when available.
+    const newRowsEnriched = newRows.map((row) => {
+      const enriched = enrichById.get(row.external_id);
+      const merchantName = enriched?.merchant?.name ?? enriched?.merchant?.businessName ?? null;
+      return merchantName ? { ...row, description_clean: merchantName } : row;
+    });
 
     let insertedIds: Array<{
       id: string;
@@ -155,11 +187,12 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
       description: string;
       amount: number;
       pluggyCategory: string | null;
+      enrichedCategory: string | null;
     }> = [];
-    if (newRows.length > 0) {
+    if (newRowsEnriched.length > 0) {
       const { data: ins, error: insErr } = await sb
         .from("transactions")
-        .insert(newRows)
+        .insert(newRowsEnriched)
         .select("id, date, description_raw, real_amount, external_id");
       if (!insErr && ins) {
         insertedIds = ins.map((r) => ({
@@ -167,7 +200,8 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
           date: r.date as string,
           description: r.description_raw as string,
           amount: fromDb(Number(r.real_amount)),
-          pluggyCategory: pluggyCatById.get(r.external_id as string) ?? null
+          pluggyCategory: pluggyCatById.get(r.external_id as string) ?? null,
+          enrichedCategory: enrichById.get(r.external_id as string)?.category ?? null
         }));
       }
     }
@@ -187,8 +221,8 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
         .eq("id", accountId);
     }
 
-    // 5) Categorize the new rows with the existing AI pipeline (merchant rules
-    //    first, then Gemini batch). Skipped if nothing new.
+    // 5) Categorize the new rows with the existing AI pipeline (enriched category
+    //    → Pluggy category → merchant rules → Gemini batch). Skipped if nothing new.
     if (insertedIds.length > 0) {
       try {
         result.categorized += await categorizeFresh(sb, insertedIds);
@@ -205,8 +239,8 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
   return result;
 }
 
-// Categorize freshly-synced rows: CC-payment → Pluggy's own category → merchant
-// rules → Gemini batch (only the leftovers reach the LLM).
+// Categorize freshly-synced rows: CC-payment → enriched category → Pluggy's own
+// category → merchant rules → Gemini batch (only the leftovers reach the LLM).
 async function categorizeFresh(
   sb: SB,
   rows: Array<{
@@ -215,6 +249,7 @@ async function categorizeFresh(
     description: string;
     amount: number;
     pluggyCategory: string | null;
+    enrichedCategory: string | null;
   }>
 ): Promise<number> {
   // Merchant rules first (deterministic, no AI cost).
@@ -250,7 +285,31 @@ async function categorizeFresh(
       continue;
     }
 
-    // 0.5) Pluggy's own category as a prior → skip the LLM when it maps to one
+    // 0.5) Pluggy Enrichment API category — highest-quality signal, skip LLM.
+    //      Enrichment model has merchant-level training, better than the raw
+    //      transaction category that comes with the Pluggy sync.
+    const enrichedSlug = mapPluggyCategory(row.enrichedCategory);
+    if (enrichedSlug) {
+      const catId = slugToId.get(enrichedSlug);
+      if (catId) {
+        const isTransfer =
+          enrichedSlug === "cartao_pagamento" || enrichedSlug === "transferencias";
+        await sb
+          .from("transactions")
+          .update({
+            category_id: catId,
+            is_transfer: isTransfer,
+            confidence: 0.95,
+            ai_reasoning: "Categoria via Pluggy Enrichment API",
+            status: "pending_review"
+          })
+          .eq("id", row.id);
+        done += 1;
+        continue;
+      }
+    }
+
+    // 0.6) Pluggy's own category as a prior → skip the LLM when it maps to one
     //      of our slugs (bank-grade, free, usually better than a desc-only guess).
     const pluggySlug = mapPluggyCategory(row.pluggyCategory);
     if (pluggySlug) {
