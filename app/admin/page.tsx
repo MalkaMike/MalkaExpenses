@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CheckCircle2, Mail, Receipt, ChevronRight, RefreshCw, Download, Sparkles } from "lucide-react";
+import { CheckCircle2, Mail, Receipt, ChevronRight, RefreshCw, Download, Sparkles, Repeat2 } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { getAccountsWithBalances } from "@/lib/balance/queries";
@@ -170,6 +170,14 @@ export default async function AdminDashboard({
               >
                 <Sparkles size={16} className="text-on-surface-variant shrink-0" />
                 <span className="text-sm text-on-surface flex-1">Sugestões de fusão (IA)</span>
+                <ChevronRight size={14} className="text-on-surface-variant shrink-0" />
+              </Link>
+              <Link
+                href="/admin/assinaturas"
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-surface-container transition text-left"
+              >
+                <Repeat2 size={16} className="text-on-surface-variant shrink-0" />
+                <span className="text-sm text-on-surface flex-1">Assinaturas & Recorrentes</span>
                 <ChevronRight size={14} className="text-on-surface-variant shrink-0" />
               </Link>
             </div>

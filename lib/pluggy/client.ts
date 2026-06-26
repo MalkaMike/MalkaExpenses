@@ -122,6 +122,32 @@ export async function enrichTransactions(
   return json.results ?? [];
 }
 
+export type RecurringPayment = {
+  description: string;
+  averageAmount: number;
+  occurrences: string[];
+  regularityScore: number;
+};
+
+/**
+ * Detect recurring payments (subscriptions, bills) for a Pluggy item.
+ * Returns patterns that appeared ≥3× with ≤10% amount variance and ~monthly cadence.
+ */
+export async function getRecurringPayments(itemId: string): Promise<RecurringPayment[]> {
+  const apiKey = await getApiKey();
+  const res = await fetch(`${PLUGGY_ENRICH_BASE}/recurring-payments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-API-KEY": apiKey },
+    body: JSON.stringify({ itemId })
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Pluggy recurring-payments failed (${res.status}): ${body.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as { recurringPayments: RecurringPayment[] };
+  return json.recurringPayments ?? [];
+}
+
 /** Short-lived token the front-end Connect widget needs. */
 export async function createConnectToken(options?: {
   itemId?: string; // pass to re-authenticate / update an existing item

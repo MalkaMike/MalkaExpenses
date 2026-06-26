@@ -133,11 +133,17 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     const newRows = Array.from(newTxById.values()).map((t) => {
       const amt = signedAmount(t);
       const desc = t.description || t.descriptionRaw || "—";
+      // Append installment label when Pluggy provides the metadata.
+      const cc = t.creditCardMetadata;
+      const installmentSuffix =
+        cc?.installmentNumber && cc?.totalInstallments
+          ? ` (${cc.installmentNumber}/${cc.totalInstallments})`
+          : "";
       return {
         account_id: accountId,
         date: isoToDate(t.date),
         description_raw: desc,
-        description_clean: desc,
+        description_clean: desc + installmentSuffix,
         real_amount: toDb(amt),
         // Staged: shared_amount=0 keeps it OUT of the household portal (the
         // security view filters shared_amount<>0) until the admin accepts it.

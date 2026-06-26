@@ -27,6 +27,14 @@ export type PluggyAccount = {
   currencyCode: string;
 };
 
+export type PluggyCreditCardMetadata = {
+  installmentNumber?: number | null;
+  totalInstallments?: number | null;
+  totalAmount?: number | null;
+  billId?: string | null;
+  payeeMCC?: string | null;
+};
+
 export type PluggyTransaction = {
   id: string;
   accountId: string;
@@ -38,6 +46,8 @@ export type PluggyTransaction = {
   category?: string | null;
   categoryId?: string | null;
   type?: "DEBIT" | "CREDIT" | string | null;
+  status?: "PENDING" | "POSTED" | string | null;
+  creditCardMetadata?: PluggyCreditCardMetadata | null;
 };
 
 /** Pluggy amount → signed value (expense negative, income positive). */
