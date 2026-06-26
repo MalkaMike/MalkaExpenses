@@ -79,6 +79,42 @@ async function authedFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
 type Paged<T> = { results: T[]; total: number; totalPages: number; page: number };
 
+export type PluggyRealTimeBalance = {
+  balance: number;
+  currencyCode: string;
+  updateDateTime: string;
+  blockedBalance?: number | null;
+  automaticallyInvestedBalance?: number | null;
+};
+
+export type PluggyBillFinanceCharge = {
+  id: string;
+  type: "LATE_PAYMENT_REMUNERATIVE_INTEREST" | "LATE_PAYMENT_FEE" | "LATE_PAYMENT_INTEREST" | "IOF" | "OTHER";
+  amount: number;
+  currencyCode: string;
+  additionalInfo?: string | null;
+};
+
+export type PluggyBillPayment = {
+  id: string;
+  valueType: "INSTALLMENT_PAYMENT" | "FULL_PAYMENT" | "OTHER_PAYMENT";
+  paymentDate: string;
+  paymentMode: "DEBIT_ACCOUNT" | "BANK_SLIP" | "PAYROLL_DEDUCTION" | "PIX";
+  amount: number;
+  currencyCode: string;
+};
+
+export type PluggyBill = {
+  id: string;
+  dueDate: string;
+  totalAmount: number;
+  totalAmountCurrencyCode: string;
+  minimumPaymentAmount: number;
+  allowsInstallments: boolean;
+  financeCharges: PluggyBillFinanceCharge[];
+  payments: PluggyBillPayment[];
+};
+
 // ── Enrichment API (separate base URL) ──────────────────────────────────────
 const PLUGGY_ENRICH_BASE = "https://enrichment-api.pluggy.ai";
 
@@ -146,6 +182,21 @@ export async function getRecurringPayments(itemId: string): Promise<RecurringPay
   }
   const json = (await res.json()) as { recurringPayments: RecurringPayment[] };
   return json.recurringPayments ?? [];
+}
+
+/** Fetch real-time balance directly from the bank (Open Finance only). */
+export async function getRealTimeBalance(accountId: string): Promise<PluggyRealTimeBalance> {
+  return authedFetch<PluggyRealTimeBalance>(`/accounts/${encodeURIComponent(accountId)}/balance`);
+}
+
+/** List all credit card bills for an account. Sorted by dueDate desc (most recent first). */
+export async function listBills(accountId: string): Promise<PluggyBill[]> {
+  const json = await authedFetch<Paged<PluggyBill>>(
+    `/bills?accountId=${encodeURIComponent(accountId)}`
+  );
+  const bills = json.results ?? [];
+  bills.sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
+  return bills;
 }
 
 /** Short-lived token the front-end Connect widget needs. */

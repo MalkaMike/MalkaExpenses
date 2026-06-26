@@ -10,6 +10,7 @@ import { formatBRL, formatInt, monthLabel } from "@/lib/format";
 import { getLang } from "@/lib/i18n/server";
 import { t, type Lang, type StringKey } from "@/lib/i18n/translations";
 import { AccountEditPanel } from "./account-edit-panel";
+import { LiveBalanceButton } from "./live-balance-button";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
 
   const { data: account } = await sb
     .from("accounts")
-    .select("id, name, bank, type, real_starting_balance, shared_starting_balance, cc_issuer")
+    .select("id, name, bank, type, real_starting_balance, shared_starting_balance, cc_issuer, pluggy_account_id")
     .eq("id", id)
     .single();
   if (!account) notFound();
@@ -173,6 +174,9 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
           <p className="mt-1.5 text-xs text-muted tabular-nums">
             real {formatBRL(realBalance)} · Δ {formatBRL(realBalance - sharedBalance)}
           </p>
+        )}
+        {role === "admin" && account.pluggy_account_id && (
+          <LiveBalanceButton pluggyAccountId={account.pluggy_account_id} />
         )}
       </section>
 
