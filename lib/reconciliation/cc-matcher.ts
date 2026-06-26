@@ -38,7 +38,8 @@ export type CcMatchCandidate = {
 };
 
 // Heuristic: does this bank-transaction description look like a CC bill payment?
-const PAYMENT_RE = /pag.*cart|fatura|cart[aã]o|credit\s*card|\bcc\b/i;
+// "INT LATAM PASS" / "Pagamento de boleto INT LATAM PASS" — Itaú's description for LATAM card bill payments
+const PAYMENT_RE = /pag.*cart|fatura|cart[aã]o|credit\s*card|\bcc\b|int\s+latam\s+pass|latam\s+pass/i;
 
 export function isCcPaymentDescription(desc: string): boolean {
   return PAYMENT_RE.test(desc);
