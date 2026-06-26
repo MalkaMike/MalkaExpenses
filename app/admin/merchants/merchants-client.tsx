@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, EyeOff, Shield, Briefcase, Tag, Loader2 } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, Shield, Briefcase, Tag, Loader2 } from "lucide-react";
 import { formatBRL, formatInt } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -67,6 +67,33 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
   // busyKey: "merchantKey|tagSlug" when a tag toggle is in flight
   const [busyKeys, setBusyKeys] = useState<Set<string>>(new Set());
 
+  // hide state per merchant
+  const [hideMode, setHideMode] = useState<Record<string, "hide" | "show" | "mixed">>(() => {
+    const m: Record<string, "hide" | "show" | "mixed"> = {};
+    for (const g of groups) {
+      m[g.key] = g.hiddenCount === g.txCount && g.txCount > 0 ? "hide" : g.hiddenCount === 0 ? "show" : "mixed";
+    }
+    return m;
+  });
+  const [hideBusy, setHideBusy] = useState<Set<string>>(new Set());
+
+  const toggleHide = useCallback(async (merchantKey: string, current: "hide" | "show" | "mixed") => {
+    if (hideBusy.has(merchantKey)) return;
+    const endpoint = current === "hide" ? "unhide" : "hide";
+    setHideBusy((s) => new Set(s).add(merchantKey));
+    setHideMode((prev) => ({ ...prev, [merchantKey]: endpoint === "hide" ? "hide" : "show" }));
+    try {
+      const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/${endpoint}`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      toast.success(endpoint === "hide" ? "Ocultado do portal" : "Visível no portal");
+    } catch (e) {
+      setHideMode((prev) => ({ ...prev, [merchantKey]: current }));
+      toast.error((e as Error).message);
+    } finally {
+      setHideBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
+    }
+  }, [hideBusy]);
+
   const toggleTag = useCallback(async (merchantKey: string, tagSlug: string, txCount: number) => {
     const busyKey = `${merchantKey}|${tagSlug}`;
     if (busyKeys.has(busyKey)) return;
@@ -123,8 +150,10 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
     <>
       <ul className="divide-y divide-outline-variant">
         {groups.map((g, idx) => {
-          const allHidden = g.hiddenCount === g.txCount && g.txCount > 0;
-          const partialHidden = g.hiddenCount > 0 && g.hiddenCount < g.txCount;
+          const currentHideMode = hideMode[g.key] ?? (g.hiddenCount === g.txCount && g.txCount > 0 ? "hide" : g.hiddenCount === 0 ? "show" : "mixed");
+          const allHidden = currentHideMode === "hide";
+          const partialHidden = currentHideMode === "mixed";
+          const isHideBusy = hideBusy.has(g.key);
           const initial = (g.name[0] ?? "?").toUpperCase();
           const rank = idx + 1;
           const isTopThree = rank <= 3;
@@ -178,6 +207,17 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
                           {g.adjustedCount} ajust.
                         </span>
                       )}
+                      {/* Ocultar / Mostrar */}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleHide(g.key, currentHideMode); }}
+                        disabled={isHideBusy}
+                        title={allHidden ? "Tornar visível no portal" : "Ocultar do portal"}
+                        className={`text-[10px] px-1.5 py-0.5 rounded font-semibold border flex items-center gap-0.5 transition select-none
+                          ${isHideBusy ? "border-amber-500/20 text-amber-300 cursor-wait" : allHidden ? "bg-amber-500 text-black border-amber-500" : "border-amber-500/30 text-amber-500"}`}
+                      >
+                        {isHideBusy ? <Loader2 size={8} className="animate-spin" /> : allHidden ? <Eye size={8} /> : <EyeOff size={8} />}
+                        {allHidden ? "Mostrar" : "Ocultar"}
+                      </button>
                       {/* Tag chips — interactive, stop propagation so they don't navigate */}
                       {tags.map((t) => {
                         const count = tagCounts[g.key]?.[t.slug] ?? 0;
