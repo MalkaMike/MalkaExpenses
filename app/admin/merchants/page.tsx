@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ChevronRight, AlertCircle, EyeOff, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, SlidersHorizontal } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters, invalidateCache } from "@/lib/merchants/clusters";
 import { formatBRL, formatInt } from "@/lib/format";
 import { fromDb } from "@/lib/money";
+import { MerchantsClient, type ClientMerchantGroup, type TagDef } from "./merchants-client";
 
 export const dynamic = "force-dynamic";
 
@@ -61,8 +62,6 @@ export default async function MerchantsPage({
   const copy = COPY[direction];
 
   const sb = serverClient();
-  // Always force a fresh DB load — the in-memory module cache is per-process and
-  // can be 60s stale on a different Vercel warm instance after a merge/rename.
   invalidateCache();
   await preloadClusters();
 
@@ -90,14 +89,22 @@ export default async function MerchantsPage({
     return true;
   });
 
-  const { data: cats } = await sb.from("categories").select("id, slug, name");
+  const [{ data: cats }, { data: tagsData }] = await Promise.all([
+    sb.from("categories").select("id, slug, name"),
+    sb.from("reimbursement_tags").select("id, slug, name, color, icon").order("name")
+  ]);
+
   const catNameById = new Map<string, string>();
   for (const c of cats ?? []) catNameById.set(c.id as string, c.name as string);
   const outrosId = (cats ?? []).find((c) => c.slug === "outros")?.id as string;
 
   const groups = new Map<string, MerchantGroup>();
+  // Also track txId → clusterKey for tag join
+  const txIdToClusterKey = new Map<string, string>();
+
   for (const t of filtered) {
     const c = clusterFor(t.description_raw);
+    txIdToClusterKey.set(t.id, c.key);
     if (!groups.has(c.key)) {
       groups.set(c.key, {
         key: c.key, name: c.name,
@@ -120,6 +127,30 @@ export default async function MerchantsPage({
     else g.adjustedCount++;
   }
 
+  // Fetch tag assignments for all filtered transactions and map to cluster keys
+  const tagIdToSlug = new Map<string, string>();
+  for (const tg of tagsData ?? []) tagIdToSlug.set(tg.id as string, tg.slug as string);
+
+  const clusterTagCounts = new Map<string, Map<string, number>>(); // clusterKey → tagSlug → count
+  if (filtered.length > 0) {
+    const txIds = filtered.map((t) => t.id);
+    const TAG_CHUNK = 500;
+    for (let i = 0; i < txIds.length; i += TAG_CHUNK) {
+      const { data: tagRows } = await sb
+        .from("transaction_reimbursements")
+        .select("transaction_id, tag_id")
+        .in("transaction_id", txIds.slice(i, i + TAG_CHUNK));
+      for (const { transaction_id, tag_id } of (tagRows ?? []) as { transaction_id: string; tag_id: string }[]) {
+        const ck = txIdToClusterKey.get(transaction_id);
+        const slug = tagIdToSlug.get(tag_id);
+        if (!ck || !slug) continue;
+        if (!clusterTagCounts.has(ck)) clusterTagCounts.set(ck, new Map());
+        const m = clusterTagCounts.get(ck)!;
+        m.set(slug, (m.get(slug) ?? 0) + 1);
+      }
+    }
+  }
+
   const sorted = [...groups.values()].sort((a, b) => b.totalAbs - a.totalAbs);
   const totalMerchants = sorted.length;
   const inOutros = sorted.filter((g) => {
@@ -128,6 +159,39 @@ export default async function MerchantsPage({
   });
   const totalAbsAll = sorted.reduce((s, g) => s + g.totalAbs, 0);
   const totalHiddenMerchants = sorted.filter((g) => g.hiddenCount === g.txCount && g.txCount > 0).length;
+
+  // Serialize groups for the client component (no Maps/Sets)
+  const clientGroups: ClientMerchantGroup[] = sorted.map((g) => {
+    const top = [...g.categoryIds.entries()].sort((a, b) => b[1] - a[1])[0];
+    const topCatId = top?.[0] ?? "__none__";
+    const tagCounts: Record<string, number> = {};
+    for (const tg of tagsData ?? []) {
+      tagCounts[tg.slug as string] = clusterTagCounts.get(g.key)?.get(tg.slug as string) ?? 0;
+    }
+    return {
+      key: g.key,
+      name: g.name,
+      txCount: g.txCount,
+      totalAbs: g.totalAbs,
+      totalSigned: g.totalSigned,
+      catName: topCatId === "__none__" ? "—" : catNameById.get(topCatId) ?? "—",
+      isOutros: topCatId === outrosId,
+      mixedCat: g.categoryIds.size > 1,
+      hiddenCount: g.hiddenCount,
+      shownCount: g.shownCount,
+      adjustedCount: g.adjustedCount,
+      uniqueDescCount: g.uniqueDescriptions.size,
+      tagCounts
+    };
+  });
+
+  const clientTags: TagDef[] = (tagsData ?? []).map((t) => ({
+    id: t.id as string,
+    slug: t.slug as string,
+    name: t.name as string,
+    color: t.color as string,
+    icon: t.icon as string
+  }));
 
   return (
     <>
@@ -190,7 +254,7 @@ export default async function MerchantsPage({
         </Link>
       </div>
 
-      {/* Main table — Stitch high-density style */}
+      {/* Main table */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-xl soft-ambient-shadow overflow-hidden">
         {/* Table header */}
         <div className="grid grid-cols-[28px_1fr_60px_72px_124px_16px] gap-3 px-4 py-3 border-b border-outline-variant bg-surface-container-low">
@@ -204,116 +268,15 @@ export default async function MerchantsPage({
           <span></span>
         </div>
 
-        {/* Rows */}
-        <ul className="divide-y divide-outline-variant">
-          {sorted.map((g, idx) => {
-            const top = [...g.categoryIds.entries()].sort((a, b) => b[1] - a[1])[0];
-            const topCatId = top?.[0] ?? "__none__";
-            const isOutros = topCatId === outrosId;
-            const mixedCat = g.categoryIds.size > 1;
-            const catName = topCatId === "__none__" ? "—" : catNameById.get(topCatId) ?? "—";
-            const allHidden = g.hiddenCount === g.txCount && g.txCount > 0;
-            const partialHidden = g.hiddenCount > 0 && g.hiddenCount < g.txCount;
-            const initial = (g.name[0] ?? "?").toUpperCase();
-            const rank = idx + 1;
-            // Top-3 visual emphasis
-            const isTopThree = rank <= 3;
-
-            return (
-              <li key={g.key} className="relative">
-                <Link
-                  href={`/admin/merchants/${encodeURIComponent(g.key)}?direction=${direction}${includeTransfers ? "&transfers=1" : ""}`}
-                  className="grid grid-cols-[28px_1fr_60px_72px_124px_16px] gap-3 px-4 py-2.5 items-center hover:bg-surface-container transition-colors group relative"
-                >
-                  {/* Rank number */}
-                  <span
-                    className={`text-center text-[11px] tabular-nums font-bold ${
-                      isTopThree ? "text-on-surface" : "text-on-surface-variant/50"
-                    }`}
-                  >
-                    {rank}
-                  </span>
-
-                  {/* Merchant info */}
-                  <div className="min-w-0 flex items-center gap-2.5">
-                    <div
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0"
-                      style={{
-                        background: allHidden ? "#f59e0b18" : direction === "in" ? "#6cf8bb30" : "#efeeeb",
-                        color: allHidden ? "#f59e0b" : direction === "in" ? "#006c49" : "#1b1c1a"
-                      }}
-                    >
-                      {allHidden ? <EyeOff size={12} /> : initial}
-                    </div>
-                    <div className="min-w-0">
-                      <p className="font-semibold text-[13px] text-on-surface truncate leading-tight">{g.name}</p>
-                      <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                        {/* Category badge */}
-                        <span
-                          className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
-                            isOutros
-                              ? "bg-[#f59e0b]/10 text-[#f59e0b]"
-                              : "bg-surface-container-highest text-on-surface-variant"
-                          }`}
-                        >
-                          {catName}{mixedCat ? " +" : ""}
-                        </span>
-                        {/* Hidden badges */}
-                        {allHidden && (
-                          <span className="text-[9px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#f59e0b] text-black font-bold uppercase tracking-wider">
-                            <EyeOff size={8} /> Oculto
-                          </span>
-                        )}
-                        {partialHidden && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-[#f59e0b]/10 text-[#f59e0b] uppercase tracking-wider">
-                            {g.hiddenCount}/{g.txCount} ocultas
-                          </span>
-                        )}
-                        {g.adjustedCount > 0 && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-surface-container-high text-on-surface-variant uppercase tracking-wider">
-                            {g.adjustedCount} ajust.
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Count */}
-                  <span className="text-right text-[13px] tabular-nums text-on-surface-variant">
-                    {formatInt(g.txCount)}
-                  </span>
-
-                  {/* Variations */}
-                  <span className="text-right text-[13px] tabular-nums text-on-surface-variant">
-                    {formatInt(g.uniqueDescriptions.size)}
-                  </span>
-
-                  {/* Total */}
-                  <span
-                    className={`text-right text-[13px] font-semibold tabular-nums ${
-                      direction === "in" ? "text-secondary" : "text-on-tertiary-container"
-                    }`}
-                  >
-                    {formatBRL(g.totalAbs)}
-                  </span>
-
-                  <ChevronRight size={13} className="text-on-surface-variant opacity-0 group-hover:opacity-100 transition" />
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-
-        {sorted.length === 0 && (
-          <p className="px-5 py-10 text-center text-sm text-on-surface-variant">{copy.emptyLabel}</p>
-        )}
-
-        {/* Table footer */}
-        <div className="bg-surface-container-low px-4 py-2.5 border-t border-outline-variant">
-          <span className="text-xs text-on-surface-variant">
-            {formatInt(sorted.length)} {copy.rowsLabel} · {formatInt(filtered.length)} transações
-          </span>
-        </div>
+        <MerchantsClient
+          groups={clientGroups}
+          tags={clientTags}
+          direction={direction}
+          includeTransfers={includeTransfers}
+          rowsLabel={copy.rowsLabel}
+          emptyLabel={copy.emptyLabel}
+          filteredCount={filtered.length}
+        />
       </div>
     </div>
   </>
