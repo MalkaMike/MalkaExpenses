@@ -139,13 +139,16 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
         cc?.installmentNumber && cc?.totalInstallments
           ? ` (${cc.installmentNumber}/${cc.totalInstallments})`
           : "";
+      // Business accounts (Kenlo/Laik/Akiva) stay out of the shared household
+      // ledger — always hidden from Ayelet regardless of category.
+      const isBusinessAccount = /kenlo|laik|akiva/i.test(desc);
       return {
         account_id: accountId,
         date: isoToDate(t.date),
         description_raw: desc,
         description_clean: desc + installmentSuffix,
         real_amount: toDb(amt),
-        shared_amount: toDb(amt),
+        shared_amount: isBusinessAccount ? 0 : toDb(amt),
         source: "pluggy" as const,
         status: "auto_accepted" as const,
         created_by: "import" as const,
