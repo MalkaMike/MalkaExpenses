@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Eye, EyeOff, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X, CheckCircle2, Circle } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, Clock, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X, CheckCircle2, Circle } from "lucide-react";
 import { formatBRL, formatInt } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -20,6 +20,7 @@ export type ClientMerchantGroup = {
   uniqueDescCount: number;
   tagCounts: Record<string, number>;
   isReviewed: boolean;
+  isDeferred: boolean;
 };
 
 export type TagDef = {
@@ -45,6 +46,8 @@ type Props = {
   filteredCount: number;
   currentTab: Tab;
   todoCount: number;
+  deferredCount: number;
+  showDeferred: boolean;
   visibleCount: number;
   hiddenCount: number;
 };
@@ -68,7 +71,7 @@ function TagIcon({ icon, size }: { icon: string; size: number }) {
 export function MerchantsClient({
   groups, tags, direction, includeTransfers, onlyOutros,
   rowsLabel, emptyLabel, filteredCount,
-  currentTab, todoCount, visibleCount, hiddenCount
+  currentTab, todoCount, deferredCount, showDeferred, visibleCount, hiddenCount
 }: Props) {
   const router = useRouter();
 
@@ -83,7 +86,10 @@ export function MerchantsClient({
     () => new Set(groups.filter((g) => g.isReviewed).map((g) => g.key))
   );
   const [reviewBusy, setReviewBusy] = useState<Set<string>>(new Set());
-  const [reviewHideBusy, setReviewHideBusy] = useState<Set<string>>(new Set());
+  const [deferBusy, setDeferBusy] = useState<Set<string>>(new Set());
+  const [deferredKeys, setDeferredKeys] = useState<Set<string>>(
+    () => new Set(groups.filter((g) => g.isDeferred).map((g) => g.key))
+  );
 
   const toggleReviewed = useCallback(async (merchantKey: string) => {
     if (reviewBusy.has(merchantKey)) return;
@@ -103,24 +109,23 @@ export function MerchantsClient({
     }
   }, [reviewedKeys, reviewBusy]);
 
-  const doReviewAndHide = useCallback(async (merchantKey: string) => {
-    if (reviewHideBusy.has(merchantKey)) return;
-    // Optimistic: add to reviewedKeys so item disappears from the todo list immediately
-    setReviewedKeys((prev) => new Set(prev).add(merchantKey));
-    setReviewHideBusy((s) => new Set(s).add(merchantKey));
+  const doDefer = useCallback(async (merchantKey: string) => {
+    if (deferBusy.has(merchantKey)) return;
+    setDeferredKeys((prev) => new Set(prev).add(merchantKey));
+    setDeferBusy((s) => new Set(s).add(merchantKey));
     try {
-      const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/review-and-hide`, { method: "POST" });
+      const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/defer`, { method: "POST" });
       if (!res.ok) {
-        setReviewedKeys((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
+        setDeferredKeys((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
         throw new Error(`HTTP ${res.status}`);
       }
-      toast.success("Oculto de Ayelet e marcado como revisado");
+      toast.success("Marcado para verificar depois");
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
-      setReviewHideBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
+      setDeferBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
     }
-  }, [reviewHideBusy]);
+  }, [deferBusy]);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -129,9 +134,9 @@ export function MerchantsClient({
 
   const displayed = useMemo(() => {
     let list = [...groups];
-    // Optimistic dismiss: in "todo" remove newly-reviewed; in other tabs remove newly-unreviewed
+    // Optimistic dismiss: in "todo" remove newly-reviewed or newly-deferred; in other tabs remove newly-unreviewed
     if (currentTab === "todo") {
-      list = list.filter((g) => !reviewedKeys.has(g.key));
+      list = list.filter((g) => !reviewedKeys.has(g.key) && !deferredKeys.has(g.key));
     } else {
       list = list.filter((g) => reviewedKeys.has(g.key));
     }
@@ -146,7 +151,7 @@ export function MerchantsClient({
       return sortDir === "asc" ? diff : -diff;
     });
     return list;
-  }, [groups, search, sortCol, sortDir, currentTab, reviewedKeys]);
+  }, [groups, search, sortCol, sortDir, currentTab, reviewedKeys, deferredKeys]);
 
   const [tagCounts, setTagCounts] = useState<Record<string, Record<string, number>>>(() => {
     const m: Record<string, Record<string, number>> = {};
@@ -224,12 +229,13 @@ export function MerchantsClient({
     }
   }, [busyKeys, tagCounts]);
 
-  const tabHref = (tab: Tab) => {
+  const tabHref = (tab: Tab, withDeferred?: boolean) => {
     const params = new URLSearchParams();
     params.set("tab", tab);
     if (direction !== "out") params.set("direction", direction);
     if (includeTransfers) params.set("transfers", "1");
     if (onlyOutros) params.set("outros", "1");
+    if (withDeferred) params.set("deferred", "1");
     return `/admin/merchants?${params.toString()}`;
   };
 
@@ -315,7 +321,7 @@ export function MerchantsClient({
           const isHideBusy = hideBusy.has(g.key);
           const isReviewed = reviewedKeys.has(g.key);
           const isReviewBusy = reviewBusy.has(g.key);
-          const isReviewHideBusy = reviewHideBusy.has(g.key);
+          const isDeferBusy = deferBusy.has(g.key);
           const rank = idx + 1;
           const isTopThree = rank <= 3;
 
@@ -349,17 +355,22 @@ export function MerchantsClient({
                     >
                       {isReviewBusy ? <Loader2 size={12} className="animate-spin" /> : isReviewed ? <CheckCircle2 size={14} /> : <Circle size={14} />}
                     </button>
-                    {currentTab === "todo" && (
+                    {currentTab === "todo" && !g.isDeferred && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); doReviewAndHide(g.key); }}
-                        disabled={isReviewHideBusy}
-                        title="Revisado — ocultar de Ayelet (ver depois na aba Ocultos)"
+                        onClick={(e) => { e.stopPropagation(); doDefer(g.key); }}
+                        disabled={isDeferBusy}
+                        title="Verificar depois — sem efeito na visibilidade de Ayelet"
                         className={`h-[18px] w-[18px] rounded flex items-center justify-center transition-all shrink-0
-                          ${isReviewHideBusy ? "opacity-40 cursor-wait" :
-                            "text-on-surface-variant/30 hover:text-amber-500/80"}`}
+                          ${isDeferBusy ? "opacity-40 cursor-wait" :
+                            "text-on-surface-variant/30 hover:text-sky-400/80"}`}
                       >
-                        {isReviewHideBusy ? <Loader2 size={12} className="animate-spin" /> : <EyeOff size={12} />}
+                        {isDeferBusy ? <Loader2 size={12} className="animate-spin" /> : <Clock size={12} />}
                       </button>
+                    )}
+                    {g.isDeferred && (
+                      <span className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 font-bold uppercase tracking-wider">
+                        <Clock size={8} /> adiado
+                      </span>
                     )}
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${g.isOutros ? "bg-[#f59e0b]/10 text-[#f59e0b]" : "bg-surface-container-highest text-on-surface-variant"}`}>
                       {g.catName}{g.mixedCat ? " +" : ""}
@@ -433,6 +444,27 @@ export function MerchantsClient({
         <p className="px-5 py-10 text-center text-sm text-on-surface-variant">
           {search ? `Nenhum resultado para "${search}"` : emptyLabel}
         </p>
+      )}
+
+      {currentTab === "todo" && deferredCount > 0 && (
+        <div className="px-4 py-2 border-t border-outline-variant bg-surface-container-low text-center">
+          {showDeferred ? (
+            <button
+              onClick={() => router.push(tabHref("todo"))}
+              className="text-xs text-sky-400 hover:text-sky-300 transition inline-flex items-center gap-1"
+            >
+              <Clock size={11} /> Ocultar adiados
+            </button>
+          ) : (
+            <button
+              onClick={() => router.push(tabHref("todo", true))}
+              className="text-xs text-on-surface-variant hover:text-on-surface transition inline-flex items-center gap-1"
+            >
+              <Clock size={11} />
+              {deferredCount} {deferredCount === 1 ? "comerciante adiado" : "comerciantes adiados"} — ver
+            </button>
+          )}
+        </div>
       )}
 
       <div className="bg-surface-container-low px-4 py-2.5 border-t border-outline-variant flex items-center justify-between gap-3 flex-wrap">

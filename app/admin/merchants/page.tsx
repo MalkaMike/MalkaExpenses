@@ -33,6 +33,7 @@ type MerchantGroup = {
   shownCount: number;
   adjustedCount: number;
   isReviewed: boolean;
+  isDeferred: boolean;
 };
 
 type Direction = "out" | "in" | "all";
@@ -46,7 +47,7 @@ const COPY: Record<Direction, { title: string; subtitle: string; emptyLabel: str
 export default async function MerchantsPage({
   searchParams
 }: {
-  searchParams: Promise<{ direction?: string; transfers?: string; outros?: string; reviewed?: string; tab?: string }>;
+  searchParams: Promise<{ direction?: string; transfers?: string; outros?: string; reviewed?: string; tab?: string; deferred?: string }>;
 }) {
   const role = await getRole();
   if (role !== "admin" && role !== "health") {
@@ -64,6 +65,7 @@ export default async function MerchantsPage({
   const rawTab = sp.tab ?? (sp.reviewed === "1" ? "visible" : "todo");
   const currentTab: "todo" | "visible" | "hidden" =
     rawTab === "visible" ? "visible" : rawTab === "hidden" ? "hidden" : "todo";
+  const showDeferred = sp.deferred === "1";
   const copy = COPY[direction];
 
   const sb = serverClient();
@@ -116,7 +118,7 @@ export default async function MerchantsPage({
         txCount: 0, totalAbs: 0, totalSigned: 0,
         categoryIds: new Map(), uniqueDescriptions: new Set(),
         hiddenCount: 0, shownCount: 0, adjustedCount: 0,
-        isReviewed: false
+        isReviewed: false, isDeferred: false
       });
     }
     const g = groups.get(c.key)!;
@@ -157,19 +159,21 @@ export default async function MerchantsPage({
     }
   }
 
-  // Fetch is_reviewed for all cluster keys in one query
+  // Fetch is_reviewed and is_deferred for all cluster keys
   const allGroupKeys = [...groups.keys()];
   if (allGroupKeys.length > 0) {
     const KEY_CHUNK = 500;
     for (let i = 0; i < allGroupKeys.length; i += KEY_CHUNK) {
       const { data: rv } = await sb
         .from("merchant_clusters")
-        .select("canonical_key")
-        .in("canonical_key", allGroupKeys.slice(i, i + KEY_CHUNK))
-        .eq("is_reviewed", true);
-      for (const r of rv ?? []) {
-        const g = groups.get(r.canonical_key as string);
-        if (g) g.isReviewed = true;
+        .select("canonical_key, is_reviewed, is_deferred")
+        .in("canonical_key", allGroupKeys.slice(i, i + KEY_CHUNK));
+      for (const r of (rv ?? []) as { canonical_key: string; is_reviewed: boolean; is_deferred: boolean }[]) {
+        const g = groups.get(r.canonical_key);
+        if (g) {
+          g.isReviewed = r.is_reviewed ?? false;
+          g.isDeferred = r.is_deferred ?? false;
+        }
       }
     }
   }
@@ -181,16 +185,21 @@ export default async function MerchantsPage({
   });
   const base = onlyOutros ? inOutros : allSorted;
 
-  // Three tabs: todo (unreviewed), visible (reviewed + at least some visible), hidden (reviewed + all hidden)
-  const todoGroups   = base.filter((g) => !g.isReviewed);
-  const visibleGroups = base.filter((g) => g.isReviewed && g.hiddenCount < g.txCount);
-  const hiddenGroups  = base.filter((g) => g.isReviewed && g.hiddenCount === g.txCount && g.txCount > 0);
+  // Tab c = active unreviewed; deferred = snoozed (not reviewed, not in active queue)
+  const todoGroups     = base.filter((g) => !g.isReviewed && !g.isDeferred);
+  const deferredGroups = base.filter((g) => !g.isReviewed && g.isDeferred);
+  const visibleGroups  = base.filter((g) => g.isReviewed && g.hiddenCount < g.txCount);
+  const hiddenGroups   = base.filter((g) => g.isReviewed && g.hiddenCount === g.txCount && g.txCount > 0);
 
-  const todoCount    = todoGroups.length;
-  const visibleCount = visibleGroups.length;
-  const hiddenCount  = hiddenGroups.length;
+  const todoCount     = todoGroups.length;
+  const deferredCount = deferredGroups.length;
+  const visibleCount  = visibleGroups.length;
+  const hiddenCount   = hiddenGroups.length;
 
-  const sorted = currentTab === "visible" ? visibleGroups : currentTab === "hidden" ? hiddenGroups : todoGroups;
+  const sorted = currentTab === "visible" ? visibleGroups
+    : currentTab === "hidden" ? hiddenGroups
+    : showDeferred ? [...todoGroups, ...deferredGroups]
+    : todoGroups;
   const totalMerchants = sorted.length;
   const totalAbsAll = sorted.reduce((s, g) => s + g.totalAbs, 0);
   const totalHiddenMerchants = sorted.filter((g) => g.hiddenCount === g.txCount && g.txCount > 0).length;
@@ -217,7 +226,8 @@ export default async function MerchantsPage({
       adjustedCount: g.adjustedCount,
       uniqueDescCount: g.uniqueDescriptions.size,
       tagCounts,
-      isReviewed: g.isReviewed
+      isReviewed: g.isReviewed,
+      isDeferred: g.isDeferred
     };
   });
 
@@ -320,6 +330,8 @@ export default async function MerchantsPage({
           filteredCount={filtered.length}
           currentTab={currentTab}
           todoCount={todoCount}
+          deferredCount={deferredCount}
+          showDeferred={showDeferred}
           visibleCount={visibleCount}
           hiddenCount={hiddenCount}
         />
