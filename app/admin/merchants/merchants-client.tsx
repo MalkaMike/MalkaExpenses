@@ -298,7 +298,7 @@ export function MerchantsClient({
       </div>
 
       {/* Sortable column headers */}
-      <div className="grid grid-cols-[44px_1fr_60px_72px_124px_16px] gap-3 px-4 py-2.5 border-b border-outline-variant bg-surface-container-low">
+      <div className="grid grid-cols-[28px_1fr_60px_72px_124px_16px] gap-3 px-4 py-2.5 border-b border-outline-variant bg-surface-container-low">
         <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant text-center">#</span>
         <SortBtn col="name" label={direction === "in" ? "Pagador" : "Comerciante"} />
         <SortBtn col="count" label="Vezes" className="justify-end" />
@@ -322,48 +322,45 @@ export function MerchantsClient({
           return (
             <li key={g.key} className="relative group/row">
               <div
-                className="grid grid-cols-[44px_1fr_60px_72px_124px_16px] gap-3 px-4 py-2.5 items-start hover:bg-surface-container transition-colors cursor-pointer group"
+                className="grid grid-cols-[28px_1fr_60px_72px_124px_16px] gap-3 px-4 py-2.5 items-center hover:bg-surface-container transition-colors cursor-pointer group"
                 onClick={() => router.push(href(g.key))}
                 role="link"
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") router.push(href(g.key)); }}
               >
-                {/* Rank + action buttons */}
-                <div className="flex flex-col items-center gap-1 pt-0.5">
-                  <span className={`text-[11px] tabular-nums font-bold ${isTopThree ? "text-on-surface" : "text-on-surface-variant/50"}`}>
-                    {rank}
-                  </span>
-                  {/* ✓ check = mark reviewed (keeps visibility) */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); toggleReviewed(g.key); }}
-                    disabled={isReviewBusy}
-                    title={isReviewed ? "Desmarcar como revisado" : "Marcar como revisado (visível para Ayelet)"}
-                    className={`w-6 h-6 rounded flex items-center justify-center transition-all
-                      ${isReviewBusy ? "opacity-40 cursor-wait" :
-                        isReviewed ? "text-secondary" :
-                        "text-on-surface-variant/25 hover:text-secondary/60"}`}
-                  >
-                    {isReviewBusy ? <Loader2 size={13} className="animate-spin" /> : isReviewed ? <CheckCircle2 size={15} /> : <Circle size={15} />}
-                  </button>
-                  {/* Eye-slash = mark reviewed AND hide (only in todo tab) */}
-                  {currentTab === "todo" && (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); doReviewAndHide(g.key); }}
-                      disabled={isReviewHideBusy}
-                      title="Marcar revisado e ocultar de Ayelet — ver mais tarde na aba Ocultos"
-                      className={`w-6 h-6 rounded flex items-center justify-center transition-all
-                        ${isReviewHideBusy ? "opacity-40 cursor-wait" :
-                          "text-on-surface-variant/25 hover:text-amber-500/70"}`}
-                    >
-                      {isReviewHideBusy ? <Loader2 size={13} className="animate-spin" /> : <EyeOff size={13} />}
-                    </button>
-                  )}
-                </div>
+                {/* Rank */}
+                <span className={`text-center text-[11px] tabular-nums font-bold ${isTopThree ? "text-on-surface" : "text-on-surface-variant/50"}`}>
+                  {rank}
+                </span>
 
                 {/* Merchant info */}
                 <div className="min-w-0">
                   <p className="font-semibold text-[13px] text-on-surface truncate leading-tight">{g.name}</p>
                   <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                    {/* ✓ reviewed + 👁 review-and-hide — inline with chips */}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleReviewed(g.key); }}
+                      disabled={isReviewBusy}
+                      title={isReviewed ? "Desmarcar como revisado" : "Revisado — visível para Ayelet"}
+                      className={`h-[18px] w-[18px] rounded flex items-center justify-center transition-all shrink-0
+                        ${isReviewBusy ? "opacity-40 cursor-wait" :
+                          isReviewed ? "text-secondary" :
+                          "text-on-surface-variant/30 hover:text-secondary/60"}`}
+                    >
+                      {isReviewBusy ? <Loader2 size={12} className="animate-spin" /> : isReviewed ? <CheckCircle2 size={14} /> : <Circle size={14} />}
+                    </button>
+                    {currentTab === "todo" && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); doReviewAndHide(g.key); }}
+                        disabled={isReviewHideBusy}
+                        title="Revisado — ocultar de Ayelet (ver depois na aba Ocultos)"
+                        className={`h-[18px] w-[18px] rounded flex items-center justify-center transition-all shrink-0
+                          ${isReviewHideBusy ? "opacity-40 cursor-wait" :
+                            "text-on-surface-variant/30 hover:text-amber-500/80"}`}
+                      >
+                        {isReviewHideBusy ? <Loader2 size={12} className="animate-spin" /> : <EyeOff size={12} />}
+                      </button>
+                    )}
                     <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${g.isOutros ? "bg-[#f59e0b]/10 text-[#f59e0b]" : "bg-surface-container-highest text-on-surface-variant"}`}>
                       {g.catName}{g.mixedCat ? " +" : ""}
                     </span>
