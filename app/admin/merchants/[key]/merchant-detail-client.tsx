@@ -432,7 +432,7 @@ export function MerchantDetailClient({
             <p className="flex-1 text-base font-semibold text-on-surface truncate">{currentName}</p>
             <button
               onClick={() => {
-                setNameDraft("");
+                setNameDraft(currentName);
                 setFinalName(currentName);
                 setRenameErr(null);
                 setMultiMergeErr(null);
@@ -440,7 +440,7 @@ export function MerchantDetailClient({
                 setSelectedForMerge(new Map());
                 setDropdownOpen(false);
                 setEditingName(true);
-                setTimeout(() => searchRef.current?.focus(), 50);
+                setTimeout(() => { searchRef.current?.focus(); searchRef.current?.select(); }, 50);
               }}
               className="px-3 py-1.5 rounded-lg text-xs border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30 transition flex items-center gap-1.5"
             >
