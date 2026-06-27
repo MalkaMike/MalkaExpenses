@@ -46,7 +46,7 @@ const COPY: Record<Direction, { title: string; subtitle: string; emptyLabel: str
 export default async function MerchantsPage({
   searchParams
 }: {
-  searchParams: Promise<{ direction?: string; transfers?: string; outros?: string; reviewed?: string }>;
+  searchParams: Promise<{ direction?: string; transfers?: string; outros?: string; reviewed?: string; tab?: string }>;
 }) {
   const role = await getRole();
   if (role !== "admin" && role !== "health") {
@@ -61,7 +61,9 @@ export default async function MerchantsPage({
   const direction: Direction = sp.direction === "in" ? "in" : sp.direction === "all" ? "all" : "out";
   const includeTransfers = sp.transfers === "1";
   const onlyOutros = sp.outros === "1";
-  const showReviewed = sp.reviewed === "1";
+  const rawTab = sp.tab ?? (sp.reviewed === "1" ? "visible" : "todo");
+  const currentTab: "todo" | "visible" | "hidden" =
+    rawTab === "visible" ? "visible" : rawTab === "hidden" ? "hidden" : "todo";
   const copy = COPY[direction];
 
   const sb = serverClient();
@@ -178,8 +180,17 @@ export default async function MerchantsPage({
     return top && top[0] === outrosId;
   });
   const base = onlyOutros ? inOutros : allSorted;
-  const reviewedCount = base.filter((g) => g.isReviewed).length;
-  const sorted = showReviewed ? base : base.filter((g) => !g.isReviewed);
+
+  // Three tabs: todo (unreviewed), visible (reviewed + at least some visible), hidden (reviewed + all hidden)
+  const todoGroups   = base.filter((g) => !g.isReviewed);
+  const visibleGroups = base.filter((g) => g.isReviewed && g.hiddenCount < g.txCount);
+  const hiddenGroups  = base.filter((g) => g.isReviewed && g.hiddenCount === g.txCount && g.txCount > 0);
+
+  const todoCount    = todoGroups.length;
+  const visibleCount = visibleGroups.length;
+  const hiddenCount  = hiddenGroups.length;
+
+  const sorted = currentTab === "visible" ? visibleGroups : currentTab === "hidden" ? hiddenGroups : todoGroups;
   const totalMerchants = sorted.length;
   const totalAbsAll = sorted.reduce((s, g) => s + g.totalAbs, 0);
   const totalHiddenMerchants = sorted.filter((g) => g.hiddenCount === g.txCount && g.txCount > 0).length;
@@ -307,8 +318,10 @@ export default async function MerchantsPage({
           rowsLabel={copy.rowsLabel}
           emptyLabel={copy.emptyLabel}
           filteredCount={filtered.length}
-          reviewedCount={reviewedCount}
-          showReviewed={showReviewed}
+          currentTab={currentTab}
+          todoCount={todoCount}
+          visibleCount={visibleCount}
+          hiddenCount={hiddenCount}
         />
       </div>
     </div>
