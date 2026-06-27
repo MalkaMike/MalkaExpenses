@@ -93,6 +93,20 @@ export async function POST(
     }
   }
 
+  // Applying a tag is a review decision — mark merchant as reviewed and enforce
+  // the visibility rule so the row moves to the correct tab automatically.
+  if (action === "add") {
+    await sb.from("merchant_clusters").update({ is_reviewed: true }).eq("canonical_key", merchantKey);
+
+    const hideOnTag = ["kenlo", "laik"];
+    const showOnTag = ["insurance"];
+    if (hideOnTag.includes(tag_slug)) {
+      await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "hide", p_value: null });
+    } else if (showOnTag.includes(tag_slug)) {
+      await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "show", p_value: null });
+    }
+  }
+
   await writeAudit("reimbursement.tag", {
     newValue: { merchant_key: merchantKey, tag_slug, action, updated }
   });

@@ -181,6 +181,9 @@ export function MerchantsClient({
     }
   }, [hideBusy]);
 
+  const HIDE_TAGS = ["kenlo", "laik"];
+  const SHOW_TAGS = ["insurance"];
+
   const toggleTag = useCallback(async (merchantKey: string, tagSlug: string, txCount: number) => {
     const busyKey = `${merchantKey}|${tagSlug}`;
     if (busyKeys.has(busyKey)) return;
@@ -191,6 +194,15 @@ export function MerchantsClient({
       ...prev,
       [merchantKey]: { ...prev[merchantKey], [tagSlug]: action === "add" ? txCount : 0 }
     }));
+    // Applying a tag = review decision: mark reviewed + apply visibility rule optimistically
+    if (action === "add") {
+      setReviewedKeys((prev) => new Set(prev).add(merchantKey));
+      if (HIDE_TAGS.includes(tagSlug)) {
+        setHideMode((prev) => ({ ...prev, [merchantKey]: "hide" }));
+      } else if (SHOW_TAGS.includes(tagSlug)) {
+        setHideMode((prev) => ({ ...prev, [merchantKey]: "show" }));
+      }
+    }
     try {
       const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/tag`, {
         method: "POST",
@@ -205,6 +217,7 @@ export function MerchantsClient({
       toast.success(action === "add" ? `${updated} despesas marcadas como ${tagSlug}` : `Tag ${tagSlug} removida`);
     } catch (e) {
       setTagCounts((prev) => ({ ...prev, [merchantKey]: { ...prev[merchantKey], [tagSlug]: current } }));
+      if (action === "add") setReviewedKeys((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
       toast.error((e as Error).message);
     } finally {
       setBusyKeys((s) => { const n = new Set(s); n.delete(busyKey); return n; });
