@@ -106,12 +106,13 @@ export function MerchantsClient({
     try {
       const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/review`, { method: "POST" });
       if (!res.ok) { setReviewedKeys(reviewedKeys); throw new Error(`HTTP ${res.status}`); }
+      router.refresh();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setReviewBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
     }
-  }, [reviewedKeys, reviewBusy]);
+  }, [reviewedKeys, reviewBusy, router]);
 
   const doDefer = useCallback(async (merchantKey: string) => {
     if (deferBusy.has(merchantKey)) return;
@@ -124,12 +125,13 @@ export function MerchantsClient({
         throw new Error(`HTTP ${res.status}`);
       }
       toast.success("Marcado para verificar depois");
+      router.refresh();
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setDeferBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
     }
-  }, [deferBusy]);
+  }, [deferBusy, router]);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -182,13 +184,14 @@ export function MerchantsClient({
       const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/${endpoint}`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast.success(endpoint === "hide" ? "Ocultado do portal" : "Visível no portal");
+      router.refresh();
     } catch (e) {
       setHideMode((prev) => ({ ...prev, [merchantKey]: current }));
       toast.error((e as Error).message);
     } finally {
       setHideBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
     }
-  }, [hideBusy]);
+  }, [hideBusy, router]);
 
   const HIDE_TAGS = ["kenlo", "laik"];
   const SHOW_TAGS = ["insurance"];
@@ -224,6 +227,7 @@ export function MerchantsClient({
       }
       const { updated } = await res.json();
       toast.success(action === "add" ? `${updated} despesas marcadas como ${tagSlug}` : `Tag ${tagSlug} removida`);
+      router.refresh();
     } catch (e) {
       setTagCounts((prev) => ({ ...prev, [merchantKey]: { ...prev[merchantKey], [tagSlug]: current } }));
       if (action === "add") setReviewedKeys((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
@@ -231,7 +235,7 @@ export function MerchantsClient({
     } finally {
       setBusyKeys((s) => { const n = new Set(s); n.delete(busyKey); return n; });
     }
-  }, [busyKeys, tagCounts]);
+  }, [busyKeys, tagCounts, router]);
 
   const tabHref = (tab: Tab, withDeferred?: boolean) => {
     const params = new URLSearchParams();
