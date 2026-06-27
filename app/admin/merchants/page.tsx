@@ -196,6 +196,10 @@ export default async function MerchantsPage({
   const visibleCount  = visibleGroups.length;
   const hiddenCount   = hiddenGroups.length;
 
+  const todoTotal    = todoGroups.reduce((s, g) => s + g.totalAbs, 0);
+  const visibleTotal = visibleGroups.reduce((s, g) => s + g.totalAbs, 0);
+  const hiddenTotal  = hiddenGroups.reduce((s, g) => s + g.totalAbs, 0);
+
   const sorted = currentTab === "visible" ? visibleGroups
     : currentTab === "hidden" ? hiddenGroups
     : showDeferred ? [...todoGroups, ...deferredGroups]
@@ -320,6 +324,7 @@ export default async function MerchantsPage({
       <div className="bg-surface-container-lowest border border-outline-variant rounded-xl soft-ambient-shadow overflow-hidden">
 
         <MerchantsClient
+          key={currentTab}
           groups={clientGroups}
           tags={clientTags}
           direction={direction}
@@ -334,6 +339,9 @@ export default async function MerchantsPage({
           showDeferred={showDeferred}
           visibleCount={visibleCount}
           hiddenCount={hiddenCount}
+          todoTotal={todoTotal}
+          visibleTotal={visibleTotal}
+          hiddenTotal={hiddenTotal}
         />
       </div>
     </div>

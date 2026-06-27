@@ -50,6 +50,9 @@ type Props = {
   showDeferred: boolean;
   visibleCount: number;
   hiddenCount: number;
+  todoTotal: number;
+  visibleTotal: number;
+  hiddenTotal: number;
 };
 
 function tagColorClasses(color: string) {
@@ -71,7 +74,8 @@ function TagIcon({ icon, size }: { icon: string; size: number }) {
 export function MerchantsClient({
   groups, tags, direction, includeTransfers, onlyOutros,
   rowsLabel, emptyLabel, filteredCount,
-  currentTab, todoCount, deferredCount, showDeferred, visibleCount, hiddenCount
+  currentTab, todoCount, deferredCount, showDeferred, visibleCount, hiddenCount,
+  todoTotal, visibleTotal, hiddenTotal
 }: Props) {
   const router = useRouter();
 
@@ -263,21 +267,27 @@ export function MerchantsClient({
       <div className="flex border-b border-outline-variant bg-surface-container-low">
         {(["todo", "visible", "hidden"] as const).map((tab) => {
           const active = currentTab === tab;
-          const count  = tab === "todo" ? todoCount : tab === "visible" ? visibleCount : hiddenCount;
-          const label  = tab === "todo" ? "Para revisar" : tab === "visible" ? "Visíveis para Ayelet" : "Ocultos de Ayelet";
+          const count = tab === "todo" ? todoCount : tab === "visible" ? visibleCount : hiddenCount;
+          const total = tab === "todo" ? todoTotal : tab === "visible" ? visibleTotal : hiddenTotal;
+          const label = tab === "todo" ? "Para revisar" : tab === "visible" ? "Visíveis para Ayelet" : "Ocultos de Ayelet";
           return (
             <button
               key={tab}
               onClick={() => router.push(tabHref(tab))}
-              className={`flex-1 px-3 py-2.5 text-[11px] font-semibold flex items-center justify-center gap-1.5 transition border-b-2
+              className={`flex-1 px-3 py-2 text-[11px] font-semibold flex flex-col items-center justify-center gap-0.5 transition border-b-2
                 ${active
                   ? "border-primary text-primary bg-surface-container-lowest"
                   : "border-transparent text-on-surface-variant hover:text-on-surface hover:bg-surface-container"}`}
             >
-              {label}
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold
-                ${active ? "bg-primary/10 text-primary" : "bg-surface-container-highest text-on-surface-variant"}`}>
-                {formatInt(count)}
+              <div className="flex items-center gap-1.5">
+                {label}
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold
+                  ${active ? "bg-primary/10 text-primary" : "bg-surface-container-highest text-on-surface-variant"}`}>
+                  {formatInt(count)}
+                </span>
+              </div>
+              <span className={`text-[10px] font-medium tabular-nums ${active ? "text-primary/70" : "text-on-surface-variant/60"}`}>
+                {formatBRL(total)}
               </span>
             </button>
           );
