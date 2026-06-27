@@ -45,10 +45,11 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 const SUGGEST_THRESHOLD = 0.5;
 
 type Suggestion = {
-  cluster_a: { key: string; name: string; txCount: number };
-  cluster_b: { key: string; name: string; txCount: number };
+  cluster_a: { key: string; name: string; txCount: number; totalAbs: number };
+  cluster_b: { key: string; name: string; txCount: number; totalAbs: number };
   similarity: number;
   shared_tokens: string[];
+  combinedAbs: number;
 };
 
 // GET /api/admin/merchants/suggest-merges
@@ -68,6 +69,7 @@ export async function GET() {
     key: string;
     name: string;
     txCount: number;
+    totalAbs: number;
     tokens: Set<string>;
   };
 
@@ -86,7 +88,7 @@ export async function GET() {
       const k = r.canonical_key as string;
       const n = r.canonical_name as string;
       if (!byKey.has(k)) {
-        byKey.set(k, { key: k, name: n, txCount: 0, tokens: new Set(tokenize(n)) });
+        byKey.set(k, { key: k, name: n, txCount: 0, totalAbs: 0, tokens: new Set(tokenize(n)) });
       }
     }
     if (data.length < 1000) break;
@@ -113,6 +115,36 @@ export async function GET() {
     off += 1000;
   }
 
+  // Total spend per cluster — join transactions via description_raw
+  {
+    let toff = 0;
+    while (true) {
+      const { data } = await sb
+        .from("merchant_clusters")
+        .select("canonical_key, description_raw")
+        .range(toff, toff + 999);
+      if (!data || !data.length) break;
+      const descs = data.map((r) => r.description_raw as string);
+      const keys  = data.map((r) => r.canonical_key  as string);
+      if (descs.length > 0) {
+        const { data: txRows } = await sb
+          .from("transactions")
+          .select("description_raw, real_amount")
+          .in("description_raw", descs)
+          .eq("is_transfer", false);
+        const descToKey = new Map<string, string>();
+        for (let i = 0; i < descs.length; i++) descToKey.set(descs[i], keys[i]);
+        for (const tx of txRows ?? []) {
+          const ck = descToKey.get(tx.description_raw as string);
+          const c  = ck ? byKey.get(ck) : undefined;
+          if (c) c.totalAbs += Math.abs(Number(tx.real_amount));
+        }
+      }
+      if (data.length < 1000) break;
+      toff += 1000;
+    }
+  }
+
   // Pairwise comparison — O(n²) but n ≈ 1200 clusters → ~720k comparisons,
   // ~1 sec on Node. Acceptable for an on-demand admin tool.
   const clusters = [...byKey.values()].filter((c) => c.tokens.size > 0);
@@ -127,19 +159,20 @@ export async function GET() {
         const shared: string[] = [];
         for (const t of a.tokens) if (b.tokens.has(t)) shared.push(t);
         suggestions.push({
-          cluster_a: { key: a.key, name: a.name, txCount: a.txCount },
-          cluster_b: { key: b.key, name: b.name, txCount: b.txCount },
+          cluster_a: { key: a.key, name: a.name, txCount: a.txCount, totalAbs: a.totalAbs },
+          cluster_b: { key: b.key, name: b.name, txCount: b.txCount, totalAbs: b.totalAbs },
           similarity: Number(sim.toFixed(2)),
-          shared_tokens: shared
+          shared_tokens: shared,
+          combinedAbs: a.totalAbs + b.totalAbs
         });
       }
     }
   }
 
-  // Sort: highest similarity first, then by combined transaction count
+  // Sort: highest similarity first, then by combined R$ value (highest spend first)
   suggestions.sort((x, y) => {
     if (y.similarity !== x.similarity) return y.similarity - x.similarity;
-    return (y.cluster_a.txCount + y.cluster_b.txCount) - (x.cluster_a.txCount + x.cluster_b.txCount);
+    return y.combinedAbs - x.combinedAbs;
   });
 
   return NextResponse.json({

@@ -3,14 +3,15 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, GitMerge, X, RefreshCw, ChevronRight, Sparkles } from "lucide-react";
-import { formatInt } from "@/lib/format";
+import { formatInt, formatBRL } from "@/lib/format";
 import { safeJson } from "@/lib/http";
 
 type Suggestion = {
-  cluster_a: { key: string; name: string; txCount: number };
-  cluster_b: { key: string; name: string; txCount: number };
+  cluster_a: { key: string; name: string; txCount: number; totalAbs: number };
+  cluster_b: { key: string; name: string; txCount: number; totalAbs: number };
   similarity: number;
   shared_tokens: string[];
+  combinedAbs: number;
 };
 
 type Response = {
@@ -59,23 +60,31 @@ export function SuggestionsClient() {
           target_canonical_key: suggestion.cluster_a.key
         })
       });
+      const removeSuggestionB = () =>
+        setData((prev) =>
+          prev
+            ? {
+                ...prev,
+                suggestions: prev.suggestions.filter(
+                  (s) =>
+                    s.cluster_a.key !== suggestion.cluster_b.key &&
+                    s.cluster_b.key !== suggestion.cluster_b.key
+                )
+              }
+            : null
+        );
+
       if (!r.ok) {
         const j = await safeJson(r);
-        throw new Error(j.error ?? `Erro ${r.status}`);
+        const errMsg: string = j.error ?? `Erro ${r.status}`;
+        // Cluster already merged in a previous session — silently discard
+        if (errMsg === "source cluster not found") {
+          removeSuggestionB();
+          return;
+        }
+        throw new Error(errMsg);
       }
-      // Remove this suggestion + any other suggestion involving cluster B
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              suggestions: prev.suggestions.filter(
-                (s) =>
-                  s.cluster_a.key !== suggestion.cluster_b.key &&
-                  s.cluster_b.key !== suggestion.cluster_b.key
-              )
-            }
-          : null
-      );
+      removeSuggestionB();
       router.refresh();
     } catch (e) {
       alert((e as Error).message);
@@ -106,9 +115,10 @@ export function SuggestionsClient() {
             target_canonical_key: s.cluster_a.key
           })
         });
-        if (!r.ok) {
-          const j = await safeJson(r);
-          console.error(`Erro ao fundir ${s.cluster_b.name}: ${j.error ?? r.status}`);
+        const j = r.ok ? null : await safeJson(r);
+        const alreadyGone = !r.ok && j?.error === "source cluster not found";
+        if (!r.ok && !alreadyGone) {
+          console.error(`Erro ao fundir ${s.cluster_b.name}: ${j?.error ?? r.status}`);
         } else {
           setData((prev) =>
             prev
@@ -248,13 +258,20 @@ export function SuggestionsClient() {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => dismiss(s)}
-                    title="Ignorar esta sugestão"
-                    className="p-1.5 rounded hover:bg-surface-container-highest text-on-surface-variant"
-                  >
-                    <X size={13} />
-                  </button>
+                  <div className="flex items-center gap-3">
+                    {s.combinedAbs > 0 && (
+                      <span className="text-xs font-semibold tabular-nums text-on-surface-variant">
+                        {formatBRL(s.combinedAbs / 100)}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => dismiss(s)}
+                      title="Ignorar esta sugestão"
+                      className="p-1.5 rounded hover:bg-surface-container-highest text-on-surface-variant"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Body — two merchants side by side */}
@@ -270,6 +287,7 @@ export function SuggestionsClient() {
                     <p className="font-semibold text-on-surface text-sm line-clamp-2">{s.cluster_a.name}</p>
                     <p className="text-xs text-on-surface-variant mt-1">
                       {formatInt(s.cluster_a.txCount)} descrição{s.cluster_a.txCount !== 1 ? "ões" : ""}
+                      {s.cluster_a.totalAbs > 0 && <> · {formatBRL(s.cluster_a.totalAbs / 100)}</>}
                     </p>
                   </Link>
 
@@ -299,6 +317,7 @@ export function SuggestionsClient() {
                     <p className="font-semibold text-on-surface text-sm line-clamp-2">{s.cluster_b.name}</p>
                     <p className="text-xs text-on-surface-variant mt-1">
                       {formatInt(s.cluster_b.txCount)} descrição{s.cluster_b.txCount !== 1 ? "ões" : ""}
+                      {s.cluster_b.totalAbs > 0 && <> · {formatBRL(s.cluster_b.totalAbs / 100)}</>}
                     </p>
                   </Link>
                 </div>

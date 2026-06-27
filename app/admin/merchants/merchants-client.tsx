@@ -1,7 +1,7 @@
 "use client";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Eye, EyeOff, Shield, Briefcase, Tag, Loader2 } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X } from "lucide-react";
 import { formatBRL, formatInt } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -29,6 +29,9 @@ export type TagDef = {
   icon: string;
 };
 
+type SortCol = "name" | "count" | "variations" | "total";
+type SortDir = "asc" | "desc";
+
 type Props = {
   groups: ClientMerchantGroup[];
   tags: TagDef[];
@@ -37,6 +40,7 @@ type Props = {
   rowsLabel: string;
   emptyLabel: string;
   filteredCount: number;
+  sortBy?: string;
 };
 
 function tagColorClasses(color: string) {
@@ -57,6 +61,35 @@ function TagIcon({ icon, size }: { icon: string; size: number }) {
 
 export function MerchantsClient({ groups, tags, direction, includeTransfers, rowsLabel, emptyLabel, filteredCount }: Props) {
   const router = useRouter();
+
+  // Search + sort state
+  const [search, setSearch] = useState("");
+  const [sortCol, setSortCol] = useState<SortCol>("total");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  function toggleSort(col: SortCol) {
+    if (sortCol === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortCol(col);
+      setSortDir(col === "name" ? "asc" : "desc");
+    }
+  }
+
+  const displayed = useMemo(() => {
+    let list = [...groups];
+    const q = search.trim().toLowerCase();
+    if (q) list = list.filter((g) => g.name.toLowerCase().includes(q) || g.catName.toLowerCase().includes(q));
+    list.sort((a, b) => {
+      let diff = 0;
+      if (sortCol === "name")       diff = a.name.localeCompare(b.name, "pt-BR", { sensitivity: "base" });
+      else if (sortCol === "count") diff = a.txCount - b.txCount;
+      else if (sortCol === "variations") diff = a.uniqueDescCount - b.uniqueDescCount;
+      else                          diff = a.totalAbs - b.totalAbs;
+      return sortDir === "asc" ? diff : -diff;
+    });
+    return list;
+  }, [groups, search, sortCol, sortDir]);
 
   // tagCounts local state: merchantKey → tagSlug → count
   const [tagCounts, setTagCounts] = useState<Record<string, Record<string, number>>>(() => {
@@ -146,10 +179,54 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
   const href = (key: string) =>
     `/admin/merchants/${encodeURIComponent(key)}?direction=${direction}${includeTransfers ? "&transfers=1" : ""}`;
 
+  function SortBtn({ col, label, className }: { col: SortCol; label: string; className?: string }) {
+    const active = sortCol === col;
+    const Icon = active ? (sortDir === "asc" ? ChevronUp : ChevronDown) : null;
+    return (
+      <button
+        onClick={() => toggleSort(col)}
+        className={`flex items-center gap-0.5 text-[9px] font-bold uppercase tracking-wider transition select-none
+          ${active ? "text-primary" : "text-on-surface-variant hover:text-on-surface"} ${className ?? ""}`}
+      >
+        {label}
+        {Icon ? <Icon size={10} /> : <span className="w-[10px]" />}
+      </button>
+    );
+  }
+
   return (
     <>
+      {/* Search input */}
+      <div className="px-4 py-2.5 border-b border-outline-variant bg-surface-container-low">
+        <div className="relative">
+          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={`Buscar ${rowsLabel}…`}
+            className="w-full pl-8 pr-8 py-1.5 text-sm rounded-lg bg-surface-container border border-outline-variant text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-1 focus:ring-primary/50"
+          />
+          {search && (
+            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Sortable column headers */}
+      <div className="grid grid-cols-[28px_1fr_60px_72px_124px_16px] gap-3 px-4 py-2.5 border-b border-outline-variant bg-surface-container-low">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant text-center">#</span>
+        <SortBtn col="name" label={direction === "in" ? "Pagador" : "Comerciante"} />
+        <SortBtn col="count" label="Vezes" className="justify-end" />
+        <SortBtn col="variations" label="Variações" className="justify-end" />
+        <SortBtn col="total" label="Total" className="justify-end" />
+        <span />
+      </div>
+
       <ul className="divide-y divide-outline-variant">
-        {groups.map((g, idx) => {
+        {displayed.map((g, idx) => {
           const currentHideMode = hideMode[g.key] ?? (g.hiddenCount === g.txCount && g.txCount > 0 ? "hide" : g.hiddenCount === 0 ? "show" : "mixed");
           const allHidden = currentHideMode === "hide";
           const partialHidden = currentHideMode === "mixed";
@@ -271,14 +348,19 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
         })}
       </ul>
 
-      {groups.length === 0 && (
-        <p className="px-5 py-10 text-center text-sm text-on-surface-variant">{emptyLabel}</p>
+      {displayed.length === 0 && (
+        <p className="px-5 py-10 text-center text-sm text-on-surface-variant">
+          {search ? `Nenhum resultado para "${search}"` : emptyLabel}
+        </p>
       )}
 
       {/* Table footer */}
       <div className="bg-surface-container-low px-4 py-2.5 border-t border-outline-variant">
         <span className="text-xs text-on-surface-variant">
-          {formatInt(groups.length)} {rowsLabel} · {formatInt(filteredCount)} transações
+          {search
+            ? `${formatInt(displayed.length)} de ${formatInt(groups.length)} ${rowsLabel}`
+            : `${formatInt(groups.length)} ${rowsLabel}`
+          } · {formatInt(filteredCount)} transações
         </span>
       </div>
     </>

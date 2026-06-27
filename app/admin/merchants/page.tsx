@@ -45,7 +45,7 @@ const COPY: Record<Direction, { title: string; subtitle: string; emptyLabel: str
 export default async function MerchantsPage({
   searchParams
 }: {
-  searchParams: Promise<{ direction?: string; transfers?: string }>;
+  searchParams: Promise<{ direction?: string; transfers?: string; outros?: string }>;
 }) {
   const role = await getRole();
   if (role !== "admin" && role !== "health") {
@@ -59,6 +59,7 @@ export default async function MerchantsPage({
   const sp = await searchParams;
   const direction: Direction = sp.direction === "in" ? "in" : sp.direction === "all" ? "all" : "out";
   const includeTransfers = sp.transfers === "1";
+  const onlyOutros = sp.outros === "1";
   const copy = COPY[direction];
 
   const sb = serverClient();
@@ -151,12 +152,13 @@ export default async function MerchantsPage({
     }
   }
 
-  const sorted = [...groups.values()].sort((a, b) => b.totalAbs - a.totalAbs);
-  const totalMerchants = sorted.length;
-  const inOutros = sorted.filter((g) => {
+  const allSorted = [...groups.values()].sort((a, b) => b.totalAbs - a.totalAbs);
+  const inOutros = allSorted.filter((g) => {
     const top = [...g.categoryIds.entries()].sort((a, b) => b[1] - a[1])[0];
     return top && top[0] === outrosId;
   });
+  const sorted = onlyOutros ? inOutros : allSorted;
+  const totalMerchants = sorted.length;
   const totalAbsAll = sorted.reduce((s, g) => s + g.totalAbs, 0);
   const totalHiddenMerchants = sorted.filter((g) => g.hiddenCount === g.txCount && g.txCount > 0).length;
 
@@ -200,9 +202,9 @@ export default async function MerchantsPage({
       crumbs={[{ href: "/admin", label: "Admin" }]}
       right={
         <div className="flex items-center bg-surface-container-high p-1 rounded-xl gap-0.5">
-          <DirLink current={direction} value="out" includeTransfers={includeTransfers} label="Despesas" />
-          <DirLink current={direction} value="in"  includeTransfers={includeTransfers} label="Receitas" />
-          <DirLink current={direction} value="all" includeTransfers={includeTransfers} label="Tudo" />
+          <DirLink current={direction} value="out" includeTransfers={includeTransfers} label="Despesas" onlyOutros={onlyOutros} />
+          <DirLink current={direction} value="in"  includeTransfers={includeTransfers} label="Receitas" onlyOutros={onlyOutros} />
+          <DirLink current={direction} value="all" includeTransfers={includeTransfers} label="Tudo"     onlyOutros={onlyOutros} />
         </div>
       }
     />
@@ -233,20 +235,36 @@ export default async function MerchantsPage({
         </div>
       </div>
 
-      {/* "Outros" warning */}
+      {/* "Outros" warning / filter toggle */}
       {inOutros.length > 0 && direction === "out" && (
-        <div className="mb-4 p-3 rounded-xl border border-outline-variant bg-[#f59e0b]/5 flex items-center gap-2.5 text-sm">
-          <AlertCircle size={15} className="text-[#f59e0b] shrink-0" />
-          <span className="text-on-surface">
-            <span className="font-semibold">{formatInt(inOutros.length)}</span> ainda em &quot;Outros&quot; — clique para categorizar todas as ocorrências de uma vez.
-          </span>
-        </div>
+        onlyOutros ? (
+          <Link
+            href={`/admin/merchants?direction=${direction}${includeTransfers ? "&transfers=1" : ""}`}
+            className="mb-4 p-3 rounded-xl border border-amber-500/40 bg-[#f59e0b]/10 flex items-center gap-2.5 text-sm hover:bg-[#f59e0b]/15 transition"
+          >
+            <AlertCircle size={15} className="text-[#f59e0b] shrink-0" />
+            <span className="text-on-surface flex-1">
+              Mostrando <span className="font-semibold">{formatInt(inOutros.length)}</span> em &quot;Outros&quot; — clique para ver todos
+            </span>
+            <span className="text-xs text-[#f59e0b] font-semibold">✕ limpar filtro</span>
+          </Link>
+        ) : (
+          <Link
+            href={`/admin/merchants?direction=${direction}&outros=1${includeTransfers ? "&transfers=1" : ""}`}
+            className="mb-4 p-3 rounded-xl border border-outline-variant bg-[#f59e0b]/5 flex items-center gap-2.5 text-sm hover:bg-[#f59e0b]/10 transition cursor-pointer"
+          >
+            <AlertCircle size={15} className="text-[#f59e0b] shrink-0" />
+            <span className="text-on-surface">
+              <span className="font-semibold">{formatInt(inOutros.length)}</span> ainda em &quot;Outros&quot; — clique para categorizar todas as ocorrências de uma vez.
+            </span>
+          </Link>
+        )
       )}
 
       {/* Transfer toggle */}
       <div className="flex justify-end mb-3">
         <Link
-          href={`/admin/merchants?direction=${direction}${includeTransfers ? "" : "&transfers=1"}`}
+          href={`/admin/merchants?direction=${direction}${onlyOutros ? "&outros=1" : ""}${includeTransfers ? "" : "&transfers=1"}`}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs border border-outline-variant text-on-surface-variant hover:bg-surface-container-low transition"
         >
           <SlidersHorizontal size={12} />
@@ -256,17 +274,6 @@ export default async function MerchantsPage({
 
       {/* Main table */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-xl soft-ambient-shadow overflow-hidden">
-        {/* Table header */}
-        <div className="grid grid-cols-[28px_1fr_60px_72px_124px_16px] gap-3 px-4 py-3 border-b border-outline-variant bg-surface-container-low">
-          <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant text-center">#</span>
-          <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant">
-            {direction === "in" ? "Pagador" : "Comerciante"}
-          </span>
-          <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Vezes</span>
-          <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Variações</span>
-          <span className="text-[9px] font-bold uppercase tracking-wider text-on-surface-variant text-right">Total</span>
-          <span></span>
-        </div>
 
         <MerchantsClient
           groups={clientGroups}
@@ -284,14 +291,15 @@ export default async function MerchantsPage({
 }
 
 function DirLink({
-  current, value, label, includeTransfers
+  current, value, label, includeTransfers, onlyOutros
 }: {
-  current: Direction; value: Direction; label: string; includeTransfers: boolean;
+  current: Direction; value: Direction; label: string; includeTransfers: boolean; onlyOutros?: boolean;
 }) {
   const active = current === value;
+  const outrosParam = onlyOutros ? "&outros=1" : "";
   return (
     <Link
-      href={`/admin/merchants?direction=${value}${includeTransfers ? "&transfers=1" : ""}`}
+      href={`/admin/merchants?direction=${value}${outrosParam}${includeTransfers ? "&transfers=1" : ""}`}
       className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
         active
           ? "bg-surface-container-lowest shadow-sm text-primary font-bold"
