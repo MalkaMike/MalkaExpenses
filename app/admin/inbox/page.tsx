@@ -7,10 +7,9 @@ import { fromDb } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 
-// The admin acceptance gate. Everything synced from Open Finance lands here
-// first (real, but invisible to the household). The admin decides per row:
-// Accept (show), Hide (keep private), Adjust (show a different amount), or
-// recategorize — and can add manual entries that appear in the portal.
+// Review window: last 30 rolling days of non-transfer transactions that haven't
+// been explicitly reviewed yet (auto_accepted or pending_review). The admin can
+// recategorize, adjust the shared amount, or hide from the household portal.
 export default async function InboxPage() {
   if ((await getRole()) !== "admin") {
     return (
@@ -20,6 +19,10 @@ export default async function InboxPage() {
     );
   }
 
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const fromDate = thirtyDaysAgo.toISOString().slice(0, 10);
+
   const sb = serverClient();
   const [{ data: rows }, { data: accounts }] = await Promise.all([
     sb
@@ -27,7 +30,10 @@ export default async function InboxPage() {
       .select(
         "id, account_id, date, description_raw, description_clean, real_amount, shared_amount, is_transfer, categories(slug)"
       )
-      .eq("status", "pending_review")
+      .gte("date", fromDate)
+      .eq("is_fake", false)
+      .eq("is_transfer", false)
+      .in("status", ["auto_accepted", "pending_review"])
       .order("date", { ascending: false })
       .limit(500),
     sb.from("accounts").select("id, name, bank").eq("is_archived", false).order("name")
@@ -70,8 +76,8 @@ export default async function InboxPage() {
     <div className="px-4 pt-5 max-w-2xl mx-auto pb-28">
       <p className="text-sm text-on-surface-variant mb-5">
         {out.length === 0
-          ? "Nada para revisar — tudo decidido."
-          : `${formatInt(out.length)} ${out.length === 1 ? "movimento aguardando" : "movimentos aguardando"} sua decisão`}
+          ? "Nenhum movimento novo nos últimos 30 dias."
+          : `${formatInt(out.length)} ${out.length === 1 ? "movimento nos últimos 30 dias" : "movimentos nos últimos 30 dias"}`}
       </p>
 
       <InboxClient rows={out} accounts={accountsList} />

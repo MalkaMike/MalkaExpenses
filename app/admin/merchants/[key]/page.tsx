@@ -107,16 +107,6 @@ export default async function MerchantDetailPage({
   const oldest = txs.length > 0 ? txs[txs.length - 1].date : null;
   const newest = txs.length > 0 ? txs[0].date : null;
 
-  // Current category (most common)
-  const catCount = new Map<string, number>();
-  for (const t of txs) {
-    const k = t.category_id ?? "__none__";
-    catCount.set(k, (catCount.get(k) ?? 0) + 1);
-  }
-  const topCatEntry = [...catCount.entries()].sort((a, b) => b[1] - a[1])[0];
-  const currentCategoryId =
-    topCatEntry && topCatEntry[0] !== "__none__" ? topCatEntry[0] : null;
-
   // Determine name from any transaction
   const displayName =
     txs.length > 0 ? clusterFor(txs[0].description_raw).name : key;
@@ -210,12 +200,6 @@ export default async function MerchantDetailPage({
     }
   }
 
-  const categories = (cats ?? []).map((c) => ({
-    id: c.id as string,
-    slug: c.slug as string,
-    name: c.name as string
-  }));
-
   // Merge history — past merges where this cluster was the target (absorbed others)
   const mergeHistory: { id: string; sourceName: string; createdAt: string; hasDescriptions: boolean }[] = [];
   if (role === "admin") {
@@ -294,8 +278,6 @@ export default async function MerchantDetailPage({
 
       <MerchantDetailClient
         canonicalKey={key}
-        currentCategoryId={currentCategoryId}
-        categories={categories}
         rows={rows}
         currentShareMode={shareMode}
         currentSharedTotal={totalShared}

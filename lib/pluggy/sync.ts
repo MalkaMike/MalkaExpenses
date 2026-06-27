@@ -145,11 +145,9 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
         description_raw: desc,
         description_clean: desc + installmentSuffix,
         real_amount: toDb(amt),
-        // Staged: shared_amount=0 keeps it OUT of the household portal (the
-        // security view filters shared_amount<>0) until the admin accepts it.
-        shared_amount: 0,
+        shared_amount: toDb(amt),
         source: "pluggy" as const,
-        status: "pending_review" as const,
+        status: "auto_accepted" as const,
         created_by: "import" as const,
         external_id: t.id
       };
@@ -282,9 +280,10 @@ async function categorizeFresh(
         .update({
           category_id: ccPayId,
           is_transfer: true,
+          shared_amount: 0,
           confidence: 0.99,
           ai_reasoning: "Pagamento de cartão — marcado como transferência",
-          status: "pending_review"
+          status: "auto_accepted"
         })
         .eq("id", row.id);
       done += 1;
@@ -305,9 +304,10 @@ async function categorizeFresh(
           .update({
             category_id: catId,
             is_transfer: isTransfer,
+            ...(isTransfer ? { shared_amount: 0 } : {}),
             confidence: 0.95,
             ai_reasoning: "Categoria via Pluggy Enrichment API",
-            status: "pending_review"
+            status: "auto_accepted"
           })
           .eq("id", row.id);
         done += 1;
@@ -328,9 +328,10 @@ async function categorizeFresh(
           .update({
             category_id: catId,
             is_transfer: isTransfer,
+            ...(isTransfer ? { shared_amount: 0 } : {}),
             confidence: 0.9,
             ai_reasoning: "Categoria do Open Finance",
-            status: "pending_review"
+            status: "auto_accepted"
           })
           .eq("id", row.id);
         done += 1;
@@ -355,7 +356,7 @@ async function categorizeFresh(
           category_id: hit.category_id,
           confidence: Number(hit.confidence_default) || 0.95,
           ai_reasoning: "Regra de fornecedor aplicada",
-          status: "pending_review"
+          status: "auto_accepted"
         })
         .eq("id", row.id);
       done += 1;
@@ -387,8 +388,9 @@ async function categorizeFresh(
         category_id: catId,
         confidence: r.confidence,
         ai_reasoning: r.reasoning,
-        status: "pending_review",
-        is_transfer: isTransfer
+        status: "auto_accepted",
+        is_transfer: isTransfer,
+        ...(isTransfer ? { shared_amount: 0 } : {})
       })
       .eq("id", r.id);
     done += 1;

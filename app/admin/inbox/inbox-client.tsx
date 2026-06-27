@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Check, EyeOff, Pencil, Plus, X, Loader2, Save, CheckCheck } from "lucide-react";
+import { Check, EyeOff, Pencil, Plus, X, Loader2, Save } from "lucide-react";
 import { getCategoryMeta, getCategoryTree } from "@/lib/categories/meta";
 import { formatBRL, formatDate } from "@/lib/format";
 import { safeJson } from "@/lib/http";
@@ -66,20 +66,6 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
     });
   }
 
-  async function accept(row: InboxRow) {
-    setBusy(true);
-    try {
-      const cmap = await ensureCatMap();
-      await patch(row.id, { shared_amount: row.amountReal, category_id: cmap[cat[row.id]] ?? undefined });
-      toast.success("Aceito — visível no portal");
-      drop(row.id);
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function hide(row: InboxRow) {
     setBusy(true);
     try {
@@ -112,28 +98,6 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
     }
   }
 
-  async function bulkAccept() {
-    if (selected.size === 0) return;
-    setBusy(true);
-    let ok = 0;
-    try {
-      const cmap = await ensureCatMap();
-      for (const id of selected) {
-        const row = rows.find((r) => r.id === id);
-        if (!row) continue;
-        try {
-          await patch(id, { shared_amount: row.amountReal, category_id: cmap[cat[id]] ?? undefined });
-          ok++;
-        } catch { /* counted via ok */ }
-      }
-      toast.success(`${ok} aceitos`);
-      setRows((rs) => rs.filter((r) => !selected.has(r.id)));
-      setSelected(new Set());
-    } finally {
-      setBusy(false);
-    }
-  }
-
   function toggle(id: string) {
     setSelected((s) => {
       const n = new Set(s);
@@ -161,16 +125,6 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
             </span>
           </label>
           <div className="flex items-center gap-2">
-            {selected.size > 0 && (
-              <button
-                disabled={busy}
-                onClick={bulkAccept}
-                className="text-xs px-3 py-1.5 rounded-lg bg-primary text-on-primary font-medium disabled:opacity-50 inline-flex items-center gap-1.5 transition active:scale-95"
-              >
-                {busy ? <Loader2 size={12} className="animate-spin" /> : <CheckCheck size={12} />}
-                Aceitar {selected.size}
-              </button>
-            )}
             <button
               onClick={() => setAdding(true)}
               className="text-xs px-3 py-1.5 rounded-lg bg-surface-container-lowest border border-outline-variant inline-flex items-center gap-1.5 hover:bg-surface-container transition"
@@ -187,8 +141,8 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
           <div className="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center mx-auto mb-3">
             <Check size={22} className="text-secondary" />
           </div>
-          <h2 className="font-semibold text-on-surface mb-1">Tudo decidido</h2>
-          <p className="text-sm text-on-surface-variant">Nenhuma transação aguardando revisão.</p>
+          <h2 className="font-semibold text-on-surface mb-1">Tudo em dia</h2>
+          <p className="text-sm text-on-surface-variant">Nenhum movimento novo nos últimos 30 dias.</p>
         </div>
       )}
 
@@ -198,7 +152,7 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
           {/* Header */}
           <div className="px-5 py-3.5 border-b border-outline-variant bg-surface-container-low flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
-              {rows.length} transação{rows.length !== 1 ? "ões" : ""} pendente{rows.length !== 1 ? "s" : ""}
+              {rows.length} {rows.length !== 1 ? "movimentos" : "movimento"} — últimos 30 dias
             </span>
           </div>
 
@@ -283,13 +237,6 @@ export function InboxClient({ rows: initial, accounts }: { rows: InboxRow[]; acc
                           </span>
                         ) : (
                           <>
-                            <button
-                              disabled={busy}
-                              onClick={() => accept(r)}
-                              className="text-xs px-2.5 py-1.5 rounded-lg bg-primary text-on-primary font-medium inline-flex items-center gap-1.5 disabled:opacity-50 active:scale-95 transition"
-                            >
-                              <Check size={11} /> Aceitar
-                            </button>
                             <button
                               disabled={busy}
                               onClick={() => { setAdjustId(r.id); setAdjustVal(String(Math.abs(r.amountReal))); }}

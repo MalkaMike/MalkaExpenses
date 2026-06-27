@@ -21,7 +21,6 @@ type Row = {
   gmailSearched: boolean;
   gmailMatchCount: number;
 };
-type Category = { id: string; slug: string; name: string };
 
 type ReimbTag = {
   id: string;
@@ -37,8 +36,6 @@ type MergeHistoryItem = { id: string; sourceName: string; createdAt: string; has
 
 type Props = {
   canonicalKey: string;
-  currentCategoryId: string | null;
-  categories: Category[];
   rows: Row[];
   currentShareMode: "hide" | "show" | "mixed";
   currentSharedTotal: number;
@@ -51,8 +48,6 @@ type Props = {
 
 export function MerchantDetailClient({
   canonicalKey,
-  currentCategoryId,
-  categories,
   rows,
   currentShareMode,
   currentSharedTotal,
@@ -63,10 +58,6 @@ export function MerchantDetailClient({
   role
 }: Props) {
   const router = useRouter();
-  const [selectedCat, setSelectedCat] = useState<string>(currentCategoryId ?? "");
-  const [busy, setBusy] = useState(false);
-  const [doneCount, setDoneCount] = useState<number | null>(null);
-  const [err, setErr] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState<"hide" | "show" | "set" | null>(null);
   const [shareErr, setShareErr] = useState<string | null>(null);
   const [shareDone, setShareDone] = useState<string | null>(null);
@@ -176,34 +167,6 @@ export function MerchantDetailClient({
       alert((e as Error).message);
     } finally {
       setTagBusy(null);
-    }
-  }
-
-  async function applyToAll() {
-    if (!selectedCat) return;
-    setBusy(true);
-    setErr(null);
-    setDoneCount(null);
-    try {
-      const r = await fetch("/api/admin/merchants/approve-all", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          canonical_key: canonicalKey,
-          category_id: selectedCat
-        })
-      });
-      if (!r.ok) {
-        const j = await safeJson(r);
-        throw new Error(j.error ?? `Erro ${r.status}`);
-      }
-      const j = await r.json();
-      setDoneCount(j.updated ?? 0);
-      router.refresh();
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setBusy(false);
     }
   }
 
@@ -718,11 +681,10 @@ export function MerchantDetailClient({
         )}
       </section>}
 
-      {/* ── Aprovar todas + Ocultar comerciante — admin only ─────────────── */}
+      {/* ── Visibilidade no portal Ayelet — admin only ─────────────── */}
       {role === "admin" && <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
-        {/* Header inline: title + transaction count + status badge */}
         <p className="text-xs uppercase tracking-wider text-muted mb-3 flex items-center gap-2 flex-wrap">
-          Aprovar / Ocultar — {formatInt(rows.length)} transações
+          Portal Ayelet — {formatInt(rows.length)} transações
           <span
             className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
               currentShareMode === "hide"
@@ -740,54 +702,8 @@ export function MerchantDetailClient({
           </span>
         </p>
 
-        {/* Approve: category picker + Aprovar todas button */}
-        <div className="flex flex-col sm:flex-row gap-2 mb-1">
-          <select
-            value={selectedCat}
-            onChange={(e) => setSelectedCat(e.target.value)}
-            className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-bg border border-border text-sm outline-none focus:border-accent transition"
-          >
-            <option value="">Categoria para aprovar…</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={applyToAll}
-            disabled={busy || !selectedCat}
-            className={`px-4 py-2.5 rounded-xl font-semibold text-sm transition flex items-center justify-center gap-2 sm:shrink-0
-              ${busy || !selectedCat
-                ? "bg-fg/20 text-fg/40 cursor-not-allowed"
-                : "bg-fg text-bg hover:bg-fg/90 active:scale-[0.99]"}`}
-          >
-            {busy ? (
-              <><Loader2 size={14} className="animate-spin" /> Aprovando…</>
-            ) : (
-              <><Check size={14} /> Aprovar todas ({formatInt(rows.length)})</>
-            )}
-          </button>
-        </div>
-        {!selectedCat && !busy && (
-          <p className="text-[10px] text-muted mb-2">
-            Escolha uma categoria para habilitar o botão de aprovação
-          </p>
-        )}
-
-        {doneCount !== null && (
-          <p className="mb-3 text-xs text-accent">
-            ✅ {formatInt(doneCount)} {doneCount === 1 ? "transação aprovada" : "transações aprovadas"} — visíveis no portal, saíram do inbox
-          </p>
-        )}
-        {err && <p className="mb-3 text-xs text-danger">{err}</p>}
-
-        {/* Divider */}
-        <div className="border-t border-border mb-3 mt-3" />
-
-        {/* Secondary: show / hide / adjust — safe action first (Mostrar), destructive second (Ocultar) */}
         <p className="text-[10px] text-muted mb-2">
-          Portal Ayelet: <span className="tabular-nums font-medium text-fg">{formatBRL(currentSharedTotal)}</span>
+          Total visível: <span className="tabular-nums font-medium text-fg">{formatBRL(currentSharedTotal)}</span>
         </p>
         <div className="grid grid-cols-3 gap-2">
           <button
