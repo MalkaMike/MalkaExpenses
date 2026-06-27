@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
     .single();
   if (!tag) return NextResponse.json({ error: "tag not found" }, { status: 404 });
 
+  const HIDE_ON_TAG = ["kenlo", "laik"];
+
   let updated = 0;
   if (action === "add") {
     // Insert one row per (transaction_id, tag_id); skip dupes
@@ -49,6 +51,15 @@ export async function POST(req: NextRequest) {
       .select("id");
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     updated = data?.length ?? 0;
+
+    // Kenlo/Laik tags → always hide from Ayelet (shared_amount = 0)
+    if (HIDE_ON_TAG.includes(tag_slug)) {
+      await sb
+        .from("transactions")
+        .update({ shared_amount: 0 })
+        .in("id", transaction_ids)
+        .neq("shared_amount", 0);
+    }
   } else {
     const { data, error } = await sb
       .from("transaction_reimbursements")
