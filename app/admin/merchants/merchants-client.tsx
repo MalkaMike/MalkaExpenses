@@ -1,5 +1,5 @@
 "use client";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronRight, Eye, EyeOff, Clock, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X, CheckCircle2, Circle } from "lucide-react";
 import { formatBRL, formatInt } from "@/lib/format";
@@ -11,6 +11,7 @@ export type ClientMerchantGroup = {
   txCount: number;
   totalAbs: number;
   totalSigned: number;
+  catId: string | null;
   catName: string;
   isOutros: boolean;
   mixedCat: boolean;
@@ -29,6 +30,12 @@ export type TagDef = {
   name: string;
   color: string;
   icon: string;
+};
+
+export type CategoryDef = {
+  id: string;
+  slug: string;
+  name: string;
 };
 
 type SortCol = "name" | "count" | "variations" | "total";
@@ -53,6 +60,7 @@ type Props = {
   todoTotal: number;
   visibleTotal: number;
   hiddenTotal: number;
+  categories: CategoryDef[];
 };
 
 function tagColorClasses(color: string) {
@@ -75,7 +83,7 @@ export function MerchantsClient({
   groups, tags, direction, includeTransfers, onlyOutros,
   rowsLabel, emptyLabel, filteredCount,
   currentTab, todoCount, deferredCount, showDeferred, visibleCount, hiddenCount,
-  todoTotal, visibleTotal, hiddenTotal
+  todoTotal, visibleTotal, hiddenTotal, categories
 }: Props) {
   const router = useRouter();
 
@@ -192,6 +200,50 @@ export function MerchantsClient({
       setHideBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
     }
   }, [hideBusy, router]);
+
+  // ── Category picker ────────────────────────────────────────────────────────
+  const [openCatPicker, setOpenCatPicker] = useState<string | null>(null);
+  const [catPickerPos, setCatPickerPos] = useState<{ top: number; left: number } | null>(null);
+  const [catOverrides, setCatOverrides] = useState<Record<string, { id: string; name: string; isOutros: boolean }>>({});
+  const [catBusy, setCatBusy] = useState<Set<string>>(new Set());
+
+  // Close picker on outside click or scroll
+  useEffect(() => {
+    if (!openCatPicker) return;
+    const close = () => setOpenCatPicker(null);
+    document.addEventListener("click", close);
+    window.addEventListener("scroll", close, { passive: true });
+    return () => { document.removeEventListener("click", close); window.removeEventListener("scroll", close); };
+  }, [openCatPicker]);
+
+  const openCategoryPicker = useCallback((e: React.MouseEvent<HTMLButtonElement>, merchantKey: string) => {
+    e.stopPropagation();
+    const rect = e.currentTarget.getBoundingClientRect();
+    setCatPickerPos({ top: rect.bottom + 4, left: rect.left });
+    setOpenCatPicker(merchantKey);
+  }, []);
+
+  const saveCategory = useCallback(async (merchantKey: string, newCatId: string) => {
+    const newCat = categories.find((c) => c.id === newCatId);
+    if (!newCat) return;
+    setOpenCatPicker(null);
+    setCatOverrides((prev) => ({ ...prev, [merchantKey]: { id: newCatId, name: newCat.name, isOutros: newCat.slug === "outros" } }));
+    setCatBusy((prev) => new Set(prev).add(merchantKey));
+    try {
+      const res = await fetch("/api/admin/merchants/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_key: merchantKey, category_id: newCatId })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      router.refresh();
+    } catch (e) {
+      setCatOverrides((prev) => { const n = { ...prev }; delete n[merchantKey]; return n; });
+      toast.error((e as Error).message);
+    } finally {
+      setCatBusy((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
+    }
+  }, [categories, router]);
 
   const HIDE_TAGS = ["kenlo", "laik"];
   const SHOW_TAGS = ["insurance"];
@@ -386,9 +438,25 @@ export function MerchantsClient({
                         <Clock size={8} /> adiado
                       </span>
                     )}
-                    <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${g.isOutros ? "bg-[#f59e0b]/10 text-[#f59e0b]" : "bg-surface-container-highest text-on-surface-variant"}`}>
-                      {g.catName}{g.mixedCat ? " +" : ""}
-                    </span>
+                    {(() => {
+                      const ov = catOverrides[g.key];
+                      const dispName = ov?.name ?? g.catName;
+                      const dispIsOutros = ov ? ov.isOutros : g.isOutros;
+                      const isBusy = catBusy.has(g.key);
+                      return (
+                        <button
+                          onClick={(e) => openCategoryPicker(e, g.key)}
+                          disabled={isBusy}
+                          title="Clique para trocar categoria"
+                          className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider transition
+                            hover:ring-1 hover:ring-primary/40
+                            ${dispIsOutros ? "bg-[#f59e0b]/10 text-[#f59e0b]" : "bg-surface-container-highest text-on-surface-variant"}
+                            ${isBusy ? "opacity-50 cursor-wait" : "cursor-pointer"}`}
+                        >
+                          {dispName}{!ov && g.mixedCat ? " +" : ""}
+                        </button>
+                      );
+                    })()}
                     {allHidden && (
                       <span className="text-[9px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#f59e0b] text-black font-bold uppercase tracking-wider">
                         <EyeOff size={8} /> Oculto
@@ -458,6 +526,30 @@ export function MerchantsClient({
         <p className="px-5 py-10 text-center text-sm text-on-surface-variant">
           {search ? `Nenhum resultado para "${search}"` : emptyLabel}
         </p>
+      )}
+
+      {/* ── Category picker (fixed, escapes overflow:hidden) ─────────────── */}
+      {openCatPicker && catPickerPos && (
+        <div
+          style={{ position: "fixed", top: catPickerPos.top, left: catPickerPos.left }}
+          className="z-50 bg-surface-container-lowest border border-outline-variant rounded-lg shadow-xl py-1 min-w-[180px] max-h-[260px] overflow-y-auto"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {categories.map((cat) => {
+            const currentCatId = catOverrides[openCatPicker]?.id ?? groups.find((g) => g.key === openCatPicker)?.catId;
+            const isSelected = cat.id === currentCatId;
+            return (
+              <button
+                key={cat.id}
+                onClick={() => saveCategory(openCatPicker, cat.id)}
+                className={`w-full text-left px-3 py-1.5 text-[11px] transition hover:bg-surface-container
+                  ${isSelected ? "font-bold text-primary bg-primary/5" : "text-on-surface"}`}
+              >
+                {cat.name}
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {currentTab === "todo" && deferredCount > 0 && (

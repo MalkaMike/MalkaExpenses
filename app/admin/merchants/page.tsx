@@ -6,7 +6,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters, invalidateCache } from "@/lib/merchants/clusters";
 import { formatBRL, formatInt } from "@/lib/format";
 import { fromDb } from "@/lib/money";
-import { MerchantsClient, type ClientMerchantGroup, type TagDef } from "./merchants-client";
+import { MerchantsClient, type ClientMerchantGroup, type TagDef, type CategoryDef } from "./merchants-client";
 
 export const dynamic = "force-dynamic";
 
@@ -222,6 +222,7 @@ export default async function MerchantsPage({
       txCount: g.txCount,
       totalAbs: g.totalAbs,
       totalSigned: g.totalSigned,
+      catId: topCatId === "__none__" ? null : topCatId,
       catName: topCatId === "__none__" ? "—" : catNameById.get(topCatId) ?? "—",
       isOutros: topCatId === outrosId,
       mixedCat: g.categoryIds.size > 1,
@@ -242,6 +243,10 @@ export default async function MerchantsPage({
     color: t.color as string,
     icon: t.icon as string
   }));
+
+  const clientCategories: CategoryDef[] = [...(cats ?? [])]
+    .sort((a, b) => (a.name as string).localeCompare(b.name as string, "pt-BR"))
+    .map((c) => ({ id: c.id as string, slug: c.slug as string, name: c.name as string }));
 
   return (
     <>
@@ -342,6 +347,7 @@ export default async function MerchantsPage({
           todoTotal={todoTotal}
           visibleTotal={visibleTotal}
           hiddenTotal={hiddenTotal}
+          categories={clientCategories}
         />
       </div>
     </div>
