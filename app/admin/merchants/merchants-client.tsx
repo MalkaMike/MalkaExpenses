@@ -434,7 +434,7 @@ export function MerchantsClient({
                       </button>
                     )}
                     {g.isDeferred && (
-                      <span className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 font-bold uppercase tracking-wider">
+                      <span onClick={(e) => e.stopPropagation()} className="text-[9px] inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400 font-bold uppercase tracking-wider">
                         <Clock size={8} /> adiado
                       </span>
                     )}
@@ -458,17 +458,17 @@ export function MerchantsClient({
                       );
                     })()}
                     {allHidden && (
-                      <span className="text-[9px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#f59e0b] text-black font-bold uppercase tracking-wider">
+                      <span onClick={(e) => e.stopPropagation()} className="text-[9px] inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[#f59e0b] text-black font-bold uppercase tracking-wider">
                         <EyeOff size={8} /> Oculto
                       </span>
                     )}
                     {partialHidden && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-[#f59e0b]/10 text-[#f59e0b] uppercase tracking-wider">
+                      <span onClick={(e) => e.stopPropagation()} className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-[#f59e0b]/10 text-[#f59e0b] uppercase tracking-wider">
                         {g.hiddenCount}/{g.txCount} ocultas
                       </span>
                     )}
                     {g.adjustedCount > 0 && (
-                      <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-surface-container-high text-on-surface-variant uppercase tracking-wider">
+                      <span onClick={(e) => e.stopPropagation()} className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-surface-container-high text-on-surface-variant uppercase tracking-wider">
                         {g.adjustedCount} ajust.
                       </span>
                     )}
