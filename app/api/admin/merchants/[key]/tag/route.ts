@@ -4,6 +4,7 @@ import { requireAdmin, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/http";
 import { rawDescriptionsForKeyDirect, preloadClusters } from "@/lib/merchants/clusters";
+import { ensureClusterRowsExist } from "@/lib/merchants/ensure-cluster";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -29,10 +30,11 @@ export async function POST(
   const { tag_slug, action } = parsed.data;
 
   await preloadClusters();
+  const sb = serverClient();
+  // Ensure cluster rows exist for slug-fallback merchants before looking up descriptions
+  await ensureClusterRowsExist(merchantKey, sb);
   const rawDescs = await rawDescriptionsForKeyDirect(merchantKey);
   if (!rawDescs.length) return NextResponse.json({ error: "merchant not found" }, { status: 404 });
-
-  const sb = serverClient();
 
   // Load all matching transaction IDs (paginated, chunked by description)
   const txIds: string[] = [];

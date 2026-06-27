@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
+import { ensureClusterRowsExist } from "@/lib/merchants/ensure-cluster";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -15,6 +16,9 @@ export async function POST(
   await requireAdmin();
   const { key: canonical_key } = await params;
   const sb = serverClient();
+
+  const found = await ensureClusterRowsExist(canonical_key, sb);
+  if (!found) return NextResponse.json({ error: "merchant not found" }, { status: 404 });
 
   const { error: revErr } = await sb
     .from("merchant_clusters")

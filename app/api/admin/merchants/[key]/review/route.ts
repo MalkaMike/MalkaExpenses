@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
+import { ensureClusterRowsExist } from "@/lib/merchants/ensure-cluster";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,10 @@ export async function POST(
   await requireAdmin();
   const { key: canonical_key } = await params;
   const sb = serverClient();
+
+  // Ensure rows exist (creates them from transactions for slug-fallback merchants)
+  const found = await ensureClusterRowsExist(canonical_key, sb);
+  if (!found) return NextResponse.json({ error: "merchant not found" }, { status: 404 });
 
   // Read current state (any row for this canonical_key)
   const { data: row } = await sb
