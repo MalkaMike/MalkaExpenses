@@ -32,6 +32,7 @@ type MerchantGroup = {
   hiddenCount: number;
   shownCount: number;
   adjustedCount: number;
+  isReviewed: boolean;
 };
 
 type Direction = "out" | "in" | "all";
@@ -45,7 +46,7 @@ const COPY: Record<Direction, { title: string; subtitle: string; emptyLabel: str
 export default async function MerchantsPage({
   searchParams
 }: {
-  searchParams: Promise<{ direction?: string; transfers?: string; outros?: string }>;
+  searchParams: Promise<{ direction?: string; transfers?: string; outros?: string; reviewed?: string }>;
 }) {
   const role = await getRole();
   if (role !== "admin" && role !== "health") {
@@ -60,6 +61,7 @@ export default async function MerchantsPage({
   const direction: Direction = sp.direction === "in" ? "in" : sp.direction === "all" ? "all" : "out";
   const includeTransfers = sp.transfers === "1";
   const onlyOutros = sp.outros === "1";
+  const showReviewed = sp.reviewed === "1";
   const copy = COPY[direction];
 
   const sb = serverClient();
@@ -111,7 +113,8 @@ export default async function MerchantsPage({
         key: c.key, name: c.name,
         txCount: 0, totalAbs: 0, totalSigned: 0,
         categoryIds: new Map(), uniqueDescriptions: new Set(),
-        hiddenCount: 0, shownCount: 0, adjustedCount: 0
+        hiddenCount: 0, shownCount: 0, adjustedCount: 0,
+        isReviewed: false
       });
     }
     const g = groups.get(c.key)!;
@@ -152,12 +155,31 @@ export default async function MerchantsPage({
     }
   }
 
+  // Fetch is_reviewed for all cluster keys in one query
+  const allGroupKeys = [...groups.keys()];
+  if (allGroupKeys.length > 0) {
+    const KEY_CHUNK = 500;
+    for (let i = 0; i < allGroupKeys.length; i += KEY_CHUNK) {
+      const { data: rv } = await sb
+        .from("merchant_clusters")
+        .select("canonical_key")
+        .in("canonical_key", allGroupKeys.slice(i, i + KEY_CHUNK))
+        .eq("is_reviewed", true);
+      for (const r of rv ?? []) {
+        const g = groups.get(r.canonical_key as string);
+        if (g) g.isReviewed = true;
+      }
+    }
+  }
+
   const allSorted = [...groups.values()].sort((a, b) => b.totalAbs - a.totalAbs);
   const inOutros = allSorted.filter((g) => {
     const top = [...g.categoryIds.entries()].sort((a, b) => b[1] - a[1])[0];
     return top && top[0] === outrosId;
   });
-  const sorted = onlyOutros ? inOutros : allSorted;
+  const base = onlyOutros ? inOutros : allSorted;
+  const reviewedCount = base.filter((g) => g.isReviewed).length;
+  const sorted = showReviewed ? base : base.filter((g) => !g.isReviewed);
   const totalMerchants = sorted.length;
   const totalAbsAll = sorted.reduce((s, g) => s + g.totalAbs, 0);
   const totalHiddenMerchants = sorted.filter((g) => g.hiddenCount === g.txCount && g.txCount > 0).length;
@@ -183,7 +205,8 @@ export default async function MerchantsPage({
       shownCount: g.shownCount,
       adjustedCount: g.adjustedCount,
       uniqueDescCount: g.uniqueDescriptions.size,
-      tagCounts
+      tagCounts,
+      isReviewed: g.isReviewed
     };
   });
 
@@ -280,9 +303,12 @@ export default async function MerchantsPage({
           tags={clientTags}
           direction={direction}
           includeTransfers={includeTransfers}
+          onlyOutros={onlyOutros}
           rowsLabel={copy.rowsLabel}
           emptyLabel={copy.emptyLabel}
           filteredCount={filtered.length}
+          reviewedCount={reviewedCount}
+          showReviewed={showReviewed}
         />
       </div>
     </div>

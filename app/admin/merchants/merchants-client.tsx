@@ -1,7 +1,7 @@
 "use client";
 import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Eye, EyeOff, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X, CheckCircle2, Circle } from "lucide-react";
 import { formatBRL, formatInt } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -19,6 +19,7 @@ export type ClientMerchantGroup = {
   adjustedCount: number;
   uniqueDescCount: number;
   tagCounts: Record<string, number>; // tagSlug → count of tagged transactions
+  isReviewed: boolean;
 };
 
 export type TagDef = {
@@ -37,9 +38,12 @@ type Props = {
   tags: TagDef[];
   direction: string;
   includeTransfers: boolean;
+  onlyOutros: boolean;
   rowsLabel: string;
   emptyLabel: string;
   filteredCount: number;
+  reviewedCount: number;
+  showReviewed: boolean;
   sortBy?: string;
 };
 
@@ -59,13 +63,39 @@ function TagIcon({ icon, size }: { icon: string; size: number }) {
   return <Tag size={size} />;
 }
 
-export function MerchantsClient({ groups, tags, direction, includeTransfers, rowsLabel, emptyLabel, filteredCount }: Props) {
+export function MerchantsClient({ groups, tags, direction, includeTransfers, onlyOutros, rowsLabel, emptyLabel, filteredCount, reviewedCount, showReviewed }: Props) {
   const router = useRouter();
 
   // Search + sort state
   const [search, setSearch] = useState("");
   const [sortCol, setSortCol] = useState<SortCol>("total");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  // Reviewed state — optimistically dismissed from list when check is clicked
+  const [reviewedKeys, setReviewedKeys] = useState<Set<string>>(
+    () => new Set(groups.filter((g) => g.isReviewed).map((g) => g.key))
+  );
+  const [reviewBusy, setReviewBusy] = useState<Set<string>>(new Set());
+  // Count of locally dismissed this session (starts at 0 even if showReviewed=false)
+  const [sessionDismissed, setSessionDismissed] = useState(0);
+
+  const toggleReviewed = useCallback(async (merchantKey: string) => {
+    if (reviewBusy.has(merchantKey)) return;
+    const wasReviewed = reviewedKeys.has(merchantKey);
+    const newSet = new Set(reviewedKeys);
+    if (wasReviewed) newSet.delete(merchantKey);
+    else { newSet.add(merchantKey); if (!showReviewed) setSessionDismissed((n) => n + 1); }
+    setReviewedKeys(newSet);
+    setReviewBusy((s) => new Set(s).add(merchantKey));
+    try {
+      const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/review`, { method: "POST" });
+      if (!res.ok) { setReviewedKeys(reviewedKeys); throw new Error(`HTTP ${res.status}`); }
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setReviewBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
+    }
+  }, [reviewedKeys, reviewBusy, showReviewed]);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) {
@@ -78,6 +108,8 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
 
   const displayed = useMemo(() => {
     let list = [...groups];
+    // Hide reviewed unless showReviewed mode
+    if (!showReviewed) list = list.filter((g) => !reviewedKeys.has(g.key));
     const q = search.trim().toLowerCase();
     if (q) list = list.filter((g) => g.name.toLowerCase().includes(q) || g.catName.toLowerCase().includes(q));
     list.sort((a, b) => {
@@ -89,7 +121,7 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
       return sortDir === "asc" ? diff : -diff;
     });
     return list;
-  }, [groups, search, sortCol, sortDir]);
+  }, [groups, search, sortCol, sortDir, showReviewed, reviewedKeys]);
 
   // tagCounts local state: merchantKey → tagSlug → count
   const [tagCounts, setTagCounts] = useState<Record<string, Record<string, number>>>(() => {
@@ -231,7 +263,8 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
           const allHidden = currentHideMode === "hide";
           const partialHidden = currentHideMode === "mixed";
           const isHideBusy = hideBusy.has(g.key);
-          const initial = (g.name[0] ?? "?").toUpperCase();
+          const isReviewed = reviewedKeys.has(g.key);
+          const isReviewBusy = reviewBusy.has(g.key);
           const rank = idx + 1;
           const isTopThree = rank <= 3;
 
@@ -252,15 +285,22 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
 
                 {/* Merchant info */}
                 <div className="min-w-0 flex items-start gap-2.5">
-                  <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 mt-0.5"
-                    style={{
-                      background: allHidden ? "#f59e0b18" : direction === "in" ? "#6cf8bb30" : "#efeeeb",
-                      color: allHidden ? "#f59e0b" : direction === "in" ? "#006c49" : "#1b1c1a"
-                    }}
+                  {/* Done / reviewed check button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleReviewed(g.key); }}
+                    disabled={isReviewBusy}
+                    title={isReviewed ? "Marcar como não revisado" : "Marcar como revisado (feito)"}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 transition-all
+                      ${isReviewBusy ? "opacity-40 cursor-wait" :
+                        isReviewed ? "text-secondary" :
+                        "text-on-surface-variant/25 hover:text-secondary/60"}`}
                   >
-                    {allHidden ? <EyeOff size={12} /> : initial}
-                  </div>
+                    {isReviewBusy
+                      ? <Loader2 size={14} className="animate-spin" />
+                      : isReviewed
+                        ? <CheckCircle2 size={16} />
+                        : <Circle size={16} />}
+                  </button>
                   <div className="min-w-0">
                     <p className="font-semibold text-[13px] text-on-surface truncate leading-tight">{g.name}</p>
                     <div className="flex items-center gap-1 mt-0.5 flex-wrap">
@@ -355,13 +395,35 @@ export function MerchantsClient({ groups, tags, direction, includeTransfers, row
       )}
 
       {/* Table footer */}
-      <div className="bg-surface-container-low px-4 py-2.5 border-t border-outline-variant">
+      <div className="bg-surface-container-low px-4 py-2.5 border-t border-outline-variant flex items-center justify-between gap-3 flex-wrap">
         <span className="text-xs text-on-surface-variant">
           {search
             ? `${formatInt(displayed.length)} de ${formatInt(groups.length)} ${rowsLabel}`
             : `${formatInt(groups.length)} ${rowsLabel}`
           } · {formatInt(filteredCount)} transações
         </span>
+        {(reviewedCount + sessionDismissed > 0) && !showReviewed && (
+          <button
+            onClick={() => router.push(
+              `/admin/merchants?direction=${direction}${onlyOutros ? "&outros=1" : ""}${includeTransfers ? "&transfers=1" : ""}&reviewed=1`
+            )}
+            className="text-xs text-secondary/70 hover:text-secondary inline-flex items-center gap-1 transition"
+          >
+            <CheckCircle2 size={11} />
+            {formatInt(reviewedCount + sessionDismissed)} revisados ocultos — mostrar
+          </button>
+        )}
+        {showReviewed && (
+          <button
+            onClick={() => router.push(
+              `/admin/merchants?direction=${direction}${onlyOutros ? "&outros=1" : ""}${includeTransfers ? "&transfers=1" : ""}`
+            )}
+            className="text-xs text-on-surface-variant hover:text-on-surface inline-flex items-center gap-1 transition"
+          >
+            <CheckCircle2 size={11} />
+            Ocultar revisados
+          </button>
+        )}
       </div>
     </>
   );
