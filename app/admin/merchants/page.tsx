@@ -167,7 +167,8 @@ export default async function MerchantsPage({
       const { data: rv } = await sb
         .from("merchant_clusters")
         .select("canonical_key, is_reviewed, is_deferred")
-        .in("canonical_key", allGroupKeys.slice(i, i + KEY_CHUNK));
+        .in("canonical_key", allGroupKeys.slice(i, i + KEY_CHUNK))
+        .limit(KEY_CHUNK * 20); // PostgREST default cap is 1000; each key can have many description_raw rows
       for (const r of (rv ?? []) as { canonical_key: string; is_reviewed: boolean; is_deferred: boolean }[]) {
         const g = groups.get(r.canonical_key);
         if (g) {
