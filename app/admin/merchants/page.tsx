@@ -172,8 +172,10 @@ export default async function MerchantsPage({
       for (const r of (rv ?? []) as { canonical_key: string; is_reviewed: boolean; is_deferred: boolean }[]) {
         const g = groups.get(r.canonical_key);
         if (g) {
-          g.isReviewed = r.is_reviewed ?? false;
-          g.isDeferred = r.is_deferred ?? false;
+          // OR logic: reviewed if ANY cluster row is reviewed (last-write-wins
+          // would break when some rows are true and a later row is false)
+          if (r.is_reviewed) g.isReviewed = true;
+          if (r.is_deferred) g.isDeferred = true;
         }
       }
     }

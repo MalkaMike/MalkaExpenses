@@ -104,18 +104,24 @@ export async function POST(
     //   ignoreDuplicates upsert was skipped because a row existed with a different
     //   canonical_key — without this pass, the UPDATE in pass 1 matches 0 rows and
     //   is_reviewed is silently never set).
-    const { error: revErr } = await sb
+    const { data: revRows, error: revErr } = await sb
       .from("merchant_clusters")
       .update({ is_reviewed: true })
-      .eq("canonical_key", merchantKey);
+      .eq("canonical_key", merchantKey)
+      .select("id");
     if (revErr) console.error("[tag] is_reviewed by key failed:", revErr.message);
+    else console.log(`[tag] is_reviewed pass1: ${revRows?.length ?? 0} rows updated for ${merchantKey}`);
 
+    // Pass 2: also update by description_raw in case some rows have a different
+    // canonical_key in the DB. This normalises canonical_key and sets is_reviewed.
     if (rawDescs.length > 0) {
-      const { error: revErr2 } = await sb
+      const { data: revRows2, error: revErr2 } = await sb
         .from("merchant_clusters")
         .update({ is_reviewed: true, canonical_key: merchantKey })
-        .in("description_raw", rawDescs);
+        .in("description_raw", rawDescs)
+        .select("id");
       if (revErr2) console.error("[tag] is_reviewed by desc failed:", revErr2.message);
+      else console.log(`[tag] is_reviewed pass2: ${revRows2?.length ?? 0} rows updated for ${merchantKey}`);
     }
 
     const hideOnTag = ["kenlo", "laik"];
