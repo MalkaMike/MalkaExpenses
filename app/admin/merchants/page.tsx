@@ -159,24 +159,33 @@ export default async function MerchantsPage({
     }
   }
 
-  // Fetch is_reviewed and is_deferred for all cluster keys
+  // Fetch is_reviewed and is_deferred for all cluster keys.
+  // Use small key chunks + inner pagination so we never hit PostgREST's 1000-row
+  // hard cap — with ~840 merchants × ~2 rows/key ≈ 1700 rows total, a single
+  // 500-key batch was silently truncated at 1000 rows, leaving some merchants stuck
+  // in "Para revisar" even after their is_reviewed was set to true.
   const allGroupKeys = [...groups.keys()];
   if (allGroupKeys.length > 0) {
-    const KEY_CHUNK = 500;
+    const KEY_CHUNK = 200;
     for (let i = 0; i < allGroupKeys.length; i += KEY_CHUNK) {
-      const { data: rv } = await sb
-        .from("merchant_clusters")
-        .select("canonical_key, is_reviewed, is_deferred")
-        .in("canonical_key", allGroupKeys.slice(i, i + KEY_CHUNK))
-        .limit(KEY_CHUNK * 20); // PostgREST default cap is 1000; each key can have many description_raw rows
-      for (const r of (rv ?? []) as { canonical_key: string; is_reviewed: boolean; is_deferred: boolean }[]) {
-        const g = groups.get(r.canonical_key);
-        if (g) {
-          // OR logic: reviewed if ANY cluster row is reviewed (last-write-wins
-          // would break when some rows are true and a later row is false)
-          if (r.is_reviewed) g.isReviewed = true;
-          if (r.is_deferred) g.isDeferred = true;
+      const keys = allGroupKeys.slice(i, i + KEY_CHUNK);
+      let off = 0;
+      while (true) {
+        const { data: rv } = await sb
+          .from("merchant_clusters")
+          .select("canonical_key, is_reviewed, is_deferred")
+          .in("canonical_key", keys)
+          .range(off, off + 999);
+        for (const r of (rv ?? []) as { canonical_key: string; is_reviewed: boolean; is_deferred: boolean }[]) {
+          const g = groups.get(r.canonical_key);
+          if (g) {
+            // OR logic: reviewed if ANY cluster row is reviewed
+            if (r.is_reviewed) g.isReviewed = true;
+            if (r.is_deferred) g.isDeferred = true;
+          }
         }
+        if (!rv?.length || rv.length < 1000) break;
+        off += 1000;
       }
     }
   }
