@@ -1,5 +1,10 @@
 "use client";
 import { useState, useCallback, useMemo, useEffect } from "react";
+
+// Module-level set: merchants dismissed from "Para revisar" this session.
+// Survives component remounts (e.g. during router.refresh() RSC transitions).
+// Cleared only on full page reload / route change.
+const pendingDismissedTodo = new Set<string>();
 import { useRouter } from "next/navigation";
 import { ChevronRight, Eye, EyeOff, Clock, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X, CheckCircle2, Circle } from "lucide-react";
 import { formatBRL, formatInt } from "@/lib/format";
@@ -107,13 +112,22 @@ export function MerchantsClient({
     if (reviewBusy.has(merchantKey)) return;
     const wasReviewed = reviewedKeys.has(merchantKey);
     const newSet = new Set(reviewedKeys);
-    if (wasReviewed) newSet.delete(merchantKey);
-    else newSet.add(merchantKey);
+    if (wasReviewed) {
+      newSet.delete(merchantKey);
+      pendingDismissedTodo.delete(merchantKey);
+    } else {
+      newSet.add(merchantKey);
+      pendingDismissedTodo.add(merchantKey);
+    }
     setReviewedKeys(newSet);
     setReviewBusy((s) => new Set(s).add(merchantKey));
     try {
       const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/review`, { method: "POST" });
-      if (!res.ok) { setReviewedKeys(reviewedKeys); throw new Error(`HTTP ${res.status}`); }
+      if (!res.ok) {
+        setReviewedKeys(reviewedKeys);
+        if (!wasReviewed) pendingDismissedTodo.delete(merchantKey);
+        throw new Error(`HTTP ${res.status}`);
+      }
       router.refresh();
     } catch (e) {
       toast.error((e as Error).message);
@@ -124,11 +138,13 @@ export function MerchantsClient({
 
   const doDefer = useCallback(async (merchantKey: string) => {
     if (deferBusy.has(merchantKey)) return;
+    pendingDismissedTodo.add(merchantKey);
     setDeferredKeys((prev) => new Set(prev).add(merchantKey));
     setDeferBusy((s) => new Set(s).add(merchantKey));
     try {
       const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/defer`, { method: "POST" });
       if (!res.ok) {
+        pendingDismissedTodo.delete(merchantKey);
         setDeferredKeys((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
         throw new Error(`HTTP ${res.status}`);
       }
@@ -150,7 +166,7 @@ export function MerchantsClient({
     let list = [...groups];
     // Optimistic dismiss: in "todo" remove newly-reviewed or newly-deferred; in other tabs remove newly-unreviewed
     if (currentTab === "todo") {
-      list = list.filter((g) => !reviewedKeys.has(g.key) && !deferredKeys.has(g.key));
+      list = list.filter((g) => !reviewedKeys.has(g.key) && !deferredKeys.has(g.key) && !pendingDismissedTodo.has(g.key));
     } else {
       list = list.filter((g) => reviewedKeys.has(g.key));
     }
@@ -260,6 +276,7 @@ export function MerchantsClient({
     }));
     // Applying a tag = review decision: mark reviewed + apply visibility rule optimistically
     if (action === "add") {
+      pendingDismissedTodo.add(merchantKey);
       setReviewedKeys((prev) => new Set(prev).add(merchantKey));
       if (HIDE_TAGS.includes(tagSlug)) {
         setHideMode((prev) => ({ ...prev, [merchantKey]: "hide" }));
@@ -282,7 +299,10 @@ export function MerchantsClient({
       router.refresh();
     } catch (e) {
       setTagCounts((prev) => ({ ...prev, [merchantKey]: { ...prev[merchantKey], [tagSlug]: current } }));
-      if (action === "add") setReviewedKeys((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
+      if (action === "add") {
+        pendingDismissedTodo.delete(merchantKey);
+        setReviewedKeys((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
+      }
       toast.error((e as Error).message);
     } finally {
       setBusyKeys((s) => { const n = new Set(s); n.delete(busyKey); return n; });
