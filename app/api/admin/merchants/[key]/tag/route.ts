@@ -98,14 +98,34 @@ export async function POST(
   // Applying a tag is a review decision — mark merchant as reviewed and enforce
   // the visibility rule so the row moves to the correct tab automatically.
   if (action === "add") {
-    await sb.from("merchant_clusters").update({ is_reviewed: true }).eq("canonical_key", merchantKey);
+    // Two-pass UPDATE for robustness:
+    // Pass 1: by canonical_key (standard case — row already exists with the right key).
+    // Pass 2: by description_raw (handles the case where ensureClusterRowsExist's
+    //   ignoreDuplicates upsert was skipped because a row existed with a different
+    //   canonical_key — without this pass, the UPDATE in pass 1 matches 0 rows and
+    //   is_reviewed is silently never set).
+    const { error: revErr } = await sb
+      .from("merchant_clusters")
+      .update({ is_reviewed: true })
+      .eq("canonical_key", merchantKey);
+    if (revErr) console.error("[tag] is_reviewed by key failed:", revErr.message);
+
+    if (rawDescs.length > 0) {
+      const { error: revErr2 } = await sb
+        .from("merchant_clusters")
+        .update({ is_reviewed: true, canonical_key: merchantKey })
+        .in("description_raw", rawDescs);
+      if (revErr2) console.error("[tag] is_reviewed by desc failed:", revErr2.message);
+    }
 
     const hideOnTag = ["kenlo", "laik"];
     const showOnTag = ["insurance"];
     if (hideOnTag.includes(tag_slug)) {
-      await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "hide", p_value: null });
+      const { error: hideErr } = await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "hide", p_value: null });
+      if (hideErr) console.error("[tag] bulk_share_merchant hide failed:", hideErr.message);
     } else if (showOnTag.includes(tag_slug)) {
-      await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "show", p_value: null });
+      const { error: showErr } = await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "show", p_value: null });
+      if (showErr) console.error("[tag] bulk_share_merchant show failed:", showErr.message);
     }
   }
 
