@@ -77,6 +77,31 @@ export async function GET(req: NextRequest) {
   const todoGroups = [...groups.values()].filter(g => !g.isReviewed && !g.isDeferred);
   const targetInTodo = todoGroups.some(g => g.key === targetKey);
 
+  // Step 4: no-op UPDATE test (sets is_reviewed to its OWN current value) to
+  // isolate whether writes to merchant_clusters.is_reviewed are silently
+  // blocked (e.g. RLS policy excludes the row, or column lacks UPDATE grant)
+  // without changing real data either way.
+  let updateTest: { attempted: boolean; currentValue: boolean | null; rowsAffected: number; error: string | null } = {
+    attempted: false,
+    currentValue: null,
+    rowsAffected: 0,
+    error: null
+  };
+  if (byKey && byKey.length > 0) {
+    const currentValue = (byKey[0] as { is_reviewed: boolean }).is_reviewed;
+    const { data: upd, error: updErr } = await sb
+      .from("merchant_clusters")
+      .update({ is_reviewed: currentValue })
+      .eq("canonical_key", targetKey)
+      .select("id");
+    updateTest = {
+      attempted: true,
+      currentValue,
+      rowsAffected: upd?.length ?? 0,
+      error: updErr?.message ?? null
+    };
+  }
+
   return NextResponse.json({
     targetKey,
     dbRows: byKey,
@@ -88,6 +113,7 @@ export async function GET(req: NextRequest) {
     totalGroups,
     todoCount: todoGroups.length,
     targetInTodo,
+    updateTest,
     note: "txSample limited to 5000 rows — counts may differ from full page"
   });
 }
