@@ -189,6 +189,33 @@ export async function getRealTimeBalance(accountId: string): Promise<PluggyRealT
   return authedFetch<PluggyRealTimeBalance>(`/accounts/${encodeURIComponent(accountId)}/balance`);
 }
 
+export type PluggyWebhook = {
+  id: string;
+  url: string;
+  event: string;
+  disabledAt?: string | null;
+};
+
+/** List webhooks registered on this Pluggy application. */
+export async function listWebhooks(): Promise<PluggyWebhook[]> {
+  const json = await authedFetch<Paged<PluggyWebhook>>("/webhooks");
+  return json.results ?? [];
+}
+
+/**
+ * Update a webhook's url/headers/event. Pluggy's dashboard can only set a bare
+ * url (no custom headers) — headers must go through this API call.
+ */
+export async function updateWebhook(
+  id: string,
+  patch: { url?: string; headers?: Record<string, string> }
+): Promise<PluggyWebhook> {
+  return authedFetch<PluggyWebhook>(`/webhooks/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch)
+  });
+}
+
 /** List all credit card bills for an account. Sorted by dueDate desc (most recent first). */
 export async function listBills(accountId: string): Promise<PluggyBill[]> {
   const json = await authedFetch<Paged<PluggyBill>>(
