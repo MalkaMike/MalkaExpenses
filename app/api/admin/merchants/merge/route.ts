@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAdmin, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { invalidateCache } from "@/lib/merchants/clusters";
+import { ensureClusterRowsExist } from "@/lib/merchants/ensure-cluster";
 import { safeJson } from "@/lib/http";
 
 export const runtime = "nodejs";
@@ -36,6 +37,13 @@ export async function POST(req: NextRequest) {
   }
 
   const sb = serverClient();
+
+  // A merchant never explicitly touched (renamed/tagged/reviewed) may have NO
+  // merchant_clusters row at all — clusterFor() computes its key on the fly
+  // from description_raw without ever persisting it. Without this, the target
+  // lookup below 404s with "target cluster not found" for any such merchant.
+  await ensureClusterRowsExist(source_canonical_key, sb);
+  await ensureClusterRowsExist(target_canonical_key, sb);
 
   // Fetch source + target names BEFORE the merge (for the audit log)
   const { data: src } = await sb
