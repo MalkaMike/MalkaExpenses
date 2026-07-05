@@ -54,6 +54,10 @@ RESUMO: <um parágrafo explicando o que você encontrou: o que é o comerciante,
 Taxonomia de categorias do app (use exatamente um destes slugs em CATEGORIA_SUGERIDA):
 ${taxonomySlugList()}
 
+Regra CRÍTICA de categoria — pagamentos que NÃO são despesa:
+- Pagamento de FATURA de cartão de crédito (ex: "Nu Pagamentos", "pagamento de fatura", boleto/Pix para banco emissor de cartão) → CATEGORIA_SUGERIDA: cartao_pagamento. NUNCA sugira "financeiro" para isso — o dinheiro já foi contado quando as compras do cartão entraram; categorizar a fatura como despesa CONTA DUAS VEZES.
+- Transferência entre contas do próprio usuário → CATEGORIA_SUGERIDA: transferencias.
+
 Regras dos vereditos:
 - "pessoa_fisica" = o nome é claramente de uma PESSOA (transferência PIX pessoal, não uma empresa). Use este veredito SEMPRE nesses casos — pessoa não é golpe nem empresa.
 - "legitimo" = empresa real e identificável, sem sinais de fraude relevantes.
