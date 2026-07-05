@@ -7,6 +7,7 @@ import { clusterFor, preloadClusters, invalidateCache } from "@/lib/merchants/cl
 import { formatBRL, formatInt } from "@/lib/format";
 import { fromDb } from "@/lib/money";
 import { MerchantsClient, type ClientMerchantGroup, type TagDef, type CategoryDef } from "./merchants-client";
+import { BulkResearchButton } from "./bulk-research-button";
 
 export const dynamic = "force-dynamic";
 
@@ -299,6 +300,8 @@ export default async function MerchantsPage({
           </div>
         </div>
       </div>
+
+      {role === "admin" && currentTab === "todo" && direction === "out" && <BulkResearchButton />}
 
       {/* "Outros" warning / filter toggle */}
       {inOutros.length > 0 && direction === "out" && (

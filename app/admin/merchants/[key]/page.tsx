@@ -93,9 +93,12 @@ export default async function MerchantDetailPage({
   }
 
   // Categories + accounts for display
-  const [{ data: cats }, { data: accounts }] = await Promise.all([
+  const [{ data: cats }, { data: accounts }, { data: researchRow }] = await Promise.all([
     sb.from("categories").select("id, slug, name").order("name"),
-    sb.from("accounts").select("id, name, bank").eq("is_archived", false)
+    sb.from("accounts").select("id, name, bank").eq("is_archived", false),
+    role === "admin"
+      ? sb.from("merchant_research").select("*").eq("canonical_key", key).maybeSingle()
+      : Promise.resolve({ data: null })
   ]);
   const catNameById = new Map<string, string>();
   for (const c of cats ?? []) catNameById.set(c.id as string, c.name as string);
@@ -301,6 +304,18 @@ export default async function MerchantDetailPage({
         pendingCount={pendingCount}
         categories={categoryList}
         uniformCategoryId={uniformCategoryId}
+        research={
+          researchRow
+            ? {
+                verdict: researchRow.verdict as "legitimo" | "suspeito" | "desconhecido",
+                summary: researchRow.summary as string,
+                cnpj: researchRow.cnpj as string | null,
+                cnpjData: researchRow.cnpj_data as Record<string, string | null> | null,
+                sources: (researchRow.sources as { title: string; url: string }[]) ?? [],
+                updatedAt: researchRow.updated_at as string
+              }
+            : null
+        }
       />
     </div>
   </>

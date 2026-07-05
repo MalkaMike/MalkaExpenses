@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink, Undo2, ArrowUpDown, CheckCheck } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink, Undo2, ArrowUpDown, CheckCheck, ShieldQuestion, ShieldCheck, ShieldAlert, RotateCw } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { ReceiptFinderButton } from "@/components/receipt-finder-button";
 import { MoveDescriptionButton } from "@/components/move-description-button";
@@ -34,6 +34,14 @@ type ReimbTag = {
 type ClusterOption = { key: string; name: string };
 type MergeHistoryItem = { id: string; sourceName: string; createdAt: string; hasDescriptions: boolean };
 type CategoryOption = { id: string; slug: string; name: string };
+type ResearchResult = {
+  verdict: "legitimo" | "suspeito" | "desconhecido";
+  summary: string;
+  cnpj: string | null;
+  cnpjData: Record<string, string | null> | null;
+  sources: { title: string; url: string }[];
+  updatedAt: string;
+};
 
 type Props = {
   canonicalKey: string;
@@ -48,6 +56,7 @@ type Props = {
   pendingCount: number;
   categories: CategoryOption[];
   uniformCategoryId: string | null;
+  research: ResearchResult | null;
 };
 
 export function MerchantDetailClient({
@@ -62,7 +71,8 @@ export function MerchantDetailClient({
   role,
   pendingCount,
   categories,
-  uniformCategoryId
+  uniformCategoryId,
+  research
 }: Props) {
   const router = useRouter();
   const [shareBusy, setShareBusy] = useState<"hide" | "show" | "set" | null>(null);
@@ -114,6 +124,11 @@ export function MerchantDetailClient({
   const [approveBusy, setApproveBusy] = useState(false);
   const [approveErr, setApproveErr] = useState<string | null>(null);
   const [approveDone, setApproveDone] = useState<string | null>(null);
+
+  // Deep research — CNPJ lookup + search-grounded AI verdict on an unrecognized merchant
+  const [researchResult, setResearchResult] = useState(research);
+  const [researchBusy, setResearchBusy] = useState(false);
+  const [researchErr, setResearchErr] = useState<string | null>(null);
 
   function toggleSort(col: "date" | "amount") {
     if (sortBy === col) setSortDir(d => d === "desc" ? "asc" : "desc");
@@ -206,6 +221,32 @@ export function MerchantDetailClient({
       setApproveErr((e as Error).message);
     } finally {
       setApproveBusy(false);
+    }
+  }
+
+  async function runResearch(force: boolean) {
+    setResearchBusy(true);
+    setResearchErr(null);
+    try {
+      const r = await fetch(
+        `/api/admin/merchants/${encodeURIComponent(canonicalKey)}/research${force ? "?force=1" : ""}`,
+        { method: "POST" }
+      );
+      const j = await safeJson(r);
+      if (!r.ok) throw new Error((j as { error?: string }).error ?? `Erro ${r.status}`);
+      const jj = j as { result: { verdict: string; summary: string; cnpj: string | null; cnpj_data: Record<string, string | null> | null; sources: { title: string; url: string }[]; updated_at: string } };
+      setResearchResult({
+        verdict: jj.result.verdict as ResearchResult["verdict"],
+        summary: jj.result.summary,
+        cnpj: jj.result.cnpj,
+        cnpjData: jj.result.cnpj_data,
+        sources: jj.result.sources ?? [],
+        updatedAt: jj.result.updated_at
+      });
+    } catch (e) {
+      setResearchErr((e as Error).message);
+    } finally {
+      setResearchBusy(false);
     }
   }
 
@@ -719,6 +760,81 @@ export function MerchantDetailClient({
           </div>
         )}
       </section>}
+
+      {/* ── Pesquisa profunda — CNPJ + busca com IA para comerciante desconhecido ── */}
+      {role === "admin" && (
+        <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5">
+              <Search size={12} /> O que é esse comerciante?
+            </p>
+            {researchResult && (
+              <button
+                onClick={() => runResearch(true)}
+                disabled={researchBusy}
+                title="Pesquisar de novo"
+                className="text-[10px] flex items-center gap-1 px-2 py-1 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface transition disabled:opacity-40"
+              >
+                {researchBusy ? <Loader2 size={10} className="animate-spin" /> : <RotateCw size={10} />}
+                Atualizar
+              </button>
+            )}
+          </div>
+
+          {!researchResult && (
+            <button
+              onClick={() => runResearch(false)}
+              disabled={researchBusy}
+              className="w-full py-2.5 rounded-xl border border-outline-variant text-sm font-medium flex items-center justify-center gap-2 text-on-surface-variant hover:text-on-surface hover:border-primary/30 transition disabled:opacity-50 disabled:cursor-wait"
+            >
+              {researchBusy ? <><Loader2 size={14} className="animate-spin" /> Pesquisando (CNPJ + busca na web)…</> : <><Search size={14} /> Pesquisar este comerciante</>}
+            </button>
+          )}
+
+          {researchResult && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                {researchResult.verdict === "legitimo" ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-secondary/15 text-secondary">
+                    <ShieldCheck size={12} /> Legítimo
+                  </span>
+                ) : researchResult.verdict === "suspeito" ? (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-danger/15 text-danger">
+                    <ShieldAlert size={12} /> Suspeito
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-fg/10 text-muted">
+                    <ShieldQuestion size={12} /> Desconhecido
+                  </span>
+                )}
+                <span className="text-[10px] text-muted">{formatDate(researchResult.updatedAt)}</span>
+              </div>
+              <p className="text-sm text-fg leading-relaxed">{researchResult.summary}</p>
+              {researchResult.cnpj && researchResult.cnpjData && (
+                <p className="mt-2 text-[11px] text-muted">
+                  CNPJ {researchResult.cnpj} — {researchResult.cnpjData.razao_social ?? "?"} ({researchResult.cnpjData.situacao ?? "situação desconhecida"})
+                </p>
+              )}
+              {researchResult.sources.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {researchResult.sources.slice(0, 5).map((s, i) => (
+                    <a
+                      key={i}
+                      href={s.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] px-2 py-1 rounded-full bg-surface-container border border-outline-variant text-on-surface-variant hover:text-primary hover:border-primary/30 transition truncate max-w-[160px]"
+                    >
+                      {s.title}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {researchErr && <p className="mt-2 text-xs text-danger">{researchErr}</p>}
+        </section>
+      )}
 
       {/* ── Aprovar todas — bulk categorize + share + clear review queue ─── */}
       {role === "admin" && (pendingCount > 0 || approveDone) && (
