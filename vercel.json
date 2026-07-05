@@ -19,7 +19,7 @@
     },
     {
       "path": "/api/cron/pluggy-webhook-migrate",
-      "schedule": "52 16 * * *"
+      "schedule": "4 17 * * *"
     }
   ],
   "functions": {

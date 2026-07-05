@@ -25,7 +25,9 @@ export async function GET(req: NextRequest) {
   const webhooks = await listWebhooks();
   const target = webhooks.find((w) => w.url.includes("/api/pluggy/webhook"));
   if (!target) {
-    return NextResponse.json({ ok: false, error: "no matching webhook found", webhooks });
+    // 409 (not 200) so the outcome is visible from the HTTP status alone in
+    // Vercel's access-log line, even without console-log/runtime-log access.
+    return NextResponse.json({ ok: false, error: "no matching webhook found", webhooks }, { status: 409 });
   }
 
   const cleanUrl = target.url.split("?")[0];
