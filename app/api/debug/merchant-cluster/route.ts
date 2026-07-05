@@ -11,7 +11,9 @@ export const runtime = "nodejs";
 // DELETE THIS ENDPOINT after debugging is done.
 export async function GET(req: NextRequest) {
   await requireAdmin();
-  const targetKey = new URL(req.url).searchParams.get("key") ?? "manus_ai";
+  const url = new URL(req.url);
+  const targetKey = url.searchParams.get("key") ?? "manus_ai";
+  const fix = url.searchParams.get("fix") === "1";
   const sb = serverClient();
 
   // Step 1: rows by canonical_key
@@ -89,9 +91,11 @@ export async function GET(req: NextRequest) {
   };
   if (byKey && byKey.length > 0) {
     const currentValue = (byKey[0] as { is_reviewed: boolean }).is_reviewed;
+    // fix=1 actually sets is_reviewed=true instead of a no-op — used once we've
+    // confirmed writes aren't blocked, to unstick a specific merchant for real.
     const { data: upd, error: updErr } = await sb
       .from("merchant_clusters")
-      .update({ is_reviewed: currentValue })
+      .update({ is_reviewed: fix ? true : currentValue })
       .eq("canonical_key", targetKey)
       .select("id");
     updateTest = {

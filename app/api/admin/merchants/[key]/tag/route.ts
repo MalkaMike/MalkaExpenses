@@ -114,24 +114,43 @@ export async function POST(
 
     // Pass 2: also update by description_raw in case some rows have a different
     // canonical_key in the DB. This normalises canonical_key and sets is_reviewed.
+    let revRows2Count = 0;
+    let revErr2Message: string | null = null;
     if (rawDescs.length > 0) {
       const { data: revRows2, error: revErr2 } = await sb
         .from("merchant_clusters")
         .update({ is_reviewed: true, canonical_key: merchantKey })
         .in("description_raw", rawDescs)
         .select("id");
+      revRows2Count = revRows2?.length ?? 0;
+      revErr2Message = revErr2?.message ?? null;
       if (revErr2) console.error("[tag] is_reviewed by desc failed:", revErr2.message);
-      else console.log(`[tag] is_reviewed pass2: ${revRows2?.length ?? 0} rows updated for ${merchantKey}`);
+      else console.log(`[tag] is_reviewed pass2: ${revRows2Count} rows updated for ${merchantKey}`);
+    }
+
+    // Neither pass touched a row (and neither errored-but-partially-succeeded via
+    // the other pass) — this used to be swallowed and reported back as `{ ok: true }`,
+    // which is exactly how a merchant could stay stuck in "Para revisar" forever
+    // despite the tag visibly applying. Surface it instead.
+    const revTotal = (revRows?.length ?? 0) + revRows2Count;
+    if (revTotal === 0) {
+      return NextResponse.json(
+        {
+          error:
+            revErr?.message ?? revErr2Message ?? "não foi possível marcar como revisado (nenhuma linha correspondente em merchant_clusters)"
+        },
+        { status: 500 }
+      );
     }
 
     const hideOnTag = ["kenlo", "laik"];
     const showOnTag = ["insurance"];
     if (hideOnTag.includes(tag_slug)) {
       const { error: hideErr } = await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "hide", p_value: null });
-      if (hideErr) console.error("[tag] bulk_share_merchant hide failed:", hideErr.message);
+      if (hideErr) return NextResponse.json({ error: `tag aplicada, mas ocultar falhou: ${hideErr.message}` }, { status: 500 });
     } else if (showOnTag.includes(tag_slug)) {
       const { error: showErr } = await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "show", p_value: null });
-      if (showErr) console.error("[tag] bulk_share_merchant show failed:", showErr.message);
+      if (showErr) return NextResponse.json({ error: `tag aplicada, mas mostrar falhou: ${showErr.message}` }, { status: 500 });
     }
   }
 
