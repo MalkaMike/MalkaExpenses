@@ -807,7 +807,7 @@ export function MerchantDetailClient({
                     <ShieldQuestion size={12} /> Desconhecido
                   </span>
                 )}
-                <span className="text-[10px] text-muted">{formatDate(researchResult.updatedAt)}</span>
+                <span className="text-[10px] text-muted">{formatDate(researchResult.updatedAt.slice(0, 10))}</span>
               </div>
               <p className="text-sm text-fg leading-relaxed">{researchResult.summary}</p>
               {researchResult.cnpj && researchResult.cnpjData && (

@@ -9,6 +9,21 @@ export const runtime = "nodejs";
 export const maxDuration = 280;
 
 const BATCH_SIZE = 15;
+const CONCURRENCY = 5;
+
+/** Runs `fn` over `items` with at most `limit` in flight at once. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  async function worker() {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
+}
 
 // POST /api/admin/merchants/research-bulk
 // Processes up to BATCH_SIZE not-yet-reviewed merchants per call (skips ones
@@ -43,13 +58,11 @@ export async function POST() {
 
   await preloadClusters();
 
-  const results: { key: string; ok: boolean; verdict?: string; error?: string }[] = [];
-  for (const key of batch) {
+  const results = await mapWithConcurrency(batch, CONCURRENCY, async (key) => {
     try {
       const rawDescs = await rawDescriptionsForKeyDirect(key);
       if (!rawDescs.length) {
-        results.push({ key, ok: false, error: "no descriptions" });
-        continue;
+        return { key, ok: false, error: "no descriptions" };
       }
       const name = clusterFor(rawDescs[0]).name;
       const cnpj = extractCnpj(rawDescs);
@@ -69,15 +82,11 @@ export async function POST() {
         },
         { onConflict: "canonical_key" }
       );
-      if (error) {
-        results.push({ key, ok: false, error: error.message });
-      } else {
-        results.push({ key, ok: true, verdict: aiResult.verdict });
-      }
+      return error ? { key, ok: false, error: error.message } : { key, ok: true, verdict: aiResult.verdict };
     } catch (e) {
-      results.push({ key, ok: false, error: (e as Error).message });
+      return { key, ok: false, error: (e as Error).message };
     }
-  }
+  });
 
   await writeAudit("merchant.research_bulk", {
     newValue: { processed: results.length, ok: results.filter((r) => r.ok).length }
