@@ -194,12 +194,20 @@ export type PluggyWebhook = {
   url: string;
   event: string;
   disabledAt?: string | null;
+  hasHeaders: boolean;
 };
 
-/** List webhooks registered on this Pluggy application. */
+/**
+ * List webhooks registered on this Pluggy application. Despite Pluggy's docs
+ * saying the list response omits `headers`, it actually returns header VALUES
+ * in plaintext (confirmed 2026-07-05 — a header secret leaked into a debug
+ * response before this redaction was added). Never pass the raw API result
+ * through to a caller — strip to a boolean here so nothing downstream can
+ * accidentally echo a secret again.
+ */
 export async function listWebhooks(): Promise<PluggyWebhook[]> {
-  const json = await authedFetch<Paged<PluggyWebhook>>("/webhooks");
-  return json.results ?? [];
+  const json = await authedFetch<Paged<PluggyWebhook & { headers?: Record<string, string> }>>("/webhooks");
+  return (json.results ?? []).map(({ headers, ...w }) => ({ ...w, hasHeaders: !!headers && Object.keys(headers).length > 0 }));
 }
 
 /**
@@ -211,10 +219,11 @@ export async function createWebhook(
   event: string,
   headers?: Record<string, string>
 ): Promise<PluggyWebhook> {
-  return authedFetch<PluggyWebhook>("/webhooks", {
+  const { headers: h, ...w } = await authedFetch<PluggyWebhook & { headers?: Record<string, string> }>("/webhooks", {
     method: "POST",
     body: JSON.stringify({ url, event, ...(headers ? { headers } : {}) })
   });
+  return { ...w, hasHeaders: !!h && Object.keys(h).length > 0 };
 }
 
 /**
@@ -225,10 +234,11 @@ export async function updateWebhook(
   id: string,
   patch: { url?: string; headers?: Record<string, string> }
 ): Promise<PluggyWebhook> {
-  return authedFetch<PluggyWebhook>(`/webhooks/${encodeURIComponent(id)}`, {
+  const { headers: h, ...w } = await authedFetch<PluggyWebhook & { headers?: Record<string, string> }>(`/webhooks/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify(patch)
   });
+  return { ...w, hasHeaders: !!h && Object.keys(h).length > 0 };
 }
 
 /** List all credit card bills for an account. Sorted by dueDate desc (most recent first). */
