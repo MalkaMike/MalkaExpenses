@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireAdmin, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { rawDescriptionsForKeyDirect, preloadClusters, clusterFor } from "@/lib/merchants/clusters";
-import { researchMerchant } from "@/lib/ai/merchant-research";
+import { researchMerchant, type KnownProvider } from "@/lib/ai/merchant-research";
 import { extractCnpj, lookupCnpj } from "@/lib/cnpj";
 
 export const runtime = "nodejs";
@@ -26,9 +26,11 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
 }
 
 // POST /api/admin/merchants/research-bulk
-// Processes up to BATCH_SIZE not-yet-reviewed merchants per call (skips ones
-// already in merchant_research). Client calls this repeatedly until
-// `done: true` — each call is bounded to stay under Vercel's timeout.
+// Processes up to BATCH_SIZE not-yet-reviewed merchants per call. A merchant
+// is pending when it has no merchant_research row OR its row predates the
+// ficha format (what_does IS NULL) — so re-running the bulk button after the
+// format upgrade re-researches everything into full fichas. Client calls
+// repeatedly until `done: true`.
 export async function POST() {
   await requireAdmin();
   const sb = serverClient();
@@ -49,14 +51,37 @@ export async function POST() {
     off += 1000;
   }
 
-  // Already-researched keys — skip these.
-  const { data: doneRows } = await sb.from("merchant_research").select("canonical_key");
-  const alreadyDone = new Set((doneRows ?? []).map((r) => r.canonical_key as string));
+  // Keys already researched IN THE FICHA FORMAT — old-format rows
+  // (what_does IS NULL) stay pending so they get upgraded.
+  const alreadyDone = new Set<string>();
+  off = 0;
+  while (true) {
+    const { data } = await sb
+      .from("merchant_research")
+      .select("canonical_key")
+      .not("what_does", "is", null)
+      .range(off, off + 999);
+    if (!data || !data.length) break;
+    for (const r of data) alreadyDone.add(r.canonical_key as string);
+    if (data.length < 1000) break;
+    off += 1000;
+  }
 
   const pending = [...allKeys].filter((k) => !alreadyDone.has(k));
   const batch = pending.slice(0, BATCH_SIZE);
 
   await preloadClusters();
+
+  // Category names by id — one fetch shared by the whole batch.
+  const { data: cats } = await sb.from("categories").select("id, name");
+  const catNameById = new Map<string, string>();
+  for (const c of cats ?? []) catNameById.set(c.id as string, c.name as string);
+
+  // Known family healthcare providers — one fetch shared by the whole batch.
+  const { data: provRows } = await sb
+    .from("family_providers")
+    .select("display_name, full_name, specialty, clinic");
+  const knownProviders = (provRows ?? []) as KnownProvider[];
 
   const results = await mapWithConcurrency(batch, CONCURRENCY, async (key) => {
     try {
@@ -67,13 +92,33 @@ export async function POST() {
       const name = clusterFor(rawDescs[0]).name;
       const cnpj = extractCnpj(rawDescs);
       const cnpjData = cnpj ? await lookupCnpj(cnpj) : null;
-      const aiResult = await researchMerchant(name, rawDescs, cnpjData);
+
+      // Current (most common) category for this cluster
+      const { data: txCats } = await sb
+        .from("transactions")
+        .select("category_id")
+        .in("description_raw", rawDescs.slice(0, 200))
+        .eq("is_fake", false)
+        .limit(1000);
+      const counts = new Map<string, number>();
+      for (const t of txCats ?? []) {
+        if (t.category_id) counts.set(t.category_id as string, (counts.get(t.category_id as string) ?? 0) + 1);
+      }
+      const topCatId = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const currentCategoryName = topCatId ? catNameById.get(topCatId) ?? null : null;
+
+      const aiResult = await researchMerchant(name, rawDescs, cnpjData, currentCategoryName, knownProviders);
 
       const { error } = await sb.from("merchant_research").upsert(
         {
           canonical_key: key,
           verdict: aiResult.verdict,
           summary: aiResult.summary,
+          what_does: aiResult.whatDoes,
+          website: aiResult.website,
+          segment: aiResult.segment,
+          reclame_aqui: aiResult.reclameAqui,
+          suggested_category_slug: aiResult.suggestedCategorySlug,
           cnpj,
           cnpj_data: cnpjData,
           sources: aiResult.sources,

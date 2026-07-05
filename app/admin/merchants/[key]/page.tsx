@@ -307,8 +307,13 @@ export default async function MerchantDetailPage({
         research={
           researchRow
             ? {
-                verdict: researchRow.verdict as "legitimo" | "suspeito" | "desconhecido",
+                verdict: researchRow.verdict as "legitimo" | "suspeito" | "desconhecido" | "pessoa_fisica",
                 summary: researchRow.summary as string,
+                whatDoes: researchRow.what_does as string | null,
+                website: researchRow.website as string | null,
+                segment: researchRow.segment as string | null,
+                reclameAqui: researchRow.reclame_aqui as string | null,
+                suggestedCategorySlug: researchRow.suggested_category_slug as string | null,
                 cnpj: researchRow.cnpj as string | null,
                 cnpjData: researchRow.cnpj_data as Record<string, string | null> | null,
                 sources: (researchRow.sources as { title: string; url: string }[]) ?? [],

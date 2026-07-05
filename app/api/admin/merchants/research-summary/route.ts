@@ -11,7 +11,7 @@ export async function GET() {
   await requireAdmin();
   const sb = serverClient();
 
-  const counts: Record<string, number> = { legitimo: 0, suspeito: 0, desconhecido: 0 };
+  const counts: Record<string, number> = { legitimo: 0, suspeito: 0, desconhecido: 0, pessoa_fisica: 0 };
   const suspicious: { canonical_key: string; summary: string }[] = [];
 
   let off = 0;

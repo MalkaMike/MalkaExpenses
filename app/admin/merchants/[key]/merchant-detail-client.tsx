@@ -35,8 +35,13 @@ type ClusterOption = { key: string; name: string };
 type MergeHistoryItem = { id: string; sourceName: string; createdAt: string; hasDescriptions: boolean };
 type CategoryOption = { id: string; slug: string; name: string };
 type ResearchResult = {
-  verdict: "legitimo" | "suspeito" | "desconhecido";
+  verdict: "legitimo" | "suspeito" | "desconhecido" | "pessoa_fisica";
   summary: string;
+  whatDoes: string | null;
+  website: string | null;
+  segment: string | null;
+  reclameAqui: string | null;
+  suggestedCategorySlug: string | null;
   cnpj: string | null;
   cnpjData: Record<string, string | null> | null;
   sources: { title: string; url: string }[];
@@ -234,10 +239,15 @@ export function MerchantDetailClient({
       );
       const j = await safeJson(r);
       if (!r.ok) throw new Error((j as { error?: string }).error ?? `Erro ${r.status}`);
-      const jj = j as { result: { verdict: string; summary: string; cnpj: string | null; cnpj_data: Record<string, string | null> | null; sources: { title: string; url: string }[]; updated_at: string } };
+      const jj = j as { result: { verdict: string; summary: string; what_does: string | null; website: string | null; segment: string | null; reclame_aqui: string | null; suggested_category_slug: string | null; cnpj: string | null; cnpj_data: Record<string, string | null> | null; sources: { title: string; url: string }[]; updated_at: string } };
       setResearchResult({
         verdict: jj.result.verdict as ResearchResult["verdict"],
         summary: jj.result.summary,
+        whatDoes: jj.result.what_does,
+        website: jj.result.website,
+        segment: jj.result.segment,
+        reclameAqui: jj.result.reclame_aqui,
+        suggestedCategorySlug: jj.result.suggested_category_slug,
         cnpj: jj.result.cnpj,
         cnpjData: jj.result.cnpj_data,
         sources: jj.result.sources ?? [],
@@ -247,6 +257,35 @@ export function MerchantDetailClient({
       setResearchErr((e as Error).message);
     } finally {
       setResearchBusy(false);
+    }
+  }
+
+  // Apply the AI-suggested category to the whole cluster (same endpoint the
+  // list page's inline picker uses).
+  const [applyCatBusy, setApplyCatBusy] = useState(false);
+  const [applyCatDone, setApplyCatDone] = useState<string | null>(null);
+  async function applySuggestedCategory(slug: string) {
+    const cat = categories.find((c) => c.slug === slug);
+    if (!cat) {
+      setResearchErr(`Categoria sugerida "${slug}" não existe mais no app.`);
+      return;
+    }
+    setApplyCatBusy(true);
+    setResearchErr(null);
+    try {
+      const r = await fetch("/api/admin/merchants/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_key: canonicalKey, category_id: cat.id })
+      });
+      const j = await safeJson(r);
+      if (!r.ok) throw new Error((j as { error?: string }).error ?? `Erro ${r.status}`);
+      setApplyCatDone(`Categoria "${cat.name}" aplicada a todas as transações deste comerciante.`);
+      router.refresh();
+    } catch (e) {
+      setResearchErr((e as Error).message);
+    } finally {
+      setApplyCatBusy(false);
     }
   }
 
@@ -761,80 +800,163 @@ export function MerchantDetailClient({
         )}
       </section>}
 
-      {/* ── Pesquisa profunda — CNPJ + busca com IA para comerciante desconhecido ── */}
-      {role === "admin" && (
-        <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5">
-              <Search size={12} /> O que é esse comerciante?
-            </p>
-            {researchResult && (
-              <button
-                onClick={() => runResearch(true)}
-                disabled={researchBusy}
-                title="Pesquisar de novo"
-                className="text-[10px] flex items-center gap-1 px-2 py-1 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface transition disabled:opacity-40"
-              >
-                {researchBusy ? <Loader2 size={10} className="animate-spin" /> : <RotateCw size={10} />}
-                Atualizar
-              </button>
-            )}
-          </div>
-
-          {!researchResult && (
-            <button
-              onClick={() => runResearch(false)}
-              disabled={researchBusy}
-              className="w-full py-2.5 rounded-xl border border-outline-variant text-sm font-medium flex items-center justify-center gap-2 text-on-surface-variant hover:text-on-surface hover:border-primary/30 transition disabled:opacity-50 disabled:cursor-wait"
-            >
-              {researchBusy ? <><Loader2 size={14} className="animate-spin" /> Pesquisando (CNPJ + busca na web)…</> : <><Search size={14} /> Pesquisar este comerciante</>}
-            </button>
-          )}
-
-          {researchResult && (
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                {researchResult.verdict === "legitimo" ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-secondary/15 text-secondary">
-                    <ShieldCheck size={12} /> Legítimo
-                  </span>
-                ) : researchResult.verdict === "suspeito" ? (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-danger/15 text-danger">
-                    <ShieldAlert size={12} /> Suspeito
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-full bg-fg/10 text-muted">
-                    <ShieldQuestion size={12} /> Desconhecido
-                  </span>
-                )}
-                <span className="text-[10px] text-muted">{formatDate(researchResult.updatedAt.slice(0, 10))}</span>
-              </div>
-              <p className="text-sm text-fg leading-relaxed">{researchResult.summary}</p>
-              {researchResult.cnpj && researchResult.cnpjData && (
-                <p className="mt-2 text-[11px] text-muted">
-                  CNPJ {researchResult.cnpj} — {researchResult.cnpjData.razao_social ?? "?"} ({researchResult.cnpjData.situacao ?? "situação desconhecida"})
-                </p>
-              )}
-              {researchResult.sources.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {researchResult.sources.slice(0, 5).map((s, i) => (
-                    <a
-                      key={i}
-                      href={s.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[10px] px-2 py-1 rounded-full bg-surface-container border border-outline-variant text-on-surface-variant hover:text-primary hover:border-primary/30 transition truncate max-w-[160px]"
-                    >
-                      {s.title}
-                    </a>
-                  ))}
+      {/* ── Ficha do comerciante — CNPJ + busca com IA ───────────────────── */}
+      {role === "admin" && (() => {
+        // Rows written before the ficha format lack whatDoes — treat as not
+        // researched yet (the POST re-researches them automatically).
+        const ficha = researchResult && researchResult.whatDoes ? researchResult : null;
+        const stamp =
+          ficha?.verdict === "legitimo"
+            ? { label: "Legítimo", cls: "text-secondary border-secondary/60", Icon: ShieldCheck }
+            : ficha?.verdict === "suspeito"
+              ? { label: "Suspeito", cls: "text-danger border-danger/60", Icon: ShieldAlert }
+              : ficha?.verdict === "pessoa_fisica"
+                ? { label: "Pessoa física", cls: "text-sky-500 border-sky-500/60", Icon: Tag }
+                : { label: "Desconhecido", cls: "text-muted border-border", Icon: ShieldQuestion };
+        const currentCatSlug = uniformCategoryId
+          ? categories.find((c) => c.id === uniformCategoryId)?.slug ?? null
+          : null;
+        const suggestedCat = ficha?.suggestedCategorySlug
+          ? categories.find((c) => c.slug === ficha.suggestedCategorySlug) ?? null
+          : null;
+        const showSuggestion = suggestedCat && suggestedCat.slug !== currentCatSlug;
+        return (
+          <section className="mb-5 p-4 rounded-2xl bg-card border border-border">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <p className="text-xs uppercase tracking-wider text-muted flex items-center gap-1.5 pt-1">
+                <Search size={12} /> Ficha do comerciante
+              </p>
+              {ficha && (
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[10px] text-muted">{formatDate(ficha.updatedAt.slice(0, 10))}</span>
+                  <button
+                    onClick={() => runResearch(true)}
+                    disabled={researchBusy}
+                    title="Pesquisar de novo"
+                    className="text-[10px] flex items-center gap-1 px-2 py-1 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface transition disabled:opacity-40"
+                  >
+                    {researchBusy ? <Loader2 size={10} className="animate-spin" /> : <RotateCw size={10} />}
+                    Atualizar
+                  </button>
                 </div>
               )}
             </div>
-          )}
-          {researchErr && <p className="mt-2 text-xs text-danger">{researchErr}</p>}
-        </section>
-      )}
+
+            {!ficha && (
+              <button
+                onClick={() => runResearch(false)}
+                disabled={researchBusy}
+                className="w-full py-2.5 rounded-xl border border-outline-variant text-sm font-medium flex items-center justify-center gap-2 text-on-surface-variant hover:text-on-surface hover:border-primary/30 transition disabled:opacity-50 disabled:cursor-wait"
+              >
+                {researchBusy
+                  ? <><Loader2 size={14} className="animate-spin" /> Montando a ficha (CNPJ + busca na web)…</>
+                  : <><Search size={14} /> Montar a ficha deste comerciante</>}
+              </button>
+            )}
+
+            {ficha && (
+              <div>
+                {/* Lead: the answer to "o que é isso?", with the verdict stamped beside it */}
+                <div className="flex items-start justify-between gap-4">
+                  <p className="text-base font-medium text-fg leading-snug flex-1">{ficha.whatDoes}</p>
+                  <span
+                    className={`shrink-0 -rotate-2 inline-flex items-center gap-1.5 border-2 rounded-md px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.15em] select-none ${stamp.cls}`}
+                  >
+                    <stamp.Icon size={12} /> {stamp.label}
+                  </span>
+                </div>
+
+                {/* Registry facts */}
+                <dl className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
+                  {ficha.website && (
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-muted">Site</dt>
+                      <dd className="text-sm mt-0.5">
+                        <a
+                          href={ficha.website}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-accent hover:underline break-all"
+                        >
+                          {ficha.website.replace(/^https?:\/\//, "").replace(/\/$/, "")}
+                          <ExternalLink size={11} className="shrink-0" />
+                        </a>
+                      </dd>
+                    </div>
+                  )}
+                  {ficha.segment && (
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-muted">Segmento</dt>
+                      <dd className="text-sm text-fg mt-0.5">{ficha.segment}</dd>
+                    </div>
+                  )}
+                  {ficha.cnpj && ficha.cnpjData && (
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-muted">CNPJ {ficha.cnpj}</dt>
+                      <dd className="text-sm text-fg mt-0.5">
+                        {ficha.cnpjData.razao_social ?? "?"}
+                        <span className="text-muted"> · {ficha.cnpjData.situacao ?? "situação desconhecida"}</span>
+                      </dd>
+                    </div>
+                  )}
+                  {ficha.reclameAqui && (
+                    <div>
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-muted">Reclame Aqui</dt>
+                      <dd className="text-sm text-fg mt-0.5">{ficha.reclameAqui}</dd>
+                    </div>
+                  )}
+                </dl>
+
+                {/* Narrative */}
+                <p className="mt-4 text-sm text-muted leading-relaxed">{ficha.summary}</p>
+
+                {/* Sources */}
+                {ficha.sources.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {ficha.sources.slice(0, 5).map((s, i) => (
+                      <a
+                        key={i}
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[10px] px-2 py-1 rounded-full bg-surface-container border border-outline-variant text-on-surface-variant hover:text-primary hover:border-primary/30 transition truncate max-w-[160px]"
+                      >
+                        {s.title}
+                      </a>
+                    ))}
+                  </div>
+                )}
+
+                {/* Category suggestion */}
+                {showSuggestion && !applyCatDone && (
+                  <div className="mt-4 p-3 rounded-xl border border-primary/25 bg-primary/[0.04] flex items-center gap-3 flex-wrap">
+                    <p className="text-sm text-fg flex-1 min-w-[200px]">
+                      Pela ficha, isto parece ser <span className="font-semibold">{suggestedCat.name}</span>
+                      {currentCatSlug
+                        ? <> — hoje está em &quot;{categories.find((c) => c.slug === currentCatSlug)?.name}&quot;.</>
+                        : <> — hoje as transações têm categorias mistas.</>}
+                    </p>
+                    <button
+                      onClick={() => applySuggestedCategory(suggestedCat.slug)}
+                      disabled={applyCatBusy}
+                      className="px-3.5 py-2 rounded-xl bg-primary text-on-primary text-sm font-semibold flex items-center gap-1.5 disabled:opacity-40 active:scale-[0.99] transition"
+                    >
+                      {applyCatBusy ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                      Aplicar &quot;{suggestedCat.name}&quot;
+                    </button>
+                  </div>
+                )}
+                {applyCatDone && (
+                  <p className="mt-3 text-xs text-secondary font-medium flex items-center gap-1.5">
+                    <Check size={13} /> {applyCatDone}
+                  </p>
+                )}
+              </div>
+            )}
+            {researchErr && <p className="mt-2 text-xs text-danger">{researchErr}</p>}
+          </section>
+        );
+      })()}
 
       {/* ── Aprovar todas — bulk categorize + share + clear review queue ─── */}
       {role === "admin" && (pendingCount > 0 || approveDone) && (
