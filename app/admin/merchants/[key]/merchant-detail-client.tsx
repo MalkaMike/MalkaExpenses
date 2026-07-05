@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink, Undo2, ArrowUpDown } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink, Undo2, ArrowUpDown, CheckCheck } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { ReceiptFinderButton } from "@/components/receipt-finder-button";
 import { MoveDescriptionButton } from "@/components/move-description-button";
@@ -33,6 +33,7 @@ type ReimbTag = {
 
 type ClusterOption = { key: string; name: string };
 type MergeHistoryItem = { id: string; sourceName: string; createdAt: string; hasDescriptions: boolean };
+type CategoryOption = { id: string; slug: string; name: string };
 
 type Props = {
   canonicalKey: string;
@@ -44,6 +45,9 @@ type Props = {
   allClusters: ClusterOption[];
   mergeHistory: MergeHistoryItem[];
   role: "admin" | "health";  // health = Ayelet: read-only, no ocultar/aprovar controls
+  pendingCount: number;
+  categories: CategoryOption[];
+  uniformCategoryId: string | null;
 };
 
 export function MerchantDetailClient({
@@ -55,7 +59,10 @@ export function MerchantDetailClient({
   tags,
   allClusters,
   mergeHistory,
-  role
+  role,
+  pendingCount,
+  categories,
+  uniformCategoryId
 }: Props) {
   const router = useRouter();
   const [shareBusy, setShareBusy] = useState<"hide" | "show" | "set" | null>(null);
@@ -101,6 +108,12 @@ export function MerchantDetailClient({
   const [undoBusy, setUndoBusy] = useState<string | null>(null);
   const [undoErr, setUndoErr] = useState<string | null>(null);
   const [undoDone, setUndoDone] = useState<string | null>(null);
+
+  // Aprovar todas — bulk categorize + share + advance status in one shot
+  const [approveCatId, setApproveCatId] = useState(uniformCategoryId ?? "");
+  const [approveBusy, setApproveBusy] = useState(false);
+  const [approveErr, setApproveErr] = useState<string | null>(null);
+  const [approveDone, setApproveDone] = useState<string | null>(null);
 
   function toggleSort(col: "date" | "amount") {
     if (sortBy === col) setSortDir(d => d === "desc" ? "asc" : "desc");
@@ -167,6 +180,32 @@ export function MerchantDetailClient({
       alert((e as Error).message);
     } finally {
       setTagBusy(null);
+    }
+  }
+
+  async function approveAll() {
+    if (!approveCatId) return;
+    setApproveBusy(true);
+    setApproveErr(null);
+    setApproveDone(null);
+    try {
+      const r = await fetch("/api/admin/merchants/approve-all", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ canonical_key: canonicalKey, category_id: approveCatId })
+      });
+      const j = await safeJson(r);
+      if (!r.ok) throw new Error((j as { error?: string }).error ?? `Erro ${r.status}`);
+      const jj = j as { updated: number; status_updated: number };
+      setApproveDone(
+        `${formatInt(jj.updated)} ${jj.updated === 1 ? "transação categorizada e liberada" : "transações categorizadas e liberadas"} para o portal` +
+          (jj.status_updated > 0 ? ` (${formatInt(jj.status_updated)} saíram da fila de revisão)` : "")
+      );
+      router.refresh();
+    } catch (e) {
+      setApproveErr((e as Error).message);
+    } finally {
+      setApproveBusy(false);
     }
   }
 
@@ -680,6 +719,46 @@ export function MerchantDetailClient({
           </div>
         )}
       </section>}
+
+      {/* ── Aprovar todas — bulk categorize + share + clear review queue ─── */}
+      {role === "admin" && (pendingCount > 0 || approveDone) && (
+        <section className="mb-5 p-4 rounded-2xl bg-primary/[0.04] border border-primary/20">
+          <p className="text-xs uppercase tracking-wider text-primary font-semibold mb-1">
+            Aprovar todas
+          </p>
+          <p className="text-[11px] text-on-surface-variant mb-3">
+            {formatInt(pendingCount)} {pendingCount === 1 ? "transação" : "transações"} aguardando revisão.
+            Escolha a categoria e aprove tudo de uma vez — libera pro portal da Ayelet e sai da fila &quot;Para revisar&quot;.
+          </p>
+          <div className="flex gap-2">
+            <select
+              value={approveCatId}
+              onChange={(e) => setApproveCatId(e.target.value)}
+              disabled={approveBusy}
+              className="flex-1 min-w-0 px-3 py-2.5 rounded-xl bg-surface-container-lowest border border-outline-variant text-sm outline-none focus:border-primary transition text-on-surface disabled:opacity-50"
+            >
+              <option value="" disabled>Escolher categoria…</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+            <button
+              onClick={approveAll}
+              disabled={approveBusy || !approveCatId}
+              className="px-4 py-2.5 rounded-xl bg-primary text-on-primary text-sm font-semibold flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed active:scale-[0.99] transition whitespace-nowrap shrink-0"
+            >
+              {approveBusy ? <Loader2 size={14} className="animate-spin" /> : <CheckCheck size={14} />}
+              Aprovar todas ({formatInt(pendingCount)})
+            </button>
+          </div>
+          {approveErr && <p className="mt-2 text-xs text-error">{approveErr}</p>}
+          {approveDone && (
+            <p className="mt-2 text-xs text-secondary font-medium flex items-center gap-1.5">
+              <Check size={13} /> {approveDone}
+            </p>
+          )}
+        </section>
+      )}
 
       {/* ── Visibilidade no portal Ayelet — admin only ─────────────── */}
       {role === "admin" && <section className="mb-5 p-4 rounded-2xl bg-card border border-border">

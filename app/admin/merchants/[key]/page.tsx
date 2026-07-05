@@ -54,6 +54,7 @@ export default async function MerchantDetailPage({
     ai_reasoning: string | null;
     gmail_searched_at: string | null;
     gmail_match_count: number;
+    status: string;
   }> = [];
 
   // Pull transactions matching ANY raw description in the cluster.
@@ -72,7 +73,7 @@ export default async function MerchantDetailPage({
         const { data, error } = await sb
           .from("transactions")
           .select(
-            "id, date, description_raw, description_clean, real_amount, shared_amount, category_id, account_id, source, ai_reasoning, gmail_searched_at, gmail_match_count"
+            "id, date, description_raw, description_clean, real_amount, shared_amount, category_id, account_id, source, ai_reasoning, gmail_searched_at, gmail_match_count, status"
           )
           .in("description_raw", slice)
           .eq("is_fake", false)
@@ -129,6 +130,17 @@ export default async function MerchantDetailPage({
     gmailSearched: t.gmail_searched_at !== null,
     gmailMatchCount: Number(t.gmail_match_count) || 0
   }));
+
+  // Pending-review count — drives the "Aprovar todas" bulk-approve button.
+  const pendingCount = txs.filter((t) => t.status === "pending_review").length;
+  const categoryList = (cats ?? []).map((c) => ({
+    id: c.id as string,
+    slug: c.slug as string,
+    name: c.name as string
+  }));
+  // Pre-select the category in the picker only if every tx already agrees.
+  const distinctCatIds = new Set(txs.map((t) => t.category_id).filter(Boolean));
+  const uniformCategoryId = distinctCatIds.size === 1 ? [...distinctCatIds][0] as string : null;
 
   // Aggregate the current shared state across the cluster — used to seed the
   // "Compartilhar com Ayelet" panel default selection.
@@ -286,6 +298,9 @@ export default async function MerchantDetailPage({
         allClusters={allClusters}
         mergeHistory={mergeHistory}
         role={role as "admin" | "health"}
+        pendingCount={pendingCount}
+        categories={categoryList}
+        uniformCategoryId={uniformCategoryId}
       />
     </div>
   </>
