@@ -71,23 +71,31 @@ export default async function MerchantsPage({
 
   const sb = serverClient();
   invalidateCache();
-  await preloadClusters();
+  const preloadPromise = preloadClusters();
 
-  const all: TxRow[] = [];
-  let off = 0;
-  while (true) {
-    const { data, error } = await sb
-      .from("transactions")
-      .select("id, description_raw, real_amount, shared_amount, category_id, date, source, is_transfer")
-      .eq("is_fake", false)
-      .order("id", { ascending: true })
-      .range(off, off + 999);
+  // Page range in parallel instead of one .range() at a time — with ~5,600 rows
+  // this was 6 sequential round-trips; a page load only needs the total count
+  // up front (one small query) to know how many pages to fire concurrently.
+  const { count: txTotal } = await sb
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("is_fake", false);
+  const txPageCount = Math.max(1, Math.ceil((txTotal ?? 0) / 1000));
+  const txPages = await Promise.all(
+    Array.from({ length: txPageCount }, (_, i) =>
+      sb
+        .from("transactions")
+        .select("id, description_raw, real_amount, shared_amount, category_id, date, source, is_transfer")
+        .eq("is_fake", false)
+        .order("id", { ascending: true })
+        .range(i * 1000, i * 1000 + 999)
+    )
+  );
+  for (const { error } of txPages) {
     if (error) throw new Error(`Failed to load transactions: ${error.message}`);
-    if (!data || !data.length) break;
-    all.push(...(data as TxRow[]));
-    if (data.length < 1000) break;
-    off += 1000;
   }
+  const all: TxRow[] = txPages.flatMap((p) => (p.data as TxRow[]) ?? []);
+  await preloadPromise;
 
   const filtered = all.filter((t) => {
     if (!includeTransfers && t.is_transfer) return false;
@@ -144,11 +152,16 @@ export default async function MerchantsPage({
   if (filtered.length > 0) {
     const txIds = filtered.map((t) => t.id);
     const TAG_CHUNK = 500;
-    for (let i = 0; i < txIds.length; i += TAG_CHUNK) {
-      const { data: tagRows } = await sb
-        .from("transaction_reimbursements")
-        .select("transaction_id, tag_id")
-        .in("transaction_id", txIds.slice(i, i + TAG_CHUNK));
+    const chunks: string[][] = [];
+    for (let i = 0; i < txIds.length; i += TAG_CHUNK) chunks.push(txIds.slice(i, i + TAG_CHUNK));
+    // Each chunk queries a disjoint slice of IDs — independent, so fetch all at once
+    // instead of one round-trip at a time.
+    const tagPages = await Promise.all(
+      chunks.map((slice) =>
+        sb.from("transaction_reimbursements").select("transaction_id, tag_id").in("transaction_id", slice)
+      )
+    );
+    for (const { data: tagRows } of tagPages) {
       for (const { transaction_id, tag_id } of (tagRows ?? []) as { transaction_id: string; tag_id: string }[]) {
         const ck = txIdToClusterKey.get(transaction_id);
         const slug = tagIdToSlug.get(tag_id);
@@ -165,11 +178,18 @@ export default async function MerchantsPage({
   // hard cap — with ~840 merchants × ~2 rows/key ≈ 1700 rows total, a single
   // 500-key batch was silently truncated at 1000 rows, leaving some merchants stuck
   // in "Para revisar" even after their is_reviewed was set to true.
+  // Chunks target disjoint key lists, so they're independent — fetched in
+  // parallel (each chunk keeps its own inner pagination for the rare case a
+  // single chunk exceeds 1000 rows).
   const allGroupKeys = [...groups.keys()];
   if (allGroupKeys.length > 0) {
     const KEY_CHUNK = 200;
-    for (let i = 0; i < allGroupKeys.length; i += KEY_CHUNK) {
-      const keys = allGroupKeys.slice(i, i + KEY_CHUNK);
+    const keyChunks: string[][] = [];
+    for (let i = 0; i < allGroupKeys.length; i += KEY_CHUNK) keyChunks.push(allGroupKeys.slice(i, i + KEY_CHUNK));
+
+    type ReviewRow = { canonical_key: string; is_reviewed: boolean; is_deferred: boolean };
+    async function fetchChunk(keys: string[]): Promise<ReviewRow[]> {
+      const rows: ReviewRow[] = [];
       let off = 0;
       while (true) {
         const { data: rv } = await sb
@@ -177,16 +197,20 @@ export default async function MerchantsPage({
           .select("canonical_key, is_reviewed, is_deferred")
           .in("canonical_key", keys)
           .range(off, off + 999);
-        for (const r of (rv ?? []) as { canonical_key: string; is_reviewed: boolean; is_deferred: boolean }[]) {
-          const g = groups.get(r.canonical_key);
-          if (g) {
-            // OR logic: reviewed if ANY cluster row is reviewed
-            if (r.is_reviewed) g.isReviewed = true;
-            if (r.is_deferred) g.isDeferred = true;
-          }
-        }
+        rows.push(...((rv ?? []) as ReviewRow[]));
         if (!rv?.length || rv.length < 1000) break;
         off += 1000;
+      }
+      return rows;
+    }
+
+    const chunkResults = await Promise.all(keyChunks.map(fetchChunk));
+    for (const r of chunkResults.flat()) {
+      const g = groups.get(r.canonical_key);
+      if (g) {
+        // OR logic: reviewed if ANY cluster row is reviewed
+        if (r.is_reviewed) g.isReviewed = true;
+        if (r.is_deferred) g.isDeferred = true;
       }
     }
   }

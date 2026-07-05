@@ -49,27 +49,33 @@ async function loadFromDb(): Promise<ClusterFile | null> {
   if (dbCache && Date.now() - dbCachedAt < DB_CACHE_TTL_MS) return dbCache;
   try {
     const sb = serverClient();
+    // Page the full table in parallel instead of one .range() at a time —
+    // with ~2,400 rows (growing) this was 3+ sequential round-trips on every
+    // cache-miss, and this function is on the hot path of nearly every
+    // merchant-page render.
+    const { count, error: countError } = await sb
+      .from("merchant_clusters")
+      .select("id", { count: "exact", head: true });
+    if (countError) return null;
+    const pageCount = Math.max(1, Math.ceil((count ?? 0) / 1000));
+    const pages = await Promise.all(
+      Array.from({ length: pageCount }, (_, i) =>
+        sb
+          .from("merchant_clusters")
+          .select("description_raw, canonical_key, canonical_name")
+          .order("id", { ascending: true })
+          .range(i * 1000, i * 1000 + 999)
+      )
+    );
     const out: ClusterFile = {};
-    let off = 0;
-    while (true) {
-      const { data, error } = await sb
-        .from("merchant_clusters")
-        .select("description_raw, canonical_key, canonical_name")
-        .order("id", { ascending: true })  // stable pagination
-        .range(off, off + 999);
-      if (error) {
-        // Table missing or other error → fall back
-        return null;
-      }
-      if (!data || !data.length) break;
-      for (const r of data) {
+    for (const { data, error } of pages) {
+      if (error) return null; // table missing or other error → fall back
+      for (const r of data ?? []) {
         out[r.description_raw as string] = {
           key: r.canonical_key as string,
           name: r.canonical_name as string
         };
       }
-      if (data.length < 1000) break;
-      off += 1000;
     }
     dbCache = out;
     dbCachedAt = Date.now();
