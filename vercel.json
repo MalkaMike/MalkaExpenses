@@ -16,10 +16,6 @@
     {
       "path": "/api/cron/health-outbox",
       "schedule": "0 8 * * *"
-    },
-    {
-      "path": "/api/cron/pluggy-webhook-migrate",
-      "schedule": "4 17 * * *"
     }
   ],
   "functions": {

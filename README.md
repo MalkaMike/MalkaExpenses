@@ -55,8 +55,12 @@ npm run build      # production build
 
 ### 4. Deploy
 Push to `main` → Vercel auto-deploys (project `malkafinance`). Env vars live in
-Vercel (Production). After adding Pluggy vars, register the webhook at
-`https://<app>/api/pluggy/webhook?token=<PLUGGY_WEBHOOK_SECRET>`.
+Vercel (Production). After adding Pluggy vars, register the webhook by hitting
+`/api/debug/pluggy-webhook-ensure` once (admin-gated) — it creates/repairs the
+Pluggy webhook via their API with the shared secret in an `X-Webhook-Secret`
+header (Pluggy's dashboard can only set a bare url, not custom headers, so a
+`?token=` query string is not used — that would ride in plaintext through
+access logs).
 
 ## The security wall (most important rule)
 

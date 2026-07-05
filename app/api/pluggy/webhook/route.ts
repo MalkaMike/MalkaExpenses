@@ -12,17 +12,16 @@ export const maxDuration = 300;
 // sync (fetch accounts + transactions + AI categorization, easily >5s) AFTER the
 // response via Next's after(), which keeps the work alive on Vercel.
 //
-// Auth: reads PLUGGY_WEBHOOK_SECRET from env and accepts it via:
-//   1. Header: X-Pluggy-Signature (preferred — never logged by proxies/CDNs)
-//   2. Query string: ?token=SECRET (legacy fallback — remove once Pluggy dashboard
-//      webhook URL is updated to drop the ?token= param)
+// Auth: reads PLUGGY_WEBHOOK_SECRET from env, compared against the
+// X-Webhook-Secret header — set via Pluggy's Webhooks API (their dashboard
+// can't set custom headers, only a bare url, so this is configured through
+// /api/debug/pluggy-webhook-ensure). Never accepted via query string — a
+// url query param rides in plaintext through access logs.
 // Returns 404 when missing/wrong — no signal the endpoint exists.
 // Credentials (PLUGGY_CLIENT_ID/SECRET) live only in env; never touched here.
 export async function POST(req: NextRequest) {
   const secret = process.env.PLUGGY_WEBHOOK_SECRET;
-  const token =
-    req.headers.get("x-pluggy-signature") ??
-    req.nextUrl.searchParams.get("token");
+  const token = req.headers.get("x-webhook-secret");
   if (!secret || token !== secret) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }

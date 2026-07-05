@@ -203,6 +203,21 @@ export async function listWebhooks(): Promise<PluggyWebhook[]> {
 }
 
 /**
+ * Register a new webhook. Pluggy's dashboard can only set a bare url (no
+ * custom headers) — headers must go through this API call.
+ */
+export async function createWebhook(
+  url: string,
+  event: string,
+  headers?: Record<string, string>
+): Promise<PluggyWebhook> {
+  return authedFetch<PluggyWebhook>("/webhooks", {
+    method: "POST",
+    body: JSON.stringify({ url, event, ...(headers ? { headers } : {}) })
+  });
+}
+
+/**
  * Update a webhook's url/headers/event. Pluggy's dashboard can only set a bare
  * url (no custom headers) — headers must go through this API call.
  */

@@ -63,8 +63,22 @@ does **not** filter by `source`, so synced rows appear to the household once
 1. Run `db/migrations/0004_pluggy.sql` in the Supabase SQL editor.
 2. Set `PLUGGY_CLIENT_ID`, `PLUGGY_CLIENT_SECRET` (and optionally
    `PLUGGY_WEBHOOK_SECRET`) in Vercel env, from `dashboard.pluggy.ai`.
-   Then point a Pluggy webhook at
-   `https://<app>/api/pluggy/webhook?token=<PLUGGY_WEBHOOK_SECRET>`.
+   Then hit `/api/debug/pluggy-webhook-ensure` once (admin-gated) to
+   register the webhook via Pluggy's API with the secret in an
+   `X-Webhook-Secret` header — their dashboard can only set a bare url
+   (no custom headers), so a `?token=` query string is never used.
+
+## Update (2026-07-05) — webhook secret moved from url to header
+Auditing the deploy found the webhook had no live registration at all on
+the Pluggy application (`GET /webhooks` returned empty) — so the original
+`?token=` url shape, while a real risk in principle (query strings ride
+in plaintext through access logs), was never actually exploitable because
+nothing was calling it that way. Real-time sync had silently been dead;
+only the daily `/api/cron/pluggy-sync` cron was keeping data fresh.
+Re-registered via Pluggy's Webhooks API (`lib/pluggy/client.ts`
+`createWebhook`/`updateWebhook`/`listWebhooks`) with the shared secret in
+a custom `X-Webhook-Secret` header instead. `app/api/pluggy/webhook/route.ts`
+now only accepts that header — no query-string fallback.
 
 ## Consequences / open risks (not runtime-tested against live Pluggy)
 - **Amount sign**: derived from `type` (DEBIT→negative, CREDIT→positive), else
