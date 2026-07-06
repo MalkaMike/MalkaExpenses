@@ -34,21 +34,30 @@ export default async function TransactionsPage({
   const role = await getRole();
   const lang = await getLang();
   const sb = serverClient();
-  const { data: accounts } = await sb
-    .from("accounts")
-    .select("id, name")
-    .eq("is_archived", false)
-    .order("name");
 
+  // Accounts, transaction rows, and the (constant) suspeito tag id are
+  // mutually independent — one parallel stage instead of a 3-step waterfall.
+  const accountsQ = sb.from("accounts").select("id, name").eq("is_archived", false).order("name");
+  const tagQ = sb.from("reimbursement_tags").select("id").eq("slug", "suspeito").maybeSingle();
+
+  let accounts: Array<{ id: string; name: string }> | null = null;
+  let tagId: string | null = null;
   let rows: Row[] = [];
 
   if (role !== "admin") {
     const sh = sharedClient();
-    const { data } = await sh
-      .from("shared_transactions_v")
-      .select("id, account_id, date, description, amount, category_slug, is_transfer")
-      .order("date", { ascending: false })
-      .limit(500);
+    const [accountsRes, tagRes, listRes] = await Promise.all([
+      accountsQ,
+      tagQ,
+      sh
+        .from("shared_transactions_v")
+        .select("id, account_id, date, description, amount, category_slug, is_transfer")
+        .order("date", { ascending: false })
+        .limit(500)
+    ]);
+    accounts = accountsRes.data;
+    tagId = (tagRes.data?.id as string | undefined) ?? null;
+    const data = listRes.data;
     rows = (data ?? []).map((r) => ({
       id: r.id,
       account_id: r.account_id,
@@ -62,14 +71,21 @@ export default async function TransactionsPage({
       isSuspeito: false
     }));
   } else {
-    const { data } = await sb
-      .from("transactions")
-      .select(
-        "id, account_id, date, description_raw, description_clean, real_amount, shared_amount, category_id, is_fake, is_transfer, categories(slug)"
-      )
-      .eq("is_fake", false)
-      .order("date", { ascending: false })
-      .limit(500);
+    const [accountsRes, tagRes, listRes] = await Promise.all([
+      accountsQ,
+      tagQ,
+      sb
+        .from("transactions")
+        .select(
+          "id, account_id, date, description_raw, description_clean, real_amount, shared_amount, category_id, is_fake, is_transfer, categories(slug)"
+        )
+        .eq("is_fake", false)
+        .order("date", { ascending: false })
+        .limit(500)
+    ]);
+    accounts = accountsRes.data;
+    tagId = (tagRes.data?.id as string | undefined) ?? null;
+    const data = listRes.data;
     rows = (data ?? []).map((r: {
       id: string;
       account_id: string;
@@ -103,21 +119,18 @@ export default async function TransactionsPage({
   // non-admin, is_fake=false for admin) — this only reads tag membership,
   // never amounts or hidden rows, so using the service-role client here for
   // a household/health viewer doesn't widen what they can see.
-  if (rows.length > 0) {
-    const { data: tag } = await sb.from("reimbursement_tags").select("id").eq("slug", "suspeito").maybeSingle();
-    if (tag) {
-      const ids = rows.map((r) => r.id);
-      const suspeitoIds = new Set<string>();
-      for (let i = 0; i < ids.length; i += 500) {
-        const { data: tagged } = await sb
-          .from("transaction_reimbursements")
-          .select("transaction_id")
-          .eq("tag_id", tag.id as string)
-          .in("transaction_id", ids.slice(i, i + 500));
-        for (const t of tagged ?? []) suspeitoIds.add(t.transaction_id as string);
-      }
-      for (const r of rows) r.isSuspeito = suspeitoIds.has(r.id);
+  if (rows.length > 0 && tagId) {
+    const ids = rows.map((r) => r.id);
+    const suspeitoIds = new Set<string>();
+    for (let i = 0; i < ids.length; i += 500) {
+      const { data: tagged } = await sb
+        .from("transaction_reimbursements")
+        .select("transaction_id")
+        .eq("tag_id", tagId)
+        .in("transaction_id", ids.slice(i, i + 500));
+      for (const t of tagged ?? []) suspeitoIds.add(t.transaction_id as string);
     }
+    for (const r of rows) r.isSuspeito = suspeitoIds.has(r.id);
   }
 
   const accountsList = (accounts ?? []).map((a) => ({ id: a.id, name: a.name }));

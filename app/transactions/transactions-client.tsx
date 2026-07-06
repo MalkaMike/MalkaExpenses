@@ -1,6 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useDeferredValue, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Search, X, TrendingUp, TrendingDown, EyeOff, Undo2, Loader2, AlertTriangle } from "lucide-react";
 import { TransactionRow } from "@/components/transaction-row";
@@ -12,6 +11,7 @@ import type { Role } from "@/lib/auth/admin";
 import { useLang } from "@/lib/i18n/context";
 import { t, type Lang } from "@/lib/i18n/translations";
 import { safeJson } from "@/lib/http";
+import { formatBRL } from "@/lib/format";
 
 type Row = {
   id: string;
@@ -53,12 +53,14 @@ export function TransactionsClient({
   initialCat?: string;
 }) {
   const { lang } = useLang();
-  const router = useRouter();
   const accountMap = useMemo(
     () => new Map(accounts.map((a) => [a.id, a.name])),
     [accounts]
   );
   const [q, setQ] = useState("");
+  // Defer the search value: filtering + re-rendering up to 500 rows stays off
+  // the keystroke's critical path (input echoes instantly, list follows).
+  const dq = useDeferredValue(q);
   const [cat, setCat] = useState<string>(initialCat);
   const [accId, setAccId] = useState<string>(initialAccId);
   const [editing, setEditing] = useState<EditableTx | null>(null);
@@ -67,6 +69,10 @@ export function TransactionsClient({
   // (admin/health/household), unlike hide/unhide which stays admin-only.
   const [suspeitoBusyId, setSuspeitoBusyId] = useState<string | null>(null);
   const [suspeitoOverrides, setSuspeitoOverrides] = useState<Record<string, boolean>>({});
+  // Local optimistic shared_amount overrides for hide/unhide — same pattern
+  // as suspeitoOverrides. Replaces router.refresh(), which re-ran the whole
+  // server page (accounts + 500-row fetch + tag lookups) on every tap.
+  const [sharedOverrides, setSharedOverrides] = useState<Record<string, number>>({});
 
   async function toggleSuspeito(r: Row) {
     const current = suspeitoOverrides[r.id] ?? r.isSuspeito;
@@ -93,9 +99,13 @@ export function TransactionsClient({
 
   // One-tap take-out (hide) / bring-back (unhide) from the list — admin only.
   // Hidden rows go to the Archive (shared_amount=0); nothing is deleted.
+  // Optimistic local update with rollback — no full-page refresh.
   async function quickToggleHide(r: Row) {
     const hiding = r.amountShared !== 0;
+    const prevShared = r.amountShared;
+    const nextShared = hiding ? 0 : r.amountReal ?? 0; // PATCH hide:false restores real_amount
     setBusyId(r.id);
+    setSharedOverrides((prev) => ({ ...prev, [r.id]: nextShared }));
     try {
       const res = await fetch(`/api/transactions/${r.id}`, {
         method: "PATCH",
@@ -103,6 +113,7 @@ export function TransactionsClient({
         body: JSON.stringify({ hide: hiding })
       });
       if (!res.ok) {
+        setSharedOverrides((prev) => ({ ...prev, [r.id]: prevShared }));
         const j = await safeJson(res);
         toast.error(j.error ?? "erro");
         return;
@@ -112,27 +123,41 @@ export function TransactionsClient({
           action: {
             label: "Desfazer",
             onClick: async () => {
-              await fetch(`/api/transactions/${r.id}`, {
+              const undoRes = await fetch(`/api/transactions/${r.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ hide: false })
               });
-              router.refresh();
+              if (undoRes.ok) {
+                setSharedOverrides((prev) => ({ ...prev, [r.id]: r.amountReal ?? prevShared }));
+              } else {
+                toast.error("desfazer falhou");
+              }
             }
           }
         });
       } else {
         toast.success("Trazido de volta ao portal");
       }
-      router.refresh();
     } finally {
       setBusyId(null);
     }
   }
 
+  // Apply local hide/unhide overrides before filtering/grouping.
+  const effectiveRows = useMemo(
+    () =>
+      Object.keys(sharedOverrides).length === 0
+        ? rows
+        : rows.map((r) =>
+            sharedOverrides[r.id] !== undefined ? { ...r, amountShared: sharedOverrides[r.id]! } : r
+          ),
+    [rows, sharedOverrides]
+  );
+
   const filtered = useMemo(() => {
-    const qLower = q.trim().toLowerCase();
-    return rows.filter((r) => {
+    const qLower = dq.trim().toLowerCase();
+    return effectiveRows.filter((r) => {
       if (cat) {
         const rowSlug = r.categorySlug ?? "outros";
         const rowMeta = CATEGORY_META[rowSlug];
@@ -144,7 +169,7 @@ export function TransactionsClient({
       if (qLower && !r.description.toLowerCase().includes(qLower)) return false;
       return true;
     });
-  }, [rows, q, cat, accId]);
+  }, [effectiveRows, dq, cat, accId]);
 
   // Group by date
   const grouped = useMemo(() => {
@@ -579,6 +604,3 @@ function GroupedCategorySelect({
   );
 }
 
-function formatBRL(value: number): string {
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
-}

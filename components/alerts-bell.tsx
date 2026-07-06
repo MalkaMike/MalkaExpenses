@@ -57,10 +57,20 @@ export function AlertsBell() {
       }
     };
     load();
-    const iv = setInterval(load, 60_000);
+    // Poll every 5 min, and ONLY while the tab is visible — the old 60s
+    // always-on interval kept hitting the alerts endpoint from background
+    // tabs forever (and pre-0035 that endpoint scanned the whole table).
+    const iv = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 300_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       mounted = false;
       clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, []);
 

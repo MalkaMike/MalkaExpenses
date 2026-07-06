@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2, GitMerge, X, RefreshCw, ChevronRight, Sparkles } from "lucide-react";
+import { Loader2, GitMerge, X, RefreshCw, Sparkles } from "lucide-react";
 import { formatInt, formatBRL } from "@/lib/format";
 import { safeJson } from "@/lib/http";
 
@@ -85,7 +85,9 @@ export function SuggestionsClient() {
         throw new Error(errMsg);
       }
       removeSuggestionB();
-      router.refresh();
+      // No router.refresh() here: the local removal already updates the list,
+      // and refreshing re-ran the server page's full threshold-stats scan
+      // (thousands of rows) after EVERY single merge.
     } catch (e) {
       alert((e as Error).message);
     } finally {

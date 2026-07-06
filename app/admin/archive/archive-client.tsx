@@ -1,6 +1,5 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Undo2, Trash2, Loader2 } from "lucide-react";
 import { CategoryIcon } from "@/components/category-chip";
@@ -18,7 +17,6 @@ export type ArchivedRow = {
 };
 
 export function ArchiveClient({ rows: initial }: { rows: ArchivedRow[] }) {
-  const router = useRouter();
   const [rows, setRows] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [confirmDel, setConfirmDel] = useState<string | null>(null);
@@ -63,8 +61,7 @@ export function ArchiveClient({ rows: initial }: { rows: ArchivedRow[] }) {
         return;
       }
       toast.success("Apagado definitivamente");
-      drop(row.id);
-      router.refresh();
+      drop(row.id); // local removal is enough — restore() already skips the refresh too
     } finally {
       setBusy(false);
     }

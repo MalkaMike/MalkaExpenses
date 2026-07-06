@@ -1,7 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Check, Send, X, Loader2, Trash2, RotateCcw } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { DataTable, type Column } from "@/components/data-table";
@@ -190,8 +189,45 @@ export function ReembolsosClient({
   summary: TagSummary;
   rows: ReembolsoRow[];
 }) {
-  const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  // Local mirrors of the server-provided rows/summary — quick status/untag
+  // actions update these in place instead of router.refresh(), which re-ran
+  // the entire server page (all tags + all reimbursement rows) per click.
+  const [localRows, setLocalRows] = useState(rows);
+  const [localSummary, setLocalSummary] = useState(summary);
+  useEffect(() => {
+    setLocalRows(rows);
+    setLocalSummary(summary);
+  }, [rows, summary]);
+
+  // pending/submitted → "pending" bucket; reimbursed → "reimbursed"; declined → none
+  function bucketOf(status: ReembolsoRow["status"]): "pending" | "reimbursed" | null {
+    if (status === "pending" || status === "submitted") return "pending";
+    if (status === "reimbursed") return "reimbursed";
+    return null;
+  }
+
+  function applyLocalStatus(id: string, status: ReembolsoRow["status"]) {
+    const row = localRows.find((r) => r.id === id);
+    if (!row) return;
+    const from = bucketOf(row.status);
+    const to = bucketOf(status);
+    if (from !== to) {
+      setLocalSummary((s) => {
+        const next = { ...s };
+        if (from === "pending") { next.pendingCount -= 1; next.pendingSum -= row.claimAmount; }
+        if (from === "reimbursed") { next.reimbursedCount -= 1; next.reimbursedSum -= row.claimAmount; }
+        if (to === "pending") { next.pendingCount += 1; next.pendingSum += row.claimAmount; }
+        if (to === "reimbursed") { next.reimbursedCount += 1; next.reimbursedSum += row.claimAmount; }
+        return next;
+      });
+    }
+    setLocalRows((rs) =>
+      rs
+        .map((r) => (r.id === id ? { ...r, status } : r))
+        .filter((r) => activeStatus === "all" || r.status === activeStatus)
+    );
+  }
 
   async function setStatus(id: string, status: ReembolsoRow["status"]) {
     setBusy(id);
@@ -205,7 +241,7 @@ export function ReembolsosClient({
         const j = await safeJson(r);
         throw new Error(j.error ?? "Erro");
       }
-      router.refresh();
+      applyLocalStatus(id, status);
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -219,7 +255,18 @@ export function ReembolsosClient({
     try {
       const r = await fetch(`/api/admin/reimbursements/${id}`, { method: "DELETE" });
       if (!r.ok) throw new Error("Erro");
-      router.refresh();
+      const row = localRows.find((x) => x.id === id);
+      if (row) {
+        const from = bucketOf(row.status);
+        setLocalSummary((s) => ({
+          ...s,
+          pendingCount: s.pendingCount - (from === "pending" ? 1 : 0),
+          pendingSum: s.pendingSum - (from === "pending" ? row.claimAmount : 0),
+          reimbursedCount: s.reimbursedCount - (from === "reimbursed" ? 1 : 0),
+          reimbursedSum: s.reimbursedSum - (from === "reimbursed" ? row.claimAmount : 0)
+        }));
+      }
+      setLocalRows((rs) => rs.filter((r) => r.id !== id));
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -236,16 +283,16 @@ export function ReembolsosClient({
             Pendente / Enviado
           </p>
           <p className="text-2xl font-semibold tabular-nums text-[#f59e0b]">
-            {formatBRL(summary.pendingSum)}
+            {formatBRL(localSummary.pendingSum)}
           </p>
           <p className="text-xs text-on-surface-variant mt-1">
-            {formatInt(summary.pendingCount)} {summary.pendingCount === 1 ? "despesa aguardando" : "despesas aguardando"}
+            {formatInt(localSummary.pendingCount)} {localSummary.pendingCount === 1 ? "despesa aguardando" : "despesas aguardando"}
           </p>
           {/* Progress bar */}
           <div className="mt-3 h-1 w-full bg-surface-container rounded-full overflow-hidden">
             <div
               className="h-full bg-[#f59e0b] transition-all duration-700"
-              style={{ width: summary.pendingCount > 0 ? `${Math.min(100, (summary.pendingCount / Math.max(summary.pendingCount + summary.reimbursedCount, 1)) * 100)}%` : "0%" }}
+              style={{ width: localSummary.pendingCount > 0 ? `${Math.min(100, (localSummary.pendingCount / Math.max(localSummary.pendingCount + localSummary.reimbursedCount, 1)) * 100)}%` : "0%" }}
             />
           </div>
         </div>
@@ -254,15 +301,15 @@ export function ReembolsosClient({
             Já recebido
           </p>
           <p className="text-2xl font-semibold tabular-nums text-secondary">
-            {formatBRL(summary.reimbursedSum)}
+            {formatBRL(localSummary.reimbursedSum)}
           </p>
           <p className="text-xs text-on-surface-variant mt-1">
-            {formatInt(summary.reimbursedCount)} {summary.reimbursedCount === 1 ? "despesa reembolsada" : "despesas reembolsadas"}
+            {formatInt(localSummary.reimbursedCount)} {localSummary.reimbursedCount === 1 ? "despesa reembolsada" : "despesas reembolsadas"}
           </p>
           <div className="mt-3 h-1 w-full bg-surface-container rounded-full overflow-hidden">
             <div
               className="h-full bg-secondary transition-all duration-700"
-              style={{ width: summary.reimbursedCount > 0 ? "100%" : "0%" }}
+              style={{ width: localSummary.reimbursedCount > 0 ? "100%" : "0%" }}
             />
           </div>
         </div>
@@ -289,7 +336,7 @@ export function ReembolsosClient({
       </div>
 
       {/* Rows */}
-      {rows.length === 0 ? (
+      {localRows.length === 0 ? (
         <div className="rounded-xl bg-surface-container-lowest border border-dashed border-outline-variant p-12 text-center">
           <p className="text-sm text-on-surface-variant">
             Nenhuma despesa marcada com {tagName}.
@@ -306,7 +353,7 @@ export function ReembolsosClient({
         <>
           <DataTable
             columns={buildColumns(busy, setStatus, untag)}
-            rows={rows}
+            rows={localRows}
             rowKey={(r) => r.id}
             defaultSort={{ key: "date", dir: "desc" }}
             rowClassName={(r) =>
@@ -314,7 +361,7 @@ export function ReembolsosClient({
             }
           />
           <p className="mt-2 px-1 text-xs text-on-surface-variant">
-            {formatInt(rows.length)} {rows.length === 1 ? "despesa" : "despesas"}
+            {formatInt(localRows.length)} {localRows.length === 1 ? "despesa" : "despesas"}
           </p>
         </>
       )}

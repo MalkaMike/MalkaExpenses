@@ -1,16 +1,22 @@
+// Module-level singletons — Intl.NumberFormat construction is expensive and
+// these were being rebuilt on EVERY call (the transactions list calls
+// formatBRL ~1,000+ times per render, re-rendered on each search keystroke).
+const BRL_FMT = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL"
+});
+const INT_FMT = new Intl.NumberFormat("pt-BR", {
+  maximumFractionDigits: 0
+});
+
 export function formatBRL(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL"
-  }).format(value);
+  return BRL_FMT.format(value);
 }
 
 // Integer with pt-BR thousand separator (e.g. 6011 → "6.011").
 // Use everywhere counts/numbers > 999 are displayed.
 export function formatInt(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    maximumFractionDigits: 0
-  }).format(value);
+  return INT_FMT.format(value);
 }
 
 export function formatDate(iso: string): string {
