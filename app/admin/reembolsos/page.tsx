@@ -56,61 +56,51 @@ export default async function ReembolsosPage({
     | "reimbursed"
     | "declined";
 
-  // Per-tag summary (count + sum by status) for the tab badges
-  const summaries: Record<string, TagSummary> = {};
-  for (const t of tagList) {
-    const { data: rs } = await sb
-      .from("transaction_reimbursements")
-      .select("transaction_id, status, reimbursement_amount")
-      .eq("tag_id", t.id);
-    let pendingCount = 0,
-      pendingSum = 0,
-      reimbursedCount = 0,
-      reimbursedSum = 0;
-    // Need real_amounts for rows where reimbursement_amount is NULL
-    const txIds = (rs ?? []).map((r) => (r as ReimbDb).transaction_id);
-    const realAmtById = new Map<string, number>();
-    if (txIds.length > 0) {
-      for (let i = 0; i < txIds.length; i += 200) {
-        const slice = txIds.slice(i, i + 200);
-        const { data: txs } = await sb
-          .from("transactions")
-          .select("id, real_amount")
-          .in("id", slice);
-        for (const t of txs ?? []) {
-          realAmtById.set(t.id as string, Math.abs(fromDb(Number(t.real_amount))));
-        }
-      }
+  // One parallel batch: ALL tags' reimbursement rows (paginated — PostgREST
+  // caps at 1000/request) + accounts + categories. The old version looped one
+  // query per tag with nested chunked tx fetches — ~10-14 sequential
+  // round-trips per render.
+  const tagIds = tagList.map((t) => t.id);
+  async function loadAllReimbs(): Promise<Array<ReimbDb & { tag_id: string }>> {
+    const out: Array<ReimbDb & { tag_id: string }> = [];
+    if (tagIds.length === 0) return out;
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error } = await sb
+        .from("transaction_reimbursements")
+        .select(
+          "id, transaction_id, tag_id, status, reimbursement_amount, submitted_at, reimbursed_at, notes, created_at"
+        )
+        .in("tag_id", tagIds)
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      out.push(...((page ?? []) as Array<ReimbDb & { tag_id: string }>));
+      if (!page || page.length < PAGE) break;
     }
-    for (const r of rs ?? []) {
-      const reimbAmt = (r as ReimbDb).reimbursement_amount;
-      const amt =
-        reimbAmt != null ? Math.abs(Number(reimbAmt)) : realAmtById.get((r as ReimbDb).transaction_id) ?? 0;
-      if ((r as ReimbDb).status === "pending" || (r as ReimbDb).status === "submitted") {
-        pendingCount++;
-        pendingSum += amt;
-      } else if ((r as ReimbDb).status === "reimbursed") {
-        reimbursedCount++;
-        reimbursedSum += amt;
-      }
-    }
-    summaries[t.slug] = { pendingCount, pendingSum, reimbursedCount, reimbursedSum };
+    return out;
   }
 
-  // Detailed rows for the active tag + status filter
-  let query = sb
-    .from("transaction_reimbursements")
-    .select(
-      "id, transaction_id, tag_id, status, reimbursement_amount, submitted_at, reimbursed_at, notes, created_at"
-    )
-    .eq("tag_id", activeTagRow?.id ?? "")
-    .order("created_at", { ascending: false })
-    .limit(500);
-  if (activeStatus !== "all") query = query.eq("status", activeStatus);
-  const { data: reimbs } = await query;
+  const [allReimbs, accsRes, catsRes] = await Promise.all([
+    loadAllReimbs(),
+    sb.from("accounts").select("id, name").eq("is_archived", false),
+    sb.from("categories").select("id, name")
+  ]);
+  const accs = accsRes.data;
+  const cats = catsRes.data;
 
-  // Fetch the related transactions in one batch
-  const tids = (reimbs ?? []).map((r) => (r as ReimbDb).transaction_id);
+  // Detail rows for the active tag come from the same in-memory set
+  // (already sorted created_at desc by the query)
+  const reimbs = allReimbs
+    .filter(
+      (r) =>
+        r.tag_id === (activeTagRow?.id ?? "") &&
+        (activeStatus === "all" || r.status === activeStatus)
+    )
+    .slice(0, 500);
+
+  // One batched transactions fetch for BOTH the summaries (real_amount for
+  // rows without an explicit claim value) and the active tag's detail rows.
   type TxJoin = {
     id: string;
     date: string;
@@ -120,22 +110,50 @@ export default async function ReembolsosPage({
     account_id: string;
     category_id: string | null;
   };
+  const neededTxIds = [...new Set(allReimbs.map((r) => r.transaction_id))];
   const txMap = new Map<string, TxJoin>();
-  if (tids.length > 0) {
-    for (let i = 0; i < tids.length; i += 200) {
-      const slice = tids.slice(i, i + 200);
-      const { data: txs } = await sb
-        .from("transactions")
-        .select("id, date, description_clean, description_raw, real_amount, account_id, category_id")
-        .in("id", slice);
-      for (const t of txs ?? []) txMap.set(t.id as string, t as TxJoin);
+  if (neededTxIds.length > 0) {
+    const slices: string[][] = [];
+    for (let i = 0; i < neededTxIds.length; i += 200) slices.push(neededTxIds.slice(i, i + 200));
+    const results = await Promise.all(
+      slices.map((slice) =>
+        sb
+          .from("transactions")
+          .select("id, date, description_clean, description_raw, real_amount, account_id, category_id")
+          .in("id", slice)
+      )
+    );
+    for (const res of results) {
+      if (res.error) throw res.error;
+      for (const t of res.data ?? []) txMap.set(t.id as string, t as TxJoin);
     }
   }
 
-  const [{ data: accs }, { data: cats }] = await Promise.all([
-    sb.from("accounts").select("id, name").eq("is_archived", false),
-    sb.from("categories").select("id, name")
-  ]);
+  // Per-tag summary (count + sum by status) for the tab badges
+  const summaries: Record<string, TagSummary> = {};
+  for (const t of tagList) {
+    let pendingCount = 0,
+      pendingSum = 0,
+      reimbursedCount = 0,
+      reimbursedSum = 0;
+    for (const r of allReimbs) {
+      if (r.tag_id !== t.id) continue;
+      const amt =
+        r.reimbursement_amount != null
+          ? Math.abs(Number(r.reimbursement_amount))
+          : txMap.has(r.transaction_id)
+            ? Math.abs(fromDb(Number(txMap.get(r.transaction_id)!.real_amount)))
+            : 0;
+      if (r.status === "pending" || r.status === "submitted") {
+        pendingCount++;
+        pendingSum += amt;
+      } else if (r.status === "reimbursed") {
+        reimbursedCount++;
+        reimbursedSum += amt;
+      }
+    }
+    summaries[t.slug] = { pendingCount, pendingSum, reimbursedCount, reimbursedSum };
+  }
   const accNameById = new Map<string, string>();
   for (const a of accs ?? []) accNameById.set(a.id as string, a.name as string);
   const catNameById = new Map<string, string>();

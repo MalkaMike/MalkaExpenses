@@ -19,24 +19,46 @@ async function loadThresholdStats(): Promise<{ rows: ThresholdStats[]; months: n
   const sb = serverClient();
   const today = new Date().toISOString().split("T")[0];
 
-  // Unreviewed, non-deferred, non-fake, non-transfer expenses up to today
-  const { data: txRows } = await sb
-    .from("transactions")
-    .select("real_amount, date, description_raw")
-    .eq("is_fake", false)
-    .eq("is_transfer", false)
-    .lte("date", today)
-    .lt("real_amount", 0);
+  // Both fetches paginated (PostgREST caps at 1000/request; live counts are
+  // 4,451 candidate expenses and 1,356 reviewed clusters — the old unbounded
+  // reads truncated both, so the R$ totals under- AND over-counted) and run
+  // in parallel (they're independent).
+  const PAGE = 1000;
+  async function loadExpenses() {
+    const out: Array<{ real_amount: number; date: string; description_raw: string }> = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error } = await sb
+        .from("transactions")
+        .select("real_amount, date, description_raw")
+        .eq("is_fake", false)
+        .eq("is_transfer", false)
+        .lte("date", today)
+        .lt("real_amount", 0)
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      out.push(...((page ?? []) as typeof out));
+      if (!page || page.length < PAGE) break;
+    }
+    return out;
+  }
+  async function loadReviewedDescs() {
+    const out = new Set<string>();
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error } = await sb
+        .from("merchant_clusters")
+        .select("description_raw")
+        .or("is_reviewed.eq.true,is_deferred.eq.true")
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      for (const r of page ?? []) out.add(r.description_raw as string);
+      if (!page || page.length < PAGE) break;
+    }
+    return out;
+  }
 
-  if (!txRows?.length) return { rows: [], months: 0, totalAll: 0, countAll: 0 };
+  const [txRows, skipDescs] = await Promise.all([loadExpenses(), loadReviewedDescs()]);
 
-  // Filter to only unreviewed + non-deferred clusters
-  const { data: reviewedRows } = await sb
-    .from("merchant_clusters")
-    .select("description_raw")
-    .or("is_reviewed.eq.true,is_deferred.eq.true");
-
-  const skipDescs = new Set((reviewedRows ?? []).map((r) => r.description_raw as string));
+  if (!txRows.length) return { rows: [], months: 0, totalAll: 0, countAll: 0 };
 
   const unreviewed = txRows.filter((t) => !skipDescs.has(t.description_raw as string));
   if (!unreviewed.length) return { rows: [], months: 0, totalAll: 0, countAll: 0 };

@@ -36,18 +36,24 @@ export async function ensureClusterRowsExist(
       .replace(/^_|_$/g, "")
       .slice(0, 40) || "unknown";
 
-  const { data: txRows } = await sb
-    .from("transactions")
-    .select("description_raw")
-    .eq("is_fake", false);
+  // Paginated: PostgREST caps responses at 1000 rows and the ledger has
+  // 5,645+ non-fake rows — the old unpaginated read only ever saw an
+  // arbitrary 1000 descriptions, so slug-fallback merchants outside that
+  // window kept 404ing on merge/tag (the c70fd6c bug, resurfaced).
+  const descSet = new Set<string>();
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data: page, error: pageErr } = await sb
+      .from("transactions")
+      .select("description_raw")
+      .eq("is_fake", false)
+      .range(from, from + PAGE - 1);
+    if (pageErr) throw new Error(`ensureClusterRowsExist scan failed: ${pageErr.message}`);
+    for (const r of page ?? []) descSet.add((r as { description_raw: string }).description_raw);
+    if (!page || page.length < PAGE) break;
+  }
 
-  const matchingDescs = [
-    ...new Set(
-      (txRows ?? [])
-        .map((r: { description_raw: string }) => r.description_raw)
-        .filter((d) => slugify(d) === canonical_key)
-    ),
-  ];
+  const matchingDescs = [...descSet].filter((d) => slugify(d) === canonical_key);
 
   if (matchingDescs.length === 0) return false;
 
@@ -59,9 +65,12 @@ export async function ensureClusterRowsExist(
     is_deferred: false,
   }));
 
-  await sb
+  const { error: upsertErr } = await sb
     .from("merchant_clusters")
     .upsert(rows, { onConflict: "description_raw", ignoreDuplicates: true });
+  // Returning true after a failed write would make callers proceed and 404
+  // (or worse, silently no-op) one step later.
+  if (upsertErr) throw new Error(`ensureClusterRowsExist upsert failed: ${upsertErr.message}`);
 
   return true;
 }
