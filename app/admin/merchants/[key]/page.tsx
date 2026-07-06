@@ -32,16 +32,12 @@ export default async function MerchantDetailPage({
 
   const sb = serverClient();
 
-  // Preload cluster mapping (DB → JSON fallback)
-  await preloadClusters();
+  // Preload cluster mapping (DB → JSON fallback) and the direct-DB
+  // description lookup are independent → parallel. (Direct query = immune to
+  // stale per-instance cache; post-merge renders see the updated mapping.)
+  const [, rawDescs] = await Promise.all([preloadClusters(), rawDescriptionsForKeyDirect(key)]);
 
-  // Always query DB directly — immune to stale per-instance in-memory cache.
-  // This ensures post-merge renders see the updated mapping immediately.
-  const rawDescs = await rawDescriptionsForKeyDirect(key);
-
-  // Pull transactions: either by description match (if we have the cluster map)
-  // or by exact description if the key was a fallback
-  const txs: Array<{
+  type TxRow = {
     id: string;
     date: string;
     description_raw: string;
@@ -55,7 +51,7 @@ export default async function MerchantDetailPage({
     gmail_searched_at: string | null;
     gmail_match_count: number;
     status: string;
-  }> = [];
+  };
 
   // Pull transactions matching ANY raw description in the cluster.
   // Two-level pagination because Postgres .in() can be large but inefficient,
@@ -64,7 +60,9 @@ export default async function MerchantDetailPage({
   // - Outer: chunk rawDescs in slices of 200 (PG planner stays sane).
   // - Inner: paginate each chunk with .range(); stable .order("id") + date desc
   //   ensures no row is skipped or duplicated under concurrent inserts.
-  if (rawDescs.length > 0) {
+  async function loadTxs(): Promise<TxRow[]> {
+    const out: TxRow[] = [];
+    if (rawDescs.length === 0) return out;
     const DESC_CHUNK = 200;
     for (let i = 0; i < rawDescs.length; i += DESC_CHUNK) {
       const slice = rawDescs.slice(i, i + DESC_CHUNK);
@@ -85,21 +83,69 @@ export default async function MerchantDetailPage({
           throw new Error(`Failed to load transactions: ${error.message}`);
         }
         if (!data || !data.length) break;
-        txs.push(...(data as typeof txs));
+        out.push(...(data as TxRow[]));
         if (data.length < 1000) break;
         off += 1000;
       }
     }
+    return out;
   }
 
-  // Categories + accounts for display
-  const [{ data: cats }, { data: accounts }, { data: researchRow }] = await Promise.all([
+  // Cluster list for rename/merge combobox — admin only.
+  // Skipped for health role to avoid the ~120KB DB round-trip.
+  type ClusterOption = { key: string; name: string };
+  async function loadAllClusters(): Promise<ClusterOption[]> {
+    const out: ClusterOption[] = [];
+    const seenKeys = new Set<string>();
+    let cOff = 0;
+    while (true) {
+      const { data } = await sb
+        .from("merchant_clusters")
+        .select("canonical_key, canonical_name")
+        .order("canonical_name", { ascending: true })
+        .range(cOff, cOff + 999);
+      if (!data || !data.length) break;
+      for (const r of data) {
+        const k = r.canonical_key as string;
+        if (k === key) continue; // exclude current cluster
+        if (seenKeys.has(k)) continue;
+        seenKeys.add(k);
+        out.push({ key: k, name: r.canonical_name as string });
+      }
+      if (data.length < 1000) break;
+      cOff += 1000;
+    }
+    return out;
+  }
+
+  // ONE parallel stage for everything that doesn't need the tx list —
+  // previously these ran one-after-another (~8-12 sequential round-trips
+  // per ficha open; the list page got this treatment in c3d09aa, the
+  // detail page didn't).
+  const [txs, catsRes, accountsRes, researchRes, tagsRes, allClusters, mergeRowsRes] = await Promise.all([
+    loadTxs(),
     sb.from("categories").select("id, slug, name").order("name"),
     sb.from("accounts").select("id, name, bank").eq("is_archived", false),
     role === "admin"
       ? sb.from("merchant_research").select("*").eq("canonical_key", key).maybeSingle()
+      : Promise.resolve({ data: null }),
+    role === "admin"
+      ? sb.from("reimbursement_tags").select("id, slug, name, color, icon").order("slug")
+      : Promise.resolve({ data: null }),
+    role === "admin" ? loadAllClusters() : Promise.resolve([] as ClusterOption[]),
+    role === "admin"
+      ? sb
+          .from("admin_modifications")
+          .select("id, before_value, created_at")
+          .eq("action", "merge")
+          .eq("target_id", key)
+          .is("reverted_at", null)
+          .order("created_at", { ascending: false })
       : Promise.resolve({ data: null })
   ]);
+  const cats = catsRes.data;
+  const accounts = accountsRes.data;
+  const researchRow = researchRes.data;
   const catNameById = new Map<string, string>();
   for (const c of cats ?? []) catNameById.set(c.id as string, c.name as string);
   const accountNameById = new Map<string, string>();
@@ -172,68 +218,27 @@ export default async function MerchantDetailPage({
     }
   }
   const tagList: { id: string; slug: string; name: string; color: string; icon: string; appliedCount: number }[] = [];
-  if (role === "admin") {
-    const { data: tags } = await sb
-      .from("reimbursement_tags")
-      .select("id, slug, name, color, icon")
-      .order("slug");
-    for (const t of tags ?? []) {
-      tagList.push({
-        id: t.id as string,
-        slug: t.slug as string,
-        name: t.name as string,
-        color: t.color as string,
-        icon: t.icon as string,
-        appliedCount: tagCounts.get(t.id as string) ?? 0
-      });
-    }
-  }
-
-  // Cluster list for rename/merge combobox — admin only.
-  // Skipped for health role to avoid the ~120KB DB round-trip.
-  type ClusterOption = { key: string; name: string };
-  const allClusters: ClusterOption[] = [];
-  if (role === "admin") {
-    const seenKeys = new Set<string>();
-    let cOff = 0;
-    while (true) {
-      const { data } = await sb
-        .from("merchant_clusters")
-        .select("canonical_key, canonical_name")
-        .order("canonical_name", { ascending: true })
-        .range(cOff, cOff + 999);
-      if (!data || !data.length) break;
-      for (const r of data) {
-        const k = r.canonical_key as string;
-        if (k === key) continue; // exclude current cluster
-        if (seenKeys.has(k)) continue;
-        seenKeys.add(k);
-        allClusters.push({ key: k, name: r.canonical_name as string });
-      }
-      if (data.length < 1000) break;
-      cOff += 1000;
-    }
+  for (const t of tagsRes.data ?? []) {
+    tagList.push({
+      id: t.id as string,
+      slug: t.slug as string,
+      name: t.name as string,
+      color: t.color as string,
+      icon: t.icon as string,
+      appliedCount: tagCounts.get(t.id as string) ?? 0
+    });
   }
 
   // Merge history — past merges where this cluster was the target (absorbed others)
   const mergeHistory: { id: string; sourceName: string; createdAt: string; hasDescriptions: boolean }[] = [];
-  if (role === "admin") {
-    const { data: mergeRows } = await sb
-      .from("admin_modifications")
-      .select("id, before_value, created_at")
-      .eq("action", "merge")
-      .eq("target_id", key)
-      .is("reverted_at", null)
-      .order("created_at", { ascending: false });
-    for (const m of mergeRows ?? []) {
-      const bv = m.before_value as { source_name?: string; descriptions?: string[] } | null;
-      mergeHistory.push({
-        id: m.id as string,
-        sourceName: bv?.source_name ?? "?",
-        createdAt: m.created_at as string,
-        hasDescriptions: Array.isArray(bv?.descriptions) && (bv?.descriptions?.length ?? 0) > 0
-      });
-    }
+  for (const m of mergeRowsRes.data ?? []) {
+    const bv = m.before_value as { source_name?: string; descriptions?: string[] } | null;
+    mergeHistory.push({
+      id: m.id as string,
+      sourceName: bv?.source_name ?? "?",
+      createdAt: m.created_at as string,
+      hasDescriptions: Array.isArray(bv?.descriptions) && (bv?.descriptions?.length ?? 0) > 0
+    });
   }
 
   return (

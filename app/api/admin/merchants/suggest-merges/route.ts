@@ -74,8 +74,12 @@ export async function GET() {
   };
 
   const byKey = new Map<string, ClusterAgg>();
+  const descToKey = new Map<string, string>();
 
-  // Pull all (canonical_key, canonical_name) pairs from merchant_clusters
+  // ONE paginated pass over merchant_clusters builds everything the old code
+  // paged the same table three separate times for: name+tokens per key,
+  // description-variant count (txCount proxy, as before), and the
+  // description→key map for the spend join below.
   let off = 0;
   while (true) {
     const { data, error } = await sb
@@ -83,67 +87,54 @@ export async function GET() {
       .select("canonical_key, canonical_name, description_raw")
       .order("canonical_key", { ascending: true })
       .range(off, off + 999);
-    if (error || !data || !data.length) break;
+    if (error) throw new Error(`cluster scan failed: ${error.message}`);
+    if (!data || !data.length) break;
     for (const r of data) {
       const k = r.canonical_key as string;
       const n = r.canonical_name as string;
       if (!byKey.has(k)) {
         byKey.set(k, { key: k, name: n, txCount: 0, totalAbs: 0, tokens: new Set(tokenize(n)) });
       }
+      byKey.get(k)!.txCount++;
+      descToKey.set(r.description_raw as string, k);
     }
     if (data.length < 1000) break;
     off += 1000;
   }
 
-  // Tx counts per cluster (joined via description_raw match)
-  // We can do this approximately by counting merchant_clusters rows per key,
-  // but that counts description variants not transactions. For real tx count
-  // we'd need a join — too expensive here. Use distinct description count
-  // as a proxy.
-  off = 0;
-  while (true) {
-    const { data } = await sb
-      .from("merchant_clusters")
-      .select("canonical_key")
-      .range(off, off + 999);
-    if (!data || !data.length) break;
-    for (const r of data) {
-      const c = byKey.get(r.canonical_key as string);
-      if (c) c.txCount++;
-    }
-    if (data.length < 1000) break;
-    off += 1000;
-  }
-
-  // Total spend per cluster — join transactions via description_raw
-  {
-    let toff = 0;
-    while (true) {
-      const { data } = await sb
-        .from("merchant_clusters")
-        .select("canonical_key, description_raw")
-        .range(toff, toff + 999);
-      if (!data || !data.length) break;
-      const descs = data.map((r) => r.description_raw as string);
-      const keys  = data.map((r) => r.canonical_key  as string);
-      if (descs.length > 0) {
-        const { data: txRows } = await sb
+  // Total spend per cluster — join transactions via description_raw.
+  // Chunked to 200 descriptions per query (PG planner stays sane) AND
+  // paginated: the old version passed up to 1000 descriptions and read the
+  // matching transactions WITHOUT pagination, so past 1000 matches the R$
+  // totals silently undercounted and mis-ranked the suggestions.
+  // Also now excludes fake rows (is_fake) like every other spend total.
+  const allDescs = [...descToKey.keys()];
+  const CHUNK = 200;
+  const chunks: string[][] = [];
+  for (let i = 0; i < allDescs.length; i += CHUNK) chunks.push(allDescs.slice(i, i + CHUNK));
+  await Promise.all(
+    chunks.map(async (slice) => {
+      let toff = 0;
+      while (true) {
+        const { data: txRows, error } = await sb
           .from("transactions")
           .select("description_raw, real_amount")
-          .in("description_raw", descs)
-          .eq("is_transfer", false);
-        const descToKey = new Map<string, string>();
-        for (let i = 0; i < descs.length; i++) descToKey.set(descs[i], keys[i]);
+          .in("description_raw", slice)
+          .eq("is_transfer", false)
+          .eq("is_fake", false)
+          .order("id", { ascending: true })
+          .range(toff, toff + 999);
+        if (error) throw new Error(`spend join failed: ${error.message}`);
         for (const tx of txRows ?? []) {
           const ck = descToKey.get(tx.description_raw as string);
-          const c  = ck ? byKey.get(ck) : undefined;
+          const c = ck ? byKey.get(ck) : undefined;
           if (c) c.totalAbs += Math.abs(Number(tx.real_amount));
         }
+        if (!txRows || txRows.length < 1000) break;
+        toff += 1000;
       }
-      if (data.length < 1000) break;
-      toff += 1000;
-    }
-  }
+    })
+  );
 
   // Pairwise comparison — O(n²) but n ≈ 1200 clusters → ~720k comparisons,
   // ~1 sec on Node. Acceptable for an on-demand admin tool.

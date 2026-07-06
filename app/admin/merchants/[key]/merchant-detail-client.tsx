@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef } from "react";
+import { useMemo, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink, Undo2, ArrowUpDown, CheckCheck, ShieldQuestion, ShieldCheck, ShieldAlert, RotateCw, AlertTriangle } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
@@ -140,14 +140,19 @@ export function MerchantDetailClient({
     else { setSortBy(col); setSortDir("desc"); }
   }
 
-  const sortedRows = [...rows].sort((a, b) => {
-    if (sortBy === "date") {
-      const diff = a.date.localeCompare(b.date);
+  // Memoized: this component re-renders on every keystroke of the rename
+  // combobox — without the memo a merchant with hundreds/thousands of txs
+  // re-sorted the full array each time.
+  const sortedRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      if (sortBy === "date") {
+        const diff = a.date.localeCompare(b.date);
+        return sortDir === "desc" ? -diff : diff;
+      }
+      const diff = Math.abs(a.amount) - Math.abs(b.amount);
       return sortDir === "desc" ? -diff : diff;
-    }
-    const diff = Math.abs(a.amount) - Math.abs(b.amount);
-    return sortDir === "desc" ? -diff : diff;
-  });
+    });
+  }, [rows, sortBy, sortDir]);
 
   async function undoMerge(modId: string) {
     setUndoBusy(modId);
@@ -459,14 +464,16 @@ export function MerchantDetailClient({
     }
   }
 
-  // Live-filter clusters by typed text (case-insensitive) for the combobox dropdown
-  const matchingSuggestions = (() => {
+  // Live-filter clusters by typed text (case-insensitive) for the combobox
+  // dropdown. Memoized — scanning ~2,400 cluster names with toLowerCase on
+  // every unrelated re-render is wasted work.
+  const matchingSuggestions = useMemo(() => {
     const q = nameDraft.trim().toLowerCase();
     if (!q || q === currentName.toLowerCase()) return allClusters.slice(0, 12);
     return allClusters
       .filter((c) => c.name.toLowerCase().includes(q))
       .slice(0, 15);
-  })();
+  }, [nameDraft, currentName, allClusters]);
   const exactMatch = matchingSuggestions.find(
     (c) => c.name.trim().toLowerCase() === nameDraft.trim().toLowerCase()
   );

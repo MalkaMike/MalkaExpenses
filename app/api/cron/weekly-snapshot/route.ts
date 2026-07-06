@@ -134,9 +134,21 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // Housekeeping: drop login_attempts older than 30 days. The rate limiter
+  // only ever looks at a 15-minute window; 0007 documented this cleanup as
+  // "cron later if needed" and it was never implemented — the table grew
+  // forever. Piggybacks on the weekly cron; failure is non-fatal but visible.
+  const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { error: cleanupErr } = await sb
+    .from("login_attempts")
+    .delete()
+    .lt("attempted_at", cutoff);
+  if (cleanupErr) console.error("[weekly-snapshot] login_attempts cleanup failed:", cleanupErr.message);
+
   return NextResponse.json({
     ok: true,
     week_of: weekOf,
-    ...stats
+    ...stats,
+    login_attempts_cleanup: cleanupErr ? `failed: ${cleanupErr.message}` : "ok"
   });
 }
