@@ -24,37 +24,37 @@ export async function GET() {
 
   const sb = serverClient();
 
-  // ── 1) Pending review count ─────────────────────────────────────────────────
-  const { count: pendingReview } = await sb
-    .from("transactions")
-    .select("id", { count: "exact", head: true })
-    .eq("status", "pending_review");
+  // One parallel batch: pending-review count, active accounts, and the
+  // distinct (account, month) pairs via SQL (migration 0035). The old version
+  // fetched every transaction's date ordered ascending — PostgREST caps
+  // responses at 1000 rows, so the detector only ever saw the OLDEST 1000
+  // rows and flagged every recent month as a false gap.
+  const [pendingRes, accountsRes, presenceRes] = await Promise.all([
+    sb
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "pending_review"),
+    sb.from("accounts").select("id, name").eq("is_archived", false),
+    sb.rpc("account_month_presence")
+  ]);
+  if (pendingRes.error) console.error("[alerts] pending count failed:", pendingRes.error.message);
+  if (accountsRes.error) console.error("[alerts] accounts fetch failed:", accountsRes.error.message);
+  if (presenceRes.error) console.error("[alerts] month presence failed:", presenceRes.error.message);
 
-  // ── 2) Missing months per account ───────────────────────────────────────────
-  // For each active account, find YYYY-MM months between first transaction and
-  // today that have zero transactions. Any gap ≥ 1 month is surfaced.
-  const { data: accounts } = await sb
-    .from("accounts")
-    .select("id, name")
-    .eq("is_archived", false);
+  const pendingReview = pendingRes.count;
+  const accounts = accountsRes.data;
 
   const missingMonths: MissingMonth[] = [];
 
-  if (accounts && accounts.length > 0) {
-    const { data: txAgg } = await sb
-      .from("transactions")
-      .select("account_id, date")
-      .in("account_id", accounts.map((a) => a.id))
-      .order("date");
-
-    // Group dates by account
+  if (accounts && accounts.length > 0 && !presenceRes.error) {
+    // Group months by account (RPC returns distinct pairs, unordered)
     const byAccount = new Map<string, string[]>();
-    for (const t of txAgg ?? []) {
-      const month = t.date.slice(0, 7);
+    for (const t of (presenceRes.data ?? []) as Array<{ account_id: string; month: string }>) {
       const list = byAccount.get(t.account_id) ?? [];
-      list.push(month);
+      list.push(t.month);
       byAccount.set(t.account_id, list);
     }
+    for (const list of byAccount.values()) list.sort();
 
     const today = new Date();
     const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;

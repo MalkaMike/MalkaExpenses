@@ -19,61 +19,49 @@ type MonthRow = {
 
 export default async function MonthsPage() {
   const role = await getRole();
-  const monthMap = new Map<string, { income: number; expense: number; realIncome: number; realExpense: number }>();
 
-  function add(m: string, income: number, expense: number, real: { income: number; expense: number } | null = null) {
-    const cur = monthMap.get(m) ?? { income: 0, expense: 0, realIncome: 0, realExpense: 0 };
-    cur.income += income;
-    cur.expense += expense;
-    if (real) {
-      cur.realIncome += real.income;
-      cur.realExpense += real.expense;
-    }
-    monthMap.set(m, cur);
-  }
-
+  // Month aggregation happens in SQL (migration 0035). The old version
+  // fetched every transaction row — PostgREST caps responses at 1000 rows,
+  // so with 5,645+ live rows the older months silently lost data.
+  let months: MonthRow[];
   if (role !== "admin") {
     const sb = sharedClient();
-    const { data } = await sb
-      .from("shared_transactions_v")
-      .select("date, amount, is_transfer")
-      .eq("is_transfer", false)
-      .order("date", { ascending: false });
-    for (const r of data ?? []) {
-      const m = (r.date as string).slice(0, 7);
-      const amt = fromDb(Number(r.amount));
-      if (amt > 0) add(m, amt, 0);
-      else add(m, 0, -amt);
-    }
+    const { data, error } = await sb
+      .from("shared_monthly_summary_v")
+      .select("month, income, expense");
+    if (error) throw error;
+    months = (data ?? [])
+      .map((r) => {
+        const income = fromDb(Number(r.income));
+        const expense = fromDb(Number(r.expense));
+        return { month: r.month as string, income, expense, net: income - expense };
+      })
+      .sort((a, b) => b.month.localeCompare(a.month));
   } else {
     const sb = serverClient();
-    const { data } = await sb
-      .from("transactions")
-      .select("date, real_amount, shared_amount, is_transfer")
-      .eq("is_fake", false)
-      .eq("is_transfer", false)
-      .order("date", { ascending: false });
-    for (const r of data ?? []) {
-      const m = (r.date as string).slice(0, 7);
-      const sh = fromDb(Number(r.shared_amount));
-      const re = fromDb(Number(r.real_amount));
-      const shInc = sh > 0 ? sh : 0;
-      const shExp = sh < 0 ? -sh : 0;
-      const reInc = re > 0 ? re : 0;
-      const reExp = re < 0 ? -re : 0;
-      add(m, shInc, shExp, { income: reInc, expense: reExp });
-    }
+    const { data, error } = await sb.rpc("admin_monthly_summary");
+    if (error) throw error;
+    type Row = {
+      month: string;
+      shared_income: number;
+      shared_expense: number;
+      real_income: number;
+      real_expense: number;
+    };
+    months = ((data ?? []) as Row[])
+      .map((r) => {
+        const income = fromDb(Number(r.shared_income));
+        const expense = fromDb(Number(r.shared_expense));
+        return {
+          month: r.month,
+          income,
+          expense,
+          net: income - expense,
+          realNet: fromDb(Number(r.real_income)) - fromDb(Number(r.real_expense))
+        };
+      })
+      .sort((a, b) => b.month.localeCompare(a.month));
   }
-
-  const months: MonthRow[] = Array.from(monthMap.entries())
-    .map(([month, v]) => ({
-      month,
-      income: v.income,
-      expense: v.expense,
-      net: v.income - v.expense,
-      realNet: role === "admin" ? v.realIncome - v.realExpense : undefined
-    }))
-    .sort((a, b) => b.month.localeCompare(a.month));
 
   // Last 12 months for the chart (ascending order)
   const trendChart = months

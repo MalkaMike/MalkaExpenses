@@ -42,13 +42,6 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
   const lang = await getLang();
   const sb = serverClient();
 
-  const { data: account } = await sb
-    .from("accounts")
-    .select("id, name, bank, type, real_starting_balance, shared_starting_balance, cc_issuer, pluggy_account_id")
-    .eq("id", id)
-    .single();
-  if (!account) notFound();
-
   type RowOut = {
     id: string;
     date: string;
@@ -61,18 +54,40 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
   };
 
   let rows: RowOut[] = [];
-  let sharedBalance = fromDb(Number(account.shared_starting_balance));
-  let realBalance: number | null = role === "admin" ? fromDb(Number(account.real_starting_balance)) : null;
+  let sharedBalance = 0;
+  let realBalance: number | null = null;
+
+  // The balance headline is a SQL aggregate (migration 0035). The old version
+  // summed only the 300 most recent rows fetched for the list — wrong for any
+  // account with more than 300 movements (the largest has 2,750).
+  const accountQ = sb
+    .from("accounts")
+    .select("id, name, bank, type, real_starting_balance, shared_starting_balance, cc_issuer, pluggy_account_id")
+    .eq("id", id)
+    .single();
+
+  let account: NonNullable<Awaited<typeof accountQ>["data"]>;
 
   if (role !== "admin") {
     const sh = sharedClient();
-    const { data } = await sh
-      .from("shared_transactions_v")
-      .select("id, date, description, amount, category_slug, is_transfer")
-      .eq("account_id", id)
-      .order("date", { ascending: false })
-      .limit(300);
-    for (const r of data ?? []) sharedBalance += fromDb(Number(r.amount));
+    const [accountRes, listRes, balanceRes] = await Promise.all([
+      accountQ,
+      sh
+        .from("shared_transactions_v")
+        .select("id, date, description, amount, category_slug, is_transfer")
+        .eq("account_id", id)
+        .order("date", { ascending: false })
+        .limit(300),
+      sh.from("shared_account_balances_v").select("account_id, total").eq("account_id", id)
+    ]);
+    if (!accountRes.data) notFound();
+    account = accountRes.data;
+    if (listRes.error) throw listRes.error;
+    if (balanceRes.error) throw balanceRes.error;
+    const data = listRes.data;
+    sharedBalance =
+      fromDb(Number(account.shared_starting_balance)) +
+      fromDb(Number(balanceRes.data?.[0]?.total ?? 0));
     rows = (data ?? []).map((r) => ({
       id: r.id,
       date: r.date,
@@ -84,19 +99,30 @@ export default async function AccountDetail({ params }: { params: Promise<{ id: 
       categorySlug: r.category_slug
     }));
   } else {
-    const { data } = await sb
-      .from("transactions")
-      .select(
-        "id, date, description_raw, description_clean, real_amount, shared_amount, is_fake, is_transfer, categories(slug)"
-      )
-      .eq("account_id", id)
-      .eq("is_fake", false)
-      .order("date", { ascending: false })
-      .limit(300);
-    for (const r of data ?? []) {
-      sharedBalance += fromDb(Number(r.shared_amount));
-      if (realBalance !== null) realBalance += fromDb(Number(r.real_amount));
-    }
+    const [accountRes, listRes, sumsRes] = await Promise.all([
+      accountQ,
+      sb
+        .from("transactions")
+        .select(
+          "id, date, description_raw, description_clean, real_amount, shared_amount, is_fake, is_transfer, categories(slug)"
+        )
+        .eq("account_id", id)
+        .eq("is_fake", false)
+        .order("date", { ascending: false })
+        .limit(300),
+      sb.rpc("account_tx_sums")
+    ]);
+    if (!accountRes.data) notFound();
+    account = accountRes.data;
+    if (listRes.error) throw listRes.error;
+    if (sumsRes.error) throw sumsRes.error;
+    const data = listRes.data;
+    type Sums = { account_id: string; real_total: number; shared_total: number };
+    const mine = ((sumsRes.data ?? []) as Sums[]).find((s) => s.account_id === id);
+    sharedBalance =
+      fromDb(Number(account.shared_starting_balance)) + fromDb(Number(mine?.shared_total ?? 0));
+    realBalance =
+      fromDb(Number(account.real_starting_balance)) + fromDb(Number(mine?.real_total ?? 0));
     rows = (data ?? []).map((r: {
       id: string;
       date: string;
