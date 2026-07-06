@@ -39,23 +39,36 @@ function clientIp(req: NextRequest): string {
 async function recordAttempt(ip: string, username: string, success: boolean): Promise<void> {
   try {
     const sb = serverClient();
-    await sb.from("login_attempts").insert({ ip, username, success });
-  } catch { /* never crash login on audit failure */ }
+    const { error } = await sb.from("login_attempts").insert({ ip, username, success });
+    // supabase-js does NOT throw on DB errors — without this check a failed
+    // insert silently stops the brute-force counter from counting.
+    if (error) console.error("[login] recordAttempt insert failed:", error.message);
+  } catch (e) {
+    // never crash login on audit failure — but never hide it either
+    console.error("[login] recordAttempt threw:", (e as Error).message);
+  }
 }
 
 async function isRateLimited(ip: string, username: string): Promise<boolean> {
   try {
     const sb = serverClient();
     const since = new Date(Date.now() - WINDOW_MIN * 60_000).toISOString();
-    const [{ count: ipUserFails }, { count: ipFails }, { count: userFails }] = await Promise.all([
+    const [ipUserRes, ipRes, userRes] = await Promise.all([
       sb.from("login_attempts").select("id", { count: "exact", head: true }).eq("ip", ip).eq("username", username).eq("success", false).gte("attempted_at", since),
       sb.from("login_attempts").select("id", { count: "exact", head: true }).eq("ip", ip).eq("success", false).gte("attempted_at", since),
       sb.from("login_attempts").select("id", { count: "exact", head: true }).eq("username", username).eq("success", false).gte("attempted_at", since)
     ]);
+    // supabase-js returns { count: null, error } instead of throwing — the old
+    // destructuring treated a DB error as "0 failures" and FAILED OPEN.
+    const failedQuery = ipUserRes.error ?? ipRes.error ?? userRes.error;
+    if (failedQuery) {
+      console.error("[login] rate-limit count query failed — refusing logins:", failedQuery.message);
+      return true;
+    }
     return (
-      (ipUserFails ?? 0) >= MAX_FAILS_PER_IP_USER ||
-      (ipFails ?? 0) >= MAX_FAILS_PER_IP ||
-      (userFails ?? 0) >= MAX_FAILS_PER_USERNAME
+      (ipUserRes.count ?? 0) >= MAX_FAILS_PER_IP_USER ||
+      (ipRes.count ?? 0) >= MAX_FAILS_PER_IP ||
+      (userRes.count ?? 0) >= MAX_FAILS_PER_USERNAME
     );
   } catch (e) {
     // Fail CLOSED: if the attempt store is unreachable we cannot count

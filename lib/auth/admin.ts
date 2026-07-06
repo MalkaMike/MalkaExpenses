@@ -115,7 +115,7 @@ export async function writeAudit(
     const role = await getRole();
     const { serverClient } = await import("@/lib/supabase/server");
     const sb = serverClient();
-    await sb.from("audit_log").insert({
+    const { error } = await sb.from("audit_log").insert({
       actor:
         role === "secretary" ? "celina"
         : role === "health" ? "ayelet"
@@ -128,8 +128,12 @@ export async function writeAudit(
       ip: h.get("x-forwarded-for") ?? h.get("x-real-ip") ?? null,
       user_agent: h.get("user-agent") ?? null
     });
-  } catch {
-    // never block on audit failure
+    // supabase-js doesn't throw on DB errors — without this the audit trail
+    // could die forever with zero visibility (the catch below never fired).
+    if (error) console.error("[audit] insert failed:", action, error.message);
+  } catch (e) {
+    // never block on audit failure — but keep it visible
+    console.error("[audit] threw:", action, (e as Error).message);
   }
 }
 
