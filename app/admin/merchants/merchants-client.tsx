@@ -128,13 +128,19 @@ export function MerchantsClient({
         if (!wasReviewed) pendingDismissedTodo.delete(merchantKey);
         throw new Error(`HTTP ${res.status}`);
       }
-      router.refresh();
+      // No router.refresh() — the optimistic state above (reviewedKeys +
+      // pendingDismissedTodo) already reflects the saved result for this
+      // render. A full refresh forced a ~1-2s loading skeleton and reset
+      // scroll position for a single-row change. The top-of-page tab
+      // counts (Para revisar N, etc.) go stale until a real navigation —
+      // an accepted tradeoff, not a data-integrity issue: the save itself
+      // is confirmed by the awaited fetch above, independent of this.
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setReviewBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
     }
-  }, [reviewedKeys, reviewBusy, router]);
+  }, [reviewedKeys, reviewBusy]);
 
   const doDefer = useCallback(async (merchantKey: string) => {
     if (deferBusy.has(merchantKey)) return;
@@ -149,13 +155,13 @@ export function MerchantsClient({
         throw new Error(`HTTP ${res.status}`);
       }
       toast.success("Marcado para verificar depois");
-      router.refresh();
+      // No router.refresh() — see toggleReviewed for why.
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
       setDeferBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
     }
-  }, [deferBusy, router]);
+  }, [deferBusy]);
 
   function toggleSort(col: SortCol) {
     if (sortCol === col) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -208,14 +214,14 @@ export function MerchantsClient({
       const res = await fetch(`/api/admin/merchants/${encodeURIComponent(merchantKey)}/${endpoint}`, { method: "POST" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       toast.success(endpoint === "hide" ? "Ocultado do portal" : "Visível no portal");
-      router.refresh();
+      // No router.refresh() — see toggleReviewed for why.
     } catch (e) {
       setHideMode((prev) => ({ ...prev, [merchantKey]: current }));
       toast.error((e as Error).message);
     } finally {
       setHideBusy((s) => { const n = new Set(s); n.delete(merchantKey); return n; });
     }
-  }, [hideBusy, router]);
+  }, [hideBusy]);
 
   // ── Category picker ────────────────────────────────────────────────────────
   const [openCatPicker, setOpenCatPicker] = useState<string | null>(null);
@@ -252,14 +258,14 @@ export function MerchantsClient({
         body: JSON.stringify({ canonical_key: merchantKey, category_id: newCatId })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      router.refresh();
+      // No router.refresh() — see toggleReviewed for why.
     } catch (e) {
       setCatOverrides((prev) => { const n = { ...prev }; delete n[merchantKey]; return n; });
       toast.error((e as Error).message);
     } finally {
       setCatBusy((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
     }
-  }, [categories, router]);
+  }, [categories]);
 
   const HIDE_TAGS = ["kenlo", "laik"];
   const SHOW_TAGS = ["insurance"];
@@ -296,7 +302,7 @@ export function MerchantsClient({
       }
       const { updated } = await res.json();
       toast.success(action === "add" ? `${updated} despesas marcadas como ${tagSlug}` : `Tag ${tagSlug} removida`);
-      router.refresh();
+      // No router.refresh() — see toggleReviewed for why.
     } catch (e) {
       setTagCounts((prev) => ({ ...prev, [merchantKey]: { ...prev[merchantKey], [tagSlug]: current } }));
       if (action === "add") {
@@ -307,7 +313,7 @@ export function MerchantsClient({
     } finally {
       setBusyKeys((s) => { const n = new Set(s); n.delete(busyKey); return n; });
     }
-  }, [busyKeys, tagCounts, router]);
+  }, [busyKeys, tagCounts]);
 
   const tabHref = (tab: Tab, withDeferred?: boolean) => {
     const params = new URLSearchParams();
