@@ -36,52 +36,50 @@ export async function POST() {
   const sb = serverClient();
 
   // Distinct canonical_keys still unreviewed (todo + deferred — everything
-  // nobody has confirmed yet), paginated to beat PostgREST's 1000-row cap.
-  const allKeys = new Set<string>();
-  let off = 0;
-  while (true) {
-    const { data } = await sb
-      .from("merchant_clusters")
-      .select("canonical_key")
-      .eq("is_reviewed", false)
-      .range(off, off + 999);
-    if (!data || !data.length) break;
-    for (const r of data) allKeys.add(r.canonical_key as string);
-    if (data.length < 1000) break;
-    off += 1000;
+  // nobody has confirmed yet) vs already-researched-in-ficha-format keys,
+  // fetched together instead of one after another. Each paginates its own
+  // table in parallel in the (currently unlikely) case it exceeds 1000 rows.
+  async function fetchColumn(table: "merchant_clusters" | "merchant_research", isPending: boolean): Promise<Set<string>> {
+    const base = sb.from(table).select("canonical_key", { count: "exact" });
+    const filtered = isPending ? base.eq("is_reviewed", false) : base.not("what_does", "is", null);
+    const { data: firstPage, count } = await filtered.range(0, 999);
+    const out = new Set((firstPage ?? []).map((r) => r.canonical_key as string));
+    const remainingPages = Math.max(0, Math.ceil((count ?? 0) / 1000) - 1);
+    if (remainingPages > 0) {
+      const base2 = sb.from(table).select("canonical_key");
+      const extraPages = await Promise.all(
+        Array.from({ length: remainingPages }, (_, i) => {
+          const q = isPending ? base2.eq("is_reviewed", false) : base2.not("what_does", "is", null);
+          return q.range((i + 1) * 1000, (i + 1) * 1000 + 999);
+        })
+      );
+      for (const { data } of extraPages) for (const r of data ?? []) out.add(r.canonical_key as string);
+    }
+    return out;
   }
 
-  // Keys already researched IN THE FICHA FORMAT — old-format rows
-  // (what_does IS NULL) stay pending so they get upgraded.
-  const alreadyDone = new Set<string>();
-  off = 0;
-  while (true) {
-    const { data } = await sb
-      .from("merchant_research")
-      .select("canonical_key")
-      .not("what_does", "is", null)
-      .range(off, off + 999);
-    if (!data || !data.length) break;
-    for (const r of data) alreadyDone.add(r.canonical_key as string);
-    if (data.length < 1000) break;
-    off += 1000;
-  }
+  const [allKeys, alreadyDone] = await Promise.all([
+    fetchColumn("merchant_clusters", true),
+    fetchColumn("merchant_research", false)
+  ]);
 
   const pending = [...allKeys].filter((k) => !alreadyDone.has(k));
   const batch = pending.slice(0, BATCH_SIZE);
 
-  await preloadClusters();
+  // Nothing to do — skip the cluster/category/provider preload entirely
+  // instead of paying for it on every "already fully researched" check.
+  if (batch.length === 0) {
+    return NextResponse.json({ processed: 0, remaining: 0, done: true, results: [] });
+  }
 
-  // Category names by id — one fetch shared by the whole batch.
-  const { data: cats } = await sb.from("categories").select("id, name");
+  const [, catsRes, provRes] = await Promise.all([
+    preloadClusters(),
+    sb.from("categories").select("id, name"),
+    sb.from("family_providers").select("display_name, full_name, specialty, clinic")
+  ]);
   const catNameById = new Map<string, string>();
-  for (const c of cats ?? []) catNameById.set(c.id as string, c.name as string);
-
-  // Known family healthcare providers — one fetch shared by the whole batch.
-  const { data: provRows } = await sb
-    .from("family_providers")
-    .select("display_name, full_name, specialty, clinic");
-  const knownProviders = (provRows ?? []) as KnownProvider[];
+  for (const c of catsRes.data ?? []) catNameById.set(c.id as string, c.name as string);
+  const knownProviders = (provRes.data ?? []) as KnownProvider[];
 
   const results = await mapWithConcurrency(batch, CONCURRENCY, async (key) => {
     try {

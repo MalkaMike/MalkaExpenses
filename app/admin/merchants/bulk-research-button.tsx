@@ -17,6 +17,10 @@ export function BulkResearchButton() {
   // Ref, not state — the running loop reads this on every iteration, and a
   // plain state variable would be captured stale in the async closure.
   const stopRequested = useRef(false);
+  // Aborts whatever fetch is currently in flight — checking stopRequested
+  // between iterations isn't enough on its own, since a single batch call
+  // can take a while and "Parar" should cancel it immediately, not wait.
+  const controllerRef = useRef<AbortController | null>(null);
 
   async function run() {
     setRunning(true);
@@ -28,7 +32,11 @@ export function BulkResearchButton() {
       let done = false;
       while (!done) {
         if (stopRequested.current) break;
-        const r = await fetch("/api/admin/merchants/research-bulk", { method: "POST" });
+        controllerRef.current = new AbortController();
+        const r = await fetch("/api/admin/merchants/research-bulk", {
+          method: "POST",
+          signal: controllerRef.current.signal
+        });
         if (!r.ok) {
           const j = await r.json().catch(() => ({}));
           throw new Error(j.error ?? `Erro ${r.status}`);
@@ -40,10 +48,15 @@ export function BulkResearchButton() {
       }
       router.refresh();
     } catch (e) {
-      setErr((e as Error).message);
+      if ((e as Error).name !== "AbortError") setErr((e as Error).message);
     } finally {
       setRunning(false);
     }
+  }
+
+  function stop() {
+    stopRequested.current = true;
+    controllerRef.current?.abort();
   }
 
   return (
@@ -62,7 +75,7 @@ export function BulkResearchButton() {
             Pesquisando… {processed} processados{remaining !== null ? `, ${remaining} restantes` : ""}
           </span>
           <button
-            onClick={() => { stopRequested.current = true; }}
+            onClick={stop}
             className="ml-auto text-[10px] px-2 py-1 rounded-lg border border-outline-variant text-on-surface-variant hover:text-on-surface transition flex items-center gap-1"
           >
             <X size={10} /> Parar

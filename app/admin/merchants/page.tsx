@@ -3,7 +3,7 @@ import { AlertCircle, SlidersHorizontal } from "lucide-react";
 import { getRole } from "@/lib/auth/admin";
 import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
-import { clusterFor, preloadClusters, invalidateCache } from "@/lib/merchants/clusters";
+import { clusterFor, preloadClusters, invalidateCache, reviewStatusByKey } from "@/lib/merchants/clusters";
 import { formatBRL, formatInt } from "@/lib/format";
 import { fromDb } from "@/lib/money";
 import { MerchantsClient, type ClientMerchantGroup, type TagDef, type CategoryDef } from "./merchants-client";
@@ -71,16 +71,21 @@ export default async function MerchantsPage({
 
   const sb = serverClient();
   invalidateCache();
-  const preloadPromise = preloadClusters();
 
-  // Page range in parallel instead of one .range() at a time — with ~5,600 rows
-  // this was 6 sequential round-trips; a page load only needs the total count
-  // up front (one small query) to know how many pages to fire concurrently.
-  const { count: txTotal } = await sb
-    .from("transactions")
-    .select("id", { count: "exact", head: true })
-    .eq("is_fake", false);
-  const txPageCount = Math.max(1, Math.ceil((txTotal ?? 0) / 1000));
+  // Everything independent fires together instead of stage-by-stage:
+  // clusters preload, the transactions row count (needed to know how many
+  // pages to fetch), categories, tags, and the ENTIRE transaction_reimbursements
+  // table (only ~400 rows total — cheaper to load whole and filter in memory
+  // than to re-query it per transaction-id chunk further down).
+  const [, txCountRes, catsRes, tagsRes, reimbRes] = await Promise.all([
+    preloadClusters(),
+    sb.from("transactions").select("id", { count: "exact", head: true }).eq("is_fake", false),
+    sb.from("categories").select("id, slug, name"),
+    sb.from("reimbursement_tags").select("id, slug, name, color, icon").order("name"),
+    sb.from("transaction_reimbursements").select("transaction_id, tag_id")
+  ]);
+
+  const txPageCount = Math.max(1, Math.ceil((txCountRes.count ?? 0) / 1000));
   const txPages = await Promise.all(
     Array.from({ length: txPageCount }, (_, i) =>
       sb
@@ -95,7 +100,6 @@ export default async function MerchantsPage({
     if (error) throw new Error(`Failed to load transactions: ${error.message}`);
   }
   const all: TxRow[] = txPages.flatMap((p) => (p.data as TxRow[]) ?? []);
-  await preloadPromise;
 
   const filtered = all.filter((t) => {
     if (!includeTransfers && t.is_transfer) return false;
@@ -105,10 +109,9 @@ export default async function MerchantsPage({
     return true;
   });
 
-  const [{ data: cats }, { data: tagsData }] = await Promise.all([
-    sb.from("categories").select("id, slug, name"),
-    sb.from("reimbursement_tags").select("id, slug, name, color, icon").order("name")
-  ]);
+  const cats = catsRes.data;
+  const tagsData = tagsRes.data;
+  const allReimbursementRows = (reimbRes.data ?? []) as { transaction_id: string; tag_id: string }[];
 
   const catNameById = new Map<string, string>();
   for (const c of cats ?? []) catNameById.set(c.id as string, c.name as string);
@@ -144,75 +147,31 @@ export default async function MerchantsPage({
     else g.adjustedCount++;
   }
 
-  // Fetch tag assignments for all filtered transactions and map to cluster keys
+  // Tag assignments, mapped to cluster keys — reimbursements table already
+  // fetched in full above (small — ~400 rows), so this is a plain in-memory
+  // pass instead of another round-trip.
   const tagIdToSlug = new Map<string, string>();
   for (const tg of tagsData ?? []) tagIdToSlug.set(tg.id as string, tg.slug as string);
 
   const clusterTagCounts = new Map<string, Map<string, number>>(); // clusterKey → tagSlug → count
-  if (filtered.length > 0) {
-    const txIds = filtered.map((t) => t.id);
-    const TAG_CHUNK = 500;
-    const chunks: string[][] = [];
-    for (let i = 0; i < txIds.length; i += TAG_CHUNK) chunks.push(txIds.slice(i, i + TAG_CHUNK));
-    // Each chunk queries a disjoint slice of IDs — independent, so fetch all at once
-    // instead of one round-trip at a time.
-    const tagPages = await Promise.all(
-      chunks.map((slice) =>
-        sb.from("transaction_reimbursements").select("transaction_id, tag_id").in("transaction_id", slice)
-      )
-    );
-    for (const { data: tagRows } of tagPages) {
-      for (const { transaction_id, tag_id } of (tagRows ?? []) as { transaction_id: string; tag_id: string }[]) {
-        const ck = txIdToClusterKey.get(transaction_id);
-        const slug = tagIdToSlug.get(tag_id);
-        if (!ck || !slug) continue;
-        if (!clusterTagCounts.has(ck)) clusterTagCounts.set(ck, new Map());
-        const m = clusterTagCounts.get(ck)!;
-        m.set(slug, (m.get(slug) ?? 0) + 1);
-      }
-    }
+  for (const { transaction_id, tag_id } of allReimbursementRows) {
+    const ck = txIdToClusterKey.get(transaction_id);
+    const slug = tagIdToSlug.get(tag_id);
+    if (!ck || !slug) continue;
+    if (!clusterTagCounts.has(ck)) clusterTagCounts.set(ck, new Map());
+    const m = clusterTagCounts.get(ck)!;
+    m.set(slug, (m.get(slug) ?? 0) + 1);
   }
 
-  // Fetch is_reviewed and is_deferred for all cluster keys.
-  // Use small key chunks + inner pagination so we never hit PostgREST's 1000-row
-  // hard cap — with ~840 merchants × ~2 rows/key ≈ 1700 rows total, a single
-  // 500-key batch was silently truncated at 1000 rows, leaving some merchants stuck
-  // in "Para revisar" even after their is_reviewed was set to true.
-  // Chunks target disjoint key lists, so they're independent — fetched in
-  // parallel (each chunk keeps its own inner pagination for the rare case a
-  // single chunk exceeds 1000 rows).
-  const allGroupKeys = [...groups.keys()];
-  if (allGroupKeys.length > 0) {
-    const KEY_CHUNK = 200;
-    const keyChunks: string[][] = [];
-    for (let i = 0; i < allGroupKeys.length; i += KEY_CHUNK) keyChunks.push(allGroupKeys.slice(i, i + KEY_CHUNK));
-
-    type ReviewRow = { canonical_key: string; is_reviewed: boolean; is_deferred: boolean };
-    async function fetchChunk(keys: string[]): Promise<ReviewRow[]> {
-      const rows: ReviewRow[] = [];
-      let off = 0;
-      while (true) {
-        const { data: rv } = await sb
-          .from("merchant_clusters")
-          .select("canonical_key, is_reviewed, is_deferred")
-          .in("canonical_key", keys)
-          .range(off, off + 999);
-        rows.push(...((rv ?? []) as ReviewRow[]));
-        if (!rv?.length || rv.length < 1000) break;
-        off += 1000;
-      }
-      return rows;
-    }
-
-    const chunkResults = await Promise.all(keyChunks.map(fetchChunk));
-    for (const r of chunkResults.flat()) {
-      const g = groups.get(r.canonical_key);
-      if (g) {
-        // OR logic: reviewed if ANY cluster row is reviewed
-        if (r.is_reviewed) g.isReviewed = true;
-        if (r.is_deferred) g.isDeferred = true;
-      }
-    }
+  // is_reviewed/is_deferred per cluster key — derived from the cluster data
+  // already loaded by preloadClusters() above (OR-aggregate: reviewed if ANY
+  // row under that key is reviewed). This used to be a whole separate
+  // chunked-and-paginated query against merchant_clusters; now it's free.
+  const reviewStatus = reviewStatusByKey();
+  for (const g of groups.values()) {
+    const rs = reviewStatus.get(g.key);
+    if (rs?.isReviewed) g.isReviewed = true;
+    if (rs?.isDeferred) g.isDeferred = true;
   }
 
   const allSorted = [...groups.values()].sort((a, b) => b.totalAbs - a.totalAbs);

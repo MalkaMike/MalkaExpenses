@@ -13,7 +13,7 @@ import { serverClient } from "@/lib/supabase/server";
 // Used by /admin/merchants pages + bulk-categorize API.
 // ============================================================================
 
-export type ClusterEntry = { key: string; name: string };
+export type ClusterEntry = { key: string; name: string; isReviewed?: boolean; isDeferred?: boolean };
 type ClusterFile = Record<string, ClusterEntry>;
 
 let dbCache: ClusterFile | null = null;
@@ -62,7 +62,7 @@ async function loadFromDb(): Promise<ClusterFile | null> {
       Array.from({ length: pageCount }, (_, i) =>
         sb
           .from("merchant_clusters")
-          .select("description_raw, canonical_key, canonical_name")
+          .select("description_raw, canonical_key, canonical_name, is_reviewed, is_deferred")
           .order("id", { ascending: true })
           .range(i * 1000, i * 1000 + 999)
       )
@@ -73,7 +73,9 @@ async function loadFromDb(): Promise<ClusterFile | null> {
       for (const r of data ?? []) {
         out[r.description_raw as string] = {
           key: r.canonical_key as string,
-          name: r.canonical_name as string
+          name: r.canonical_name as string,
+          isReviewed: !!r.is_reviewed,
+          isDeferred: !!r.is_deferred
         };
       }
     }
@@ -126,6 +128,23 @@ async function ensureLoaded(): Promise<void> {
  * top of a server component, then use the sync `clusterFor()` in loops. */
 export async function preloadClusters(): Promise<void> {
   await ensureLoaded();
+}
+
+/** OR-aggregate is_reviewed/is_deferred per canonical_key (reviewed if ANY row
+ * under that key is reviewed), derived from the already-loaded cluster data —
+ * call after preloadClusters(). Zero extra DB round-trip: this used to be a
+ * separate paginated query in page.tsx, but merchant_clusters is already
+ * fully loaded here, so it's a plain in-memory pass. */
+export function reviewStatusByKey(): Map<string, { isReviewed: boolean; isDeferred: boolean }> {
+  const out = new Map<string, { isReviewed: boolean; isDeferred: boolean }>();
+  for (const entry of Object.values(primary)) {
+    const existing = out.get(entry.key);
+    out.set(entry.key, {
+      isReviewed: !!existing?.isReviewed || !!entry.isReviewed,
+      isDeferred: !!existing?.isDeferred || !!entry.isDeferred
+    });
+  }
+  return out;
 }
 
 /** Async — call from server components without preload. */
