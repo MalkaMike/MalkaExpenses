@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { scanDocument } from "@/lib/ai/scan";
@@ -143,30 +144,38 @@ export async function POST(req: NextRequest) {
     let paired = false;
     if (link_nota_fiscal_id) {
       // Direct-link mode: the caller already knows which NF this belongs to.
-      const { data: existing } = await sb
+      const { data: existing, error: existErr } = await sb
         .from("reimbursement_claims")
         .select("id")
         .eq("nota_fiscal_id", link_nota_fiscal_id)
         .maybeSingle();
+      if (existErr) return NextResponse.json({ error: `claim lookup failed: ${existErr.message}` }, { status: 500 });
       if (existing) {
-        await sb.from("reimbursement_claims")
+        const { error: updErr } = await sb.from("reimbursement_claims")
           .update({ prescription_id: doc.id })
           .eq("id", existing.id);
+        if (updErr) return NextResponse.json({ error: `claim link failed: ${updErr.message}` }, { status: 500 });
       } else {
-        await sb.from("reimbursement_claims").insert({
+        const { error: insErr } = await sb.from("reimbursement_claims").insert({
           nota_fiscal_id: link_nota_fiscal_id,
           prescription_id: doc.id,
           determined_by: "manual",
         });
+        if (insErr) return NextResponse.json({ error: `claim create failed: ${insErr.message}` }, { status: 500 });
       }
       paired = true;
 
-      void recomputeOne(link_nota_fiscal_id).catch((e) =>
-        console.warn("[scan→recompute]", link_nota_fiscal_id, (e as Error).message)
-      );
-      void maybeQueueSecretaryEmail(link_nota_fiscal_id).then((r) => {
-        if (!r.ok) console.warn("[scan→queue-email]", link_nota_fiscal_id, r.detail);
-        else if (r.action === "queued") console.log("[scan→queue-email] queued", link_nota_fiscal_id);
+      // after(): Vercel can freeze the lambda right after the response is
+      // sent, so a bare `void promise` may never run — the recompute/email
+      // would silently never happen (the webhook route already does this).
+      after(async () => {
+        await recomputeOne(link_nota_fiscal_id).catch((e) =>
+          console.warn("[scan→recompute]", link_nota_fiscal_id, (e as Error).message)
+        );
+        await maybeQueueSecretaryEmail(link_nota_fiscal_id).then((r) => {
+          if (!r.ok) console.warn("[scan→queue-email]", link_nota_fiscal_id, r.detail);
+          else if (r.action === "queued") console.log("[scan→queue-email] queued", link_nota_fiscal_id);
+        });
       });
 
       return NextResponse.json({

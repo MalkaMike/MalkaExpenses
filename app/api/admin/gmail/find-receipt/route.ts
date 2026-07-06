@@ -124,10 +124,11 @@ export async function POST(req: NextRequest) {
     .filter((r) => !newIds.has(r.gmail_message_id as string) && r.confirmed == null)
     .map((r) => r.id as string);
   if (staleIds.length > 0) {
-    await sb.from("transaction_receipts").delete().in("id", staleIds);
+    const { error: delErr } = await sb.from("transaction_receipts").delete().in("id", staleIds);
+    if (delErr) console.error("[find-receipt] stale delete failed:", delErr.message);
   }
   if (matches.length > 0) {
-    await sb.from("transaction_receipts").upsert(
+    const { error: upsertErr } = await sb.from("transaction_receipts").upsert(
       matches.map((m) => ({
         transaction_id,
         gmail_message_id: m.gmailMessageId,
@@ -147,11 +148,16 @@ export async function POST(req: NextRequest) {
       })),
       { onConflict: "transaction_id,gmail_message_id" }
     );
+    // Found receipts that fail to save = permanent loss (the row gets stamped
+    // as searched below and never re-searched). Surface it to the UI instead.
+    if (upsertErr) {
+      return NextResponse.json({ error: `receipt save failed: ${upsertErr.message}` }, { status: 500 });
+    }
   }
 
   // Mark transaction as searched. A successful manual refresh also clears any
   // prior search error so the row leaves the retry pool.
-  await sb
+  const { error: stampErr } = await sb
     .from("transactions")
     .update({
       gmail_searched_at: new Date().toISOString(),
@@ -159,6 +165,7 @@ export async function POST(req: NextRequest) {
       gmail_search_error: null
     })
     .eq("id", transaction_id);
+  if (stampErr) console.error("[find-receipt] mark-searched failed:", stampErr.message);
 
   return NextResponse.json({ cached: false, matches });
 }

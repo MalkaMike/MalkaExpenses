@@ -46,10 +46,15 @@ export async function GET(req: NextRequest) {
 
   let processed = 0;
   let found = 0;
+  const errors: string[] = [];
+  // Livelock guard: if a row's stamp write fails, it keeps matching the
+  // IS NULL / retry filters — without this the loop refetches the same 10
+  // rows for the whole 250s budget, hammering the Gmail API.
+  const seen = new Set<string>();
 
   // ── Pass 1: never-searched transactions ───────────────────────────────────
   while (timeLeft()) {
-    const { data: txs } = await sb
+    const { data: txs, error: qErr } = await sb
       .from("transactions")
       .select("id, date, description_raw, real_amount, gmail_search_attempts")
       .is("gmail_searched_at", null)
@@ -59,10 +64,16 @@ export async function GET(req: NextRequest) {
       .order("date", { ascending: false })
       .limit(10); // v2 is slower — smaller batches
 
-    if (!txs || txs.length === 0) break;
+    if (qErr) {
+      errors.push(`pass1 query failed: ${qErr.message}`);
+      break;
+    }
+    const fresh = (txs ?? []).filter((t) => !seen.has(t.id));
+    if (fresh.length === 0) break;
 
-    for (const tx of txs) {
+    for (const tx of fresh) {
       if (!timeLeft()) break;
+      seen.add(tx.id);
       processed++;
       const r = await searchOneTransaction(sb, cred.accessToken, tx);
       if (r.found) found++;
@@ -74,7 +85,7 @@ export async function GET(req: NextRequest) {
   let retried = 0;
   let retryFound = 0;
   while (timeLeft()) {
-    const { data: txs } = await sb
+    const { data: txs, error: qErr } = await sb
       .from("transactions")
       .select("id, date, description_raw, real_amount, gmail_search_attempts")
       .not("gmail_search_error", "is", null)
@@ -86,10 +97,16 @@ export async function GET(req: NextRequest) {
       .order("gmail_search_attempts", { ascending: true })
       .limit(10);
 
-    if (!txs || txs.length === 0) break;
+    if (qErr) {
+      errors.push(`pass2 query failed: ${qErr.message}`);
+      break;
+    }
+    const fresh = (txs ?? []).filter((t) => !seen.has(t.id));
+    if (fresh.length === 0) break;
 
-    for (const tx of txs) {
+    for (const tx of fresh) {
       if (!timeLeft()) break;
+      seen.add(tx.id);
       retried++;
       const r = await searchOneTransaction(sb, cred.accessToken, tx);
       if (r.found) retryFound++;
@@ -102,6 +119,7 @@ export async function GET(req: NextRequest) {
     retried,
     retryFound,
     elapsedMs: Date.now() - startedAt,
-    hitDeadline: !timeLeft()
+    hitDeadline: !timeLeft(),
+    ...(errors.length > 0 ? { errors } : {})
   });
 }

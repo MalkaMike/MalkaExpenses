@@ -36,19 +36,34 @@ export async function POST(req: NextRequest) {
   // 2) If accepting with a reimbursement tag, wire the transaction up.
   if (confirmed === true && reimbursement_tag_slug) {
     // Fetch tag_id and the transaction_id in parallel.
-    const [{ data: tag }, { data: receipt }] = await Promise.all([
+    const [tagRes, receiptRes] = await Promise.all([
       sb.from("reimbursement_tags").select("id").eq("slug", reimbursement_tag_slug).maybeSingle(),
       sb.from("transaction_receipts").select("transaction_id").eq("id", receipt_id).maybeSingle()
     ]);
-    if (tag && receipt) {
-      // Upsert: if user re-accepts a receipt with a different tag, update the tag.
-      await sb.from("transaction_reimbursements").upsert(
-        {
-          transaction_id: receipt.transaction_id,
-          tag_id: tag.id,
-          status: "pending"
-        },
-        { onConflict: "transaction_id,tag_id" }
+    const tag = tagRes.data;
+    const receipt = receiptRes.data;
+    const readErr = tagRes.error ?? receiptRes.error;
+    if (readErr || !tag || !receipt) {
+      // The receipt was already confirmed above; report that the reimbursement
+      // link did NOT happen instead of returning a clean ok:true.
+      return NextResponse.json(
+        { ok: false, error: `reimbursement link failed: ${readErr?.message ?? "tag or receipt not found"}` },
+        { status: 500 }
+      );
+    }
+    // Upsert: if user re-accepts a receipt with a different tag, update the tag.
+    const { error: upsertErr } = await sb.from("transaction_reimbursements").upsert(
+      {
+        transaction_id: receipt.transaction_id,
+        tag_id: tag.id,
+        status: "pending"
+      },
+      { onConflict: "transaction_id,tag_id" }
+    );
+    if (upsertErr) {
+      return NextResponse.json(
+        { ok: false, error: `reimbursement create failed: ${upsertErr.message}` },
+        { status: 500 }
       );
     }
   }

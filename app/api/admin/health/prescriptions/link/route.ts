@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { recomputeOne } from "@/lib/eligibility/recompute";
@@ -56,10 +57,11 @@ export async function POST(req: NextRequest) {
 
   let claimId: string;
   if (existing) {
-    await sb
+    const { error: updErr } = await sb
       .from("reimbursement_claims")
       .update({ prescription_id: medical_document_id })
       .eq("id", existing.id);
+    if (updErr) return NextResponse.json({ error: `claim link failed: ${updErr.message}` }, { status: 500 });
     claimId = existing.id;
   } else {
     const { data: inserted, error } = await sb
@@ -71,13 +73,16 @@ export async function POST(req: NextRequest) {
     claimId = inserted.id;
   }
 
-  // Fire-and-forget downstream: eligibility recompute + email queue
-  void recomputeOne(nota_fiscal_id).catch((e) =>
-    console.warn("[prescriptions/link→recompute]", nota_fiscal_id, (e as Error).message)
-  );
-  void maybeQueueSecretaryEmail(nota_fiscal_id).then((r) => {
-    if (!r.ok) console.warn("[prescriptions/link→queue-email]", nota_fiscal_id, r.detail);
-    else if (r.action === "queued") console.log("[prescriptions/link→queue-email] queued", nota_fiscal_id);
+  // Downstream eligibility recompute + email queue via after() — a bare
+  // `void promise` can be frozen with the lambda before it runs on Vercel.
+  after(async () => {
+    await recomputeOne(nota_fiscal_id).catch((e) =>
+      console.warn("[prescriptions/link→recompute]", nota_fiscal_id, (e as Error).message)
+    );
+    await maybeQueueSecretaryEmail(nota_fiscal_id).then((r) => {
+      if (!r.ok) console.warn("[prescriptions/link→queue-email]", nota_fiscal_id, r.detail);
+      else if (r.action === "queued") console.log("[prescriptions/link→queue-email] queued", nota_fiscal_id);
+    });
   });
 
   return NextResponse.json({ ok: true, claim_id: claimId });

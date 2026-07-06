@@ -80,21 +80,33 @@ export async function POST(req: NextRequest) {
 
   // Step 3: move pending_review → user_edited
   // Resolve all description_raw values for this cluster
-  const { data: rawDescs } = await sb
+  const { data: rawDescs, error: descErr } = await sb
     .from("merchant_clusters")
     .select("description_raw")
     .eq("canonical_key", canonical_key);
+  if (descErr) {
+    // Steps 1-2 already committed — report partial success, not a silent no-op
+    return NextResponse.json(
+      { ok: false, updated: updatedCount, status_updated: 0, error: `desc lookup failed: ${descErr.message}`, step_failed: "status" },
+      { status: 500 }
+    );
+  }
   const descList = (rawDescs ?? []).map((r) => r.description_raw as string);
 
   let statusUpdated = 0;
+  const statusErrors: string[] = [];
   for (let i = 0; i < descList.length; i += 200) {
     const slice = descList.slice(i, i + 200);
-    const { data: updatedRows } = await sb
+    const { data: updatedRows, error: updErr } = await sb
       .from("transactions")
       .update({ status: "user_edited" })
       .eq("status", "pending_review")
       .in("description_raw", slice)
       .select("id");
+    if (updErr) {
+      statusErrors.push(updErr.message);
+      continue; // rows in this slice stay pending_review — reported below
+    }
     statusUpdated += updatedRows?.length ?? 0;
   }
 
@@ -107,5 +119,10 @@ export async function POST(req: NextRequest) {
     }
   });
 
-  return NextResponse.json({ ok: true, updated: updatedCount, status_updated: statusUpdated });
+  return NextResponse.json({
+    ok: statusErrors.length === 0,
+    updated: updatedCount,
+    status_updated: statusUpdated,
+    ...(statusErrors.length > 0 ? { partial: true, errors: statusErrors } : {})
+  });
 }

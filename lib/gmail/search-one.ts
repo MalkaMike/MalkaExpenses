@@ -60,7 +60,7 @@ export async function searchOneTransaction(
     });
 
     if (matches.length > 0) {
-      await sb.from("transaction_receipts").upsert(
+      const { error: upsertErr } = await sb.from("transaction_receipts").upsert(
         matches.map((m) => ({
           transaction_id: tx.id,
           gmail_message_id: m.gmailMessageId,
@@ -80,9 +80,15 @@ export async function searchOneTransaction(
         })),
         { onConflict: "transaction_id,gmail_message_id" }
       );
+      // If the receipts can't be saved, do NOT stamp the row as cleanly
+      // searched — that would claim N receipts that don't exist and the row
+      // would never be re-searched (permanent loss). Throwing routes this
+      // through the catch below, which records gmail_search_error so the
+      // retry pass picks it up.
+      if (upsertErr) throw new Error(`receipt upsert failed: ${upsertErr.message}`);
     }
 
-    await sb
+    const { error: stampErr } = await sb
       .from("transactions")
       .update({
         gmail_searched_at: nowIso,
@@ -91,12 +97,15 @@ export async function searchOneTransaction(
         gmail_search_attempts: attempts
       })
       .eq("id", tx.id);
+    // A silently-failed stamp livelocks the cron: the same rows keep matching
+    // `gmail_searched_at IS NULL` and get re-searched for the whole 250s budget.
+    if (stampErr) throw new Error(`mark-searched failed: ${stampErr.message}`);
 
     return { found: matches.length > 0, matchCount: matches.length, errored: false };
   } catch (e) {
     // Record the error (don't loop): the row is marked searched so the normal
     // IS NULL pass skips it, but gmail_search_error lets the retry pass find it.
-    await sb
+    const { error: recErr } = await sb
       .from("transactions")
       .update({
         gmail_searched_at: nowIso,
@@ -105,6 +114,10 @@ export async function searchOneTransaction(
         gmail_search_attempts: attempts
       })
       .eq("id", tx.id);
+    // If even the error stamp fails, the row stays IS NULL and the cron
+    // would refetch it forever — the caller's seen-guard breaks that loop,
+    // but the failure must be visible.
+    if (recErr) console.error("[gmail-search] error-stamp failed for", tx.id, recErr.message);
 
     return { found: false, matchCount: 0, errored: true };
   }
