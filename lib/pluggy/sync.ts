@@ -24,6 +24,10 @@ export type PluggySyncResult = {
   categorized: number;
   reconciled: number;
   perAccount: Array<{ accountName: string; inserted: number }>;
+  // Non-fatal failures collected along the way. Empty = clean sync. The old
+  // version swallowed insert/update errors entirely — a failed batch insert
+  // reported `inserted: 0` with ok:true and the bank data was silently lost.
+  errors: string[];
 };
 
 function isoToDate(iso: string): string {
@@ -66,7 +70,8 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     inserted: 0,
     categorized: 0,
     reconciled: 0,
-    perAccount: []
+    perAccount: [],
+    errors: []
   };
 
   for (const pa of pluggyAccounts) {
@@ -101,7 +106,11 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
         })
         .select("id")
         .single();
-      if (createErr || !created) continue; // surfaced via lower count; never throw mid-loop
+      if (createErr || !created) {
+        // never throw mid-loop, but make the failure visible
+        result.errors.push(`account create failed (${pa.name || bankKey}): ${createErr?.message ?? "no row"}`);
+        continue;
+      }
       accountId = created.id as string;
       isNew = true;
     }
@@ -113,18 +122,40 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     let pluggyTx: PluggyTransaction[] = [];
     try {
       pluggyTx = await listTransactions(pa.id, from);
-    } catch {
+    } catch (e) {
       // One account failing shouldn't abort the whole item.
+      result.errors.push(`listTransactions failed (${pa.name || bankKey}): ${e instanceof Error ? e.message : String(e)}`);
       continue;
     }
 
     // 3) Dedup against already-imported pluggy ids for this account.
-    const { data: existingTx } = await sb
-      .from("transactions")
-      .select("external_id")
-      .eq("account_id", accountId)
-      .eq("source", "pluggy");
-    const seen = new Set((existingTx ?? []).map((r) => r.external_id as string));
+    //    Scoped to the pull window AND paginated: the old unscoped read was
+    //    silently truncated at PostgREST's 1000-row cap (this account family
+    //    already has up to 2,473 pluggy rows), so `seen` missed old ids,
+    //    re-inserts collided with ux_tx_pluggy and the WHOLE batch — new
+    //    rows included — was dropped on every sync.
+    const seen = new Set<string>();
+    let dedupFailed = false;
+    {
+      const PAGE = 1000;
+      for (let fromIdx = 0; ; fromIdx += PAGE) {
+        const { data: page, error: pageErr } = await sb
+          .from("transactions")
+          .select("external_id")
+          .eq("account_id", accountId)
+          .eq("source", "pluggy")
+          .gte("date", from)
+          .range(fromIdx, fromIdx + PAGE - 1);
+        if (pageErr) {
+          result.errors.push(`dedup read failed (${pa.name || bankKey}): ${pageErr.message}`);
+          dedupFailed = true;
+          break;
+        }
+        for (const r of page ?? []) seen.add(r.external_id as string);
+        if (!page || page.length < PAGE) break;
+      }
+    }
+    if (dedupFailed) continue; // can't dedup safely → skip this account this run
 
     // Build rows keyed by pluggy id so we can apply enrichment before insert.
     const newTxById = new Map(
@@ -197,19 +228,37 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
       enrichedCategory: string | null;
     }> = [];
     if (newRowsEnriched.length > 0) {
+      const mapIns = (r: { id: string; date: string; description_raw: string; real_amount: number; external_id: string }) => ({
+        id: r.id,
+        date: r.date,
+        description: r.description_raw,
+        amount: fromDb(Number(r.real_amount)),
+        pluggyCategory: pluggyCatById.get(r.external_id) ?? null,
+        enrichedCategory: enrichById.get(r.external_id)?.category ?? null
+      });
       const { data: ins, error: insErr } = await sb
         .from("transactions")
         .insert(newRowsEnriched)
         .select("id, date, description_raw, real_amount, external_id");
       if (!insErr && ins) {
-        insertedIds = ins.map((r) => ({
-          id: r.id as string,
-          date: r.date as string,
-          description: r.description_raw as string,
-          amount: fromDb(Number(r.real_amount)),
-          pluggyCategory: pluggyCatById.get(r.external_id as string) ?? null,
-          enrichedCategory: enrichById.get(r.external_id as string)?.category ?? null
-        }));
+        insertedIds = ins.map(mapIns);
+      } else if (insErr?.code === "23505") {
+        // Unique violation: some row in the batch already exists (ux_tx_pluggy).
+        // A multi-row INSERT is all-or-nothing, so retry row-by-row and skip
+        // only the true duplicates — the old code dropped the whole batch here.
+        for (const row of newRowsEnriched) {
+          const { data: one, error: oneErr } = await sb
+            .from("transactions")
+            .insert(row)
+            .select("id, date, description_raw, real_amount, external_id")
+            .single();
+          if (!oneErr && one) insertedIds.push(mapIns(one));
+          else if (oneErr && oneErr.code !== "23505") {
+            result.errors.push(`row insert failed (${pa.name || bankKey}): ${oneErr.message}`);
+          }
+        }
+      } else if (insErr) {
+        result.errors.push(`batch insert failed (${pa.name || bankKey}, ${newRowsEnriched.length} rows): ${insErr.message}`);
       }
     }
     result.inserted += insertedIds.length;
@@ -222,23 +271,30 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     if (isNew) {
       const sumImported = insertedIds.reduce((s, r) => s + r.amount, 0);
       const starting = pa.balance - sumImported;
-      await sb
+      const { error: calErr } = await sb
         .from("accounts")
         .update({ real_starting_balance: toDb(starting), shared_starting_balance: 0 })
         .eq("id", accountId);
+      // A silent failure here permanently miscalibrates the account's real balance.
+      if (calErr) result.errors.push(`starting-balance calibration failed (${pa.name || bankKey}): ${calErr.message}`);
     }
 
     // 5) Categorize the new rows with the existing AI pipeline (enriched category
     //    → Pluggy category → merchant rules → Gemini batch). Skipped if nothing new.
     if (insertedIds.length > 0) {
       try {
-        result.categorized += await categorizeFresh(sb, insertedIds);
-      } catch {
+        result.categorized += await categorizeFresh(sb, insertedIds, result.errors);
+      } catch (e) {
         // categorization failure is non-fatal — rows stay pending_review.
+        result.errors.push(`categorize failed (${pa.name || bankKey}): ${e instanceof Error ? e.message : String(e)}`);
       }
     }
 
-    await sb.from("accounts").update({ pluggy_last_sync: new Date().toISOString() }).eq("id", accountId);
+    const { error: stampErr } = await sb
+      .from("accounts")
+      .update({ pluggy_last_sync: new Date().toISOString() })
+      .eq("id", accountId);
+    if (stampErr) result.errors.push(`last-sync stamp failed (${pa.name || bankKey}): ${stampErr.message}`);
   }
 
   // Note: CC reconciliation is NOT run here — synced rows stay in the admin
@@ -248,6 +304,11 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
 
 // Categorize freshly-synced rows: CC-payment → enriched category → Pluggy's own
 // category → merchant rules → Gemini batch (only the leftovers reach the LLM).
+//
+// Updates are BUCKETED by identical patch payload and applied with one
+// `.update().in("id", ids)` per bucket. The old version issued one UPDATE per
+// row — a 200-row sync meant ~200 sequential round-trips inside the same
+// serverless time budget as the Gemini calls.
 async function categorizeFresh(
   sb: SB,
   rows: Array<{
@@ -257,39 +318,51 @@ async function categorizeFresh(
     amount: number;
     pluggyCategory: string | null;
     enrichedCategory: string | null;
-  }>
+  }>,
+  errors: string[]
 ): Promise<number> {
-  // Merchant rules first (deterministic, no AI cost).
-  const { data: rules } = await sb
-    .from("merchant_rules")
-    .select("pattern, pattern_type, category_id, confidence_default")
-    .order("hit_count", { ascending: false });
-
-  // Resolve slug → id once (used for CC-payment detection + AI results).
-  const { data: cats } = await sb.from("categories").select("id, slug");
+  // Merchant rules + slug map in parallel (independent reads).
+  const [rulesRes, catsRes] = await Promise.all([
+    sb
+      .from("merchant_rules")
+      .select("pattern, pattern_type, category_id, confidence_default")
+      .order("hit_count", { ascending: false }),
+    sb.from("categories").select("id, slug")
+  ]);
+  if (rulesRes.error) errors.push(`merchant_rules read failed: ${rulesRes.error.message}`);
+  if (catsRes.error) errors.push(`categories read failed: ${catsRes.error.message}`);
+  const rules = rulesRes.data;
   const slugToId = new Map<string, string>();
-  for (const c of cats ?? []) slugToId.set(c.slug as string, c.id as string);
+  for (const c of catsRes.data ?? []) slugToId.set(c.slug as string, c.id as string);
   const ccPayId = slugToId.get("cartao_pagamento");
 
+  // patch-payload buckets: identical patch → single UPDATE ... WHERE id IN (...)
+  type Patch = Record<string, string | number | boolean>;
+  const buckets = new Map<string, { patch: Patch; ids: string[] }>();
+  function bucketAdd(patch: Patch, id: string) {
+    const key = JSON.stringify(patch);
+    const b = buckets.get(key);
+    if (b) b.ids.push(id);
+    else buckets.set(key, { patch, ids: [id] });
+  }
+
   const remaining: typeof rows = [];
-  let done = 0;
   for (const row of rows) {
     // 0) Credit-card BILL PAYMENT → it's a transfer, not a real expense
     //    (the card purchases already arrive on the card account). Mark it so it
     //    doesn't double-count. Deterministic — runs before merchant rules / AI.
     if (ccPayId && isCcPaymentDescription(row.description)) {
-      await sb
-        .from("transactions")
-        .update({
+      bucketAdd(
+        {
           category_id: ccPayId,
           is_transfer: true,
           shared_amount: 0,
           confidence: 0.99,
           ai_reasoning: "Pagamento de cartão — marcado como transferência",
           status: "auto_accepted"
-        })
-        .eq("id", row.id);
-      done += 1;
+        },
+        row.id
+      );
       continue;
     }
 
@@ -302,18 +375,17 @@ async function categorizeFresh(
       if (catId) {
         const isTransfer =
           enrichedSlug === "cartao_pagamento" || enrichedSlug === "transferencias";
-        await sb
-          .from("transactions")
-          .update({
+        bucketAdd(
+          {
             category_id: catId,
             is_transfer: isTransfer,
             ...(isTransfer ? { shared_amount: 0 } : {}),
             confidence: 0.95,
             ai_reasoning: "Categoria via Pluggy Enrichment API",
             status: "auto_accepted"
-          })
-          .eq("id", row.id);
-        done += 1;
+          },
+          row.id
+        );
         continue;
       }
     }
@@ -326,18 +398,17 @@ async function categorizeFresh(
       if (catId) {
         const isTransfer =
           pluggySlug === "cartao_pagamento" || pluggySlug === "transferencias";
-        await sb
-          .from("transactions")
-          .update({
+        bucketAdd(
+          {
             category_id: catId,
             is_transfer: isTransfer,
             ...(isTransfer ? { shared_amount: 0 } : {}),
             confidence: 0.9,
             ai_reasoning: "Categoria do Open Finance",
             status: "auto_accepted"
-          })
-          .eq("id", row.id);
-        done += 1;
+          },
+          row.id
+        );
         continue;
       }
     }
@@ -353,51 +424,65 @@ async function categorizeFresh(
     if (hit) {
       // Pre-fill the suggested category but keep it staged (pending_review) —
       // the admin still accepts every row into the portal.
-      await sb
-        .from("transactions")
-        .update({
+      bucketAdd(
+        {
           category_id: hit.category_id,
           confidence: Number(hit.confidence_default) || 0.95,
           ai_reasoning: "Regra de fornecedor aplicada",
           status: "auto_accepted"
-        })
-        .eq("id", row.id);
-      done += 1;
+        },
+        row.id
+      );
     } else {
       remaining.push(row);
     }
   }
 
-  if (remaining.length === 0) return done;
-
-  // 2) AI batch for the rest.
-  const queue: CategorizeInput[] = remaining.map((r) => ({
-    id: r.id,
-    date: r.date,
-    description: r.description,
-    amount: r.amount
-  }));
-  const results = await categorizeAll(queue);
-
-  for (const r of results) {
-    const catId = slugToId.get(r.category_slug) ?? slugToId.get("outros");
-    if (!catId) continue;
-    const isTransfer =
-      r.category_slug === "cartao_pagamento" || r.category_slug === "transferencias";
-    // Pre-fill category but keep staged — admin accepts into the portal.
-    await sb
-      .from("transactions")
-      .update({
-        category_id: catId,
-        confidence: r.confidence,
-        ai_reasoning: r.reasoning,
-        status: "auto_accepted",
-        is_transfer: isTransfer,
-        ...(isTransfer ? { shared_amount: 0 } : {})
-      })
-      .eq("id", r.id);
-    done += 1;
+  // 2) AI batch for the rest. Each result carries a per-row reasoning string,
+  //    but rows with the same category/confidence/reasoning still bucket.
+  if (remaining.length > 0) {
+    const queue: CategorizeInput[] = remaining.map((r) => ({
+      id: r.id,
+      date: r.date,
+      description: r.description,
+      amount: r.amount
+    }));
+    const results = await categorizeAll(queue);
+    for (const r of results) {
+      const catId = slugToId.get(r.category_slug) ?? slugToId.get("outros");
+      if (!catId) continue;
+      const isTransfer =
+        r.category_slug === "cartao_pagamento" || r.category_slug === "transferencias";
+      // Pre-fill category but keep staged — admin accepts into the portal.
+      bucketAdd(
+        {
+          category_id: catId,
+          confidence: r.confidence,
+          ai_reasoning: r.reasoning,
+          status: "auto_accepted",
+          is_transfer: isTransfer,
+          ...(isTransfer ? { shared_amount: 0 } : {})
+        },
+        r.id
+      );
+    }
   }
+
+  // 3) Apply the buckets — updates are independent, run them concurrently.
+  let done = 0;
+  await Promise.all(
+    Array.from(buckets.values()).map(async ({ patch, ids }) => {
+      for (let i = 0; i < ids.length; i += 200) {
+        const slice = ids.slice(i, i + 200);
+        const { error } = await sb.from("transactions").update(patch).in("id", slice);
+        if (error) {
+          errors.push(`categorize update failed (${slice.length} rows): ${error.message}`);
+        } else {
+          done += slice.length;
+        }
+      }
+    })
+  );
 
   return done;
 }
