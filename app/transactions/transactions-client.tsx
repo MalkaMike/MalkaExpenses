@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Search, X, TrendingUp, TrendingDown, EyeOff, Undo2, Loader2 } from "lucide-react";
+import { Search, X, TrendingUp, TrendingDown, EyeOff, Undo2, Loader2, AlertTriangle } from "lucide-react";
 import { TransactionRow } from "@/components/transaction-row";
 import { TransactionEditModal, type EditableTx } from "@/components/transaction-edit-modal";
 import { CategoryChip } from "@/components/category-chip";
@@ -23,6 +23,7 @@ type Row = {
   categorySlug: string | null;
   isFake: boolean;
   isTransfer: boolean;
+  isSuspeito: boolean;
 };
 
 function dayHeader(iso: string, lang: Lang): string {
@@ -62,6 +63,33 @@ export function TransactionsClient({
   const [accId, setAccId] = useState<string>(initialAccId);
   const [editing, setEditing] = useState<EditableTx | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  // "Suspeito" toggle — available to every role that can see this row
+  // (admin/health/household), unlike hide/unhide which stays admin-only.
+  const [suspeitoBusyId, setSuspeitoBusyId] = useState<string | null>(null);
+  const [suspeitoOverrides, setSuspeitoOverrides] = useState<Record<string, boolean>>({});
+
+  async function toggleSuspeito(r: Row) {
+    const current = suspeitoOverrides[r.id] ?? r.isSuspeito;
+    const next = !current;
+    setSuspeitoBusyId(r.id);
+    setSuspeitoOverrides((prev) => ({ ...prev, [r.id]: next }));
+    try {
+      const res = await fetch(`/api/transactions/${r.id}/suspeito`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: next ? "add" : "remove" })
+      });
+      if (!res.ok) {
+        setSuspeitoOverrides((prev) => ({ ...prev, [r.id]: current }));
+        const j = await safeJson(res);
+        toast.error(j.error ?? "erro");
+        return;
+      }
+      toast.success(next ? "Marcado como suspeito" : "Removido de suspeito");
+    } finally {
+      setSuspeitoBusyId(null);
+    }
+  }
 
   // One-tap take-out (hide) / bring-back (unhide) from the list — admin only.
   // Hidden rows go to the Archive (shared_amount=0); nothing is deleted.
@@ -241,6 +269,9 @@ export function TransactionsClient({
               })
             }
             onToggleHide={quickToggleHide}
+            onToggleSuspeito={toggleSuspeito}
+            suspeitoBusyId={suspeitoBusyId}
+            suspeitoOverrides={suspeitoOverrides}
           />
         </div>
       )}
@@ -284,6 +315,19 @@ export function TransactionsClient({
                       accountName={accountMap.get(r.account_id)}
                     />
                   </button>
+                  <button
+                    onClick={() => toggleSuspeito(r)}
+                    disabled={suspeitoBusyId === r.id}
+                    title={(suspeitoOverrides[r.id] ?? r.isSuspeito) ? "Remover marcação de suspeito" : "Marcar como suspeito"}
+                    aria-label={(suspeitoOverrides[r.id] ?? r.isSuspeito) ? "Remover marcação de suspeito" : "Marcar como suspeito"}
+                    className={`shrink-0 w-11 rounded-xl border inline-flex items-center justify-center transition disabled:opacity-50 ${
+                      (suspeitoOverrides[r.id] ?? r.isSuspeito)
+                        ? "border-danger/40 bg-danger/10 text-danger"
+                        : "border-border bg-card text-muted hover:text-danger hover:border-danger/40"
+                    }`}
+                  >
+                    {suspeitoBusyId === r.id ? <Loader2 size={16} className="animate-spin" /> : <AlertTriangle size={16} />}
+                  </button>
                   {role === "admin" && (
                     <button
                       onClick={() => quickToggleHide(r)}
@@ -319,14 +363,17 @@ export function TransactionsClient({
 
 // Desktop-only sortable table view of the same filtered rows. Row click opens
 // the same edit modal as the mobile cards; the trailing column keeps the
-// admin-only quick hide/unhide action.
+// admin-only quick hide/unhide action plus the suspeito toggle (every role).
 function DesktopTable({
   rows,
   role,
   accountMap,
   busyId,
   onEdit,
-  onToggleHide
+  onToggleHide,
+  onToggleSuspeito,
+  suspeitoBusyId,
+  suspeitoOverrides
 }: {
   rows: Row[];
   role: Role;
@@ -334,6 +381,9 @@ function DesktopTable({
   busyId: string | null;
   onEdit: (r: Row) => void;
   onToggleHide: (r: Row) => void;
+  onToggleSuspeito: (r: Row) => void;
+  suspeitoBusyId: string | null;
+  suspeitoOverrides: Record<string, boolean>;
 }) {
   const { lang } = useLang();
   const columns: Column<Row>[] = [
@@ -397,37 +447,58 @@ function DesktopTable({
     }
   ];
 
-  if (role === "admin") {
-    columns.push({
-      key: "actions",
-      header: "",
-      align: "right",
-      cell: (r) => (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleHide(r);
-          }}
-          disabled={busyId === r.id}
-          title={r.amountShared === 0 ? "Trazer de volta ao portal" : "Tirar do portal"}
-          aria-label={r.amountShared === 0 ? "Trazer de volta" : "Tirar do portal"}
-          className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition disabled:opacity-50 ${
-            r.amountShared === 0
-              ? "border-accent/30 text-accent bg-accent/5 hover:bg-accent/10"
-              : "border-border text-muted hover:text-danger hover:border-danger/40"
-          }`}
-        >
-          {busyId === r.id ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : r.amountShared === 0 ? (
-            <Undo2 size={14} />
-          ) : (
-            <EyeOff size={14} />
+  columns.push({
+    key: "actions",
+    header: "",
+    align: "right",
+    cell: (r) => {
+      const suspeito = suspeitoOverrides[r.id] ?? r.isSuspeito;
+      return (
+        <div className="flex items-center justify-end gap-1.5">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSuspeito(r);
+            }}
+            disabled={suspeitoBusyId === r.id}
+            title={suspeito ? "Remover marcação de suspeito" : "Marcar como suspeito"}
+            aria-label={suspeito ? "Remover marcação de suspeito" : "Marcar como suspeito"}
+            className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition disabled:opacity-50 ${
+              suspeito
+                ? "border-danger/40 bg-danger/10 text-danger"
+                : "border-border text-muted hover:text-danger hover:border-danger/40"
+            }`}
+          >
+            {suspeitoBusyId === r.id ? <Loader2 size={14} className="animate-spin" /> : <AlertTriangle size={14} />}
+          </button>
+          {role === "admin" && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleHide(r);
+              }}
+              disabled={busyId === r.id}
+              title={r.amountShared === 0 ? "Trazer de volta ao portal" : "Tirar do portal"}
+              aria-label={r.amountShared === 0 ? "Trazer de volta" : "Tirar do portal"}
+              className={`inline-flex items-center justify-center w-8 h-8 rounded-lg border transition disabled:opacity-50 ${
+                r.amountShared === 0
+                  ? "border-accent/30 text-accent bg-accent/5 hover:bg-accent/10"
+                  : "border-border text-muted hover:text-danger hover:border-danger/40"
+              }`}
+            >
+              {busyId === r.id ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : r.amountShared === 0 ? (
+                <Undo2 size={14} />
+              ) : (
+                <EyeOff size={14} />
+              )}
+            </button>
           )}
-        </button>
-      )
-    });
-  }
+        </div>
+      );
+    }
+  });
 
   return (
     <DataTable

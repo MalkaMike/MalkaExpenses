@@ -37,10 +37,12 @@ export default async function ReembolsosPage({
   const sp = await searchParams;
   const sb = serverClient();
 
-  // Tags + their pending totals
+  // Tags + their pending totals. Excludes tags that aren't real reimbursement
+  // claims (e.g. "suspeito" — an informational flag, no claim status to track).
   const { data: tags } = await sb
     .from("reimbursement_tags")
     .select("id, slug, name, color, icon")
+    .eq("tracks_reimbursement", true)
     .order("slug");
   const tagList = (tags ?? []) as TagRow[];
 

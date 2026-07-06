@@ -157,3 +157,14 @@ export async function requireAnyHealthRole(): Promise<void> {
     throw new Response("Not Found", { status: 404 });
   }
 }
+
+// Admin, health, or household — anyone who can see the shared transaction
+// list (main site). For mutations Ayelet herself is allowed to make there
+// (currently just the "Suspeito" tag toggle) — deliberately excludes
+// secretary, who has no reason to touch household transactions.
+export async function requireAnySharedRole(): Promise<void> {
+  const r = await getRole();
+  if (r !== "admin" && r !== "health" && r !== "household") {
+    throw new Response("Not Found", { status: 404 });
+  }
+}

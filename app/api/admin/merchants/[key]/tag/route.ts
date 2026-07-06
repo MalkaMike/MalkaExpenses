@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const Body = z.object({
-  tag_slug: z.enum(["kenlo", "laik", "insurance"]),
+  tag_slug: z.enum(["kenlo", "laik", "insurance", "suspeito"]),
   action: z.enum(["add", "remove"])
 });
 
@@ -144,7 +144,7 @@ export async function POST(
     }
 
     const hideOnTag = ["kenlo", "laik"];
-    const showOnTag = ["insurance"];
+    const showOnTag = ["insurance", "suspeito"];
     if (hideOnTag.includes(tag_slug)) {
       const { error: hideErr } = await sb.rpc("bulk_share_merchant", { p_canonical_key: merchantKey, p_mode: "hide", p_value: null });
       if (hideErr) return NextResponse.json({ error: `tag aplicada, mas ocultar falhou: ${hideErr.message}` }, { status: 500 });

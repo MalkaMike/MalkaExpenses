@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 const Body = z.object({
   transaction_ids: z.array(z.string().uuid()).min(1).max(500),
-  tag_slug: z.enum(["kenlo", "laik", "insurance"]),
+  tag_slug: z.enum(["kenlo", "laik", "insurance", "suspeito"]),
   action: z.enum(["add", "remove"])
 });
 
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
   if (!tag) return NextResponse.json({ error: "tag not found" }, { status: 404 });
 
   const HIDE_ON_TAG = ["kenlo", "laik"];
+  const SHOW_ON_TAG = ["suspeito"];
 
   let updated = 0;
   if (action === "add") {
@@ -59,6 +60,23 @@ export async function POST(req: NextRequest) {
         .update({ shared_amount: 0 })
         .in("id", transaction_ids)
         .neq("shared_amount", 0);
+    }
+
+    // Suspeito → always force visible to Ayelet. Each row's target value is
+    // its OWN real_amount, so a single literal .update() can't do this —
+    // upsert with per-row values instead (matches existing ids, becomes an
+    // UPDATE via ON CONFLICT).
+    if (SHOW_ON_TAG.includes(tag_slug)) {
+      const { data: hiddenRows } = await sb
+        .from("transactions")
+        .select("id, real_amount")
+        .in("id", transaction_ids)
+        .eq("shared_amount", 0);
+      if (hiddenRows?.length) {
+        await sb.from("transactions").upsert(
+          hiddenRows.map((r) => ({ id: r.id as string, shared_amount: r.real_amount as number }))
+        );
+      }
     }
   } else {
     const { data, error } = await sb

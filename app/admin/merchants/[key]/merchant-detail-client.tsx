@@ -1,7 +1,7 @@
 "use client";
 import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink, Undo2, ArrowUpDown, CheckCheck, ShieldQuestion, ShieldCheck, ShieldAlert, RotateCw } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Pencil, X, Briefcase, Shield, Tag, GitMerge, Search, ExternalLink, Undo2, ArrowUpDown, CheckCheck, ShieldQuestion, ShieldCheck, ShieldAlert, RotateCw, AlertTriangle } from "lucide-react";
 import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { ReceiptFinderButton } from "@/components/receipt-finder-button";
 import { MoveDescriptionButton } from "@/components/move-description-button";
@@ -1114,7 +1114,7 @@ export function MerchantDetailClient({
         </p>
         <div className="flex flex-wrap gap-2">
           {tags.map((t) => {
-            const Icon = t.icon === "shield" ? Shield : t.icon === "briefcase" ? Briefcase : Tag;
+            const Icon = t.icon === "shield" ? Shield : t.icon === "briefcase" ? Briefcase : t.icon === "alert" ? AlertTriangle : Tag;
             const allTagged = t.appliedCount >= rows.length && rows.length > 0;
             const someTagged = t.appliedCount > 0 && !allTagged;
             const action: "add" | "remove" = allTagged ? "remove" : "add";

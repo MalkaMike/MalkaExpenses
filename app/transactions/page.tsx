@@ -19,6 +19,7 @@ type Row = {
   categorySlug: string | null;
   isFake: boolean;
   isTransfer: boolean;
+  isSuspeito: boolean;
 };
 
 export default async function TransactionsPage({
@@ -57,7 +58,8 @@ export default async function TransactionsPage({
       amountReal: null,
       categorySlug: r.category_slug,
       isFake: false,
-      isTransfer: r.is_transfer
+      isTransfer: r.is_transfer,
+      isSuspeito: false
     }));
   } else {
     const { data } = await sb
@@ -91,8 +93,31 @@ export default async function TransactionsPage({
         ? r.categories[0]?.slug ?? null
         : r.categories?.slug ?? null,
       isFake: r.is_fake,
-      isTransfer: r.is_transfer
+      isTransfer: r.is_transfer,
+      isSuspeito: false
     }));
+  }
+
+  // "Suspeito" tag membership for the rows already fetched above. Scoped to
+  // ids that already passed the security boundary (shared_transactions_v for
+  // non-admin, is_fake=false for admin) — this only reads tag membership,
+  // never amounts or hidden rows, so using the service-role client here for
+  // a household/health viewer doesn't widen what they can see.
+  if (rows.length > 0) {
+    const { data: tag } = await sb.from("reimbursement_tags").select("id").eq("slug", "suspeito").maybeSingle();
+    if (tag) {
+      const ids = rows.map((r) => r.id);
+      const suspeitoIds = new Set<string>();
+      for (let i = 0; i < ids.length; i += 500) {
+        const { data: tagged } = await sb
+          .from("transaction_reimbursements")
+          .select("transaction_id")
+          .eq("tag_id", tag.id as string)
+          .in("transaction_id", ids.slice(i, i + 500));
+        for (const t of tagged ?? []) suspeitoIds.add(t.transaction_id as string);
+      }
+      for (const r of rows) r.isSuspeito = suspeitoIds.has(r.id);
+    }
   }
 
   const accountsList = (accounts ?? []).map((a) => ({ id: a.id, name: a.name }));

@@ -6,7 +6,7 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 // Cleared only on full page reload / route change.
 const pendingDismissedTodo = new Set<string>();
 import { useRouter } from "next/navigation";
-import { ChevronRight, Eye, EyeOff, Clock, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X, CheckCircle2, Circle } from "lucide-react";
+import { ChevronRight, Eye, EyeOff, Clock, Shield, Briefcase, Tag, Loader2, Search, ChevronUp, ChevronDown, X, CheckCircle2, Circle, AlertTriangle } from "lucide-react";
 import { formatBRL, formatInt } from "@/lib/format";
 import { toast } from "sonner";
 
@@ -81,6 +81,7 @@ function tagColorClasses(color: string) {
 function TagIcon({ icon, size }: { icon: string; size: number }) {
   if (icon === "shield") return <Shield size={size} />;
   if (icon === "briefcase") return <Briefcase size={size} />;
+  if (icon === "alert") return <AlertTriangle size={size} />;
   return <Tag size={size} />;
 }
 
@@ -268,7 +269,7 @@ export function MerchantsClient({
   }, [categories]);
 
   const HIDE_TAGS = ["kenlo", "laik"];
-  const SHOW_TAGS = ["insurance"];
+  const SHOW_TAGS = ["insurance", "suspeito"];
 
   const toggleTag = useCallback(async (merchantKey: string, tagSlug: string, txCount: number) => {
     const busyKey = `${merchantKey}|${tagSlug}`;
