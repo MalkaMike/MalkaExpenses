@@ -11,11 +11,41 @@ export async function GET() {
   await requireAdmin();
   const sb = serverClient();
 
-  const { data: rows } = await sb
-    .from("nota_fiscais")
-    .select("category_slug, is_medical, is_reimbursable, match_confidence, total_amount, patient_name, source_type, transaction_id, no_match_reason, payment_status, amount_paid, amount_pending");
+  // NF rows (paginated — 344 live and growing; PostgREST caps at 1000) and
+  // the medical/education category ids are independent → parallel.
+  type NfRow = {
+    category_slug: string | null;
+    is_medical: boolean | null;
+    is_reimbursable: boolean | null;
+    match_confidence: string | null;
+    total_amount: number | null;
+    patient_name: string | null;
+    source_type: string | null;
+    transaction_id: string | null;
+    no_match_reason: string | null;
+    payment_status: string | null;
+    amount_paid: number | null;
+    amount_pending: number | null;
+  };
+  async function loadAllNfs() {
+    const out: NfRow[] = [];
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error } = await sb
+        .from("nota_fiscais")
+        .select("category_slug, is_medical, is_reimbursable, match_confidence, total_amount, patient_name, source_type, transaction_id, no_match_reason, payment_status, amount_paid, amount_pending")
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      out.push(...((page ?? []) as NfRow[]));
+      if (!page || page.length < PAGE) break;
+    }
+    return out;
+  }
 
-  const all = rows ?? [];
+  const [all, medCatsRes] = await Promise.all([
+    loadAllNfs(),
+    sb.from("categories").select("id").in("slug", ["saude", "educacao"])
+  ]);
 
   type Bucket = { count: number; total: number };
   const byCategory: Record<string, Bucket> = {};
@@ -60,20 +90,11 @@ export async function GET() {
     payAgg[st].pending += Number(r.amount_pending ?? 0);
   }
 
-  // Transactions matched by NFs (IDs already linked in nota_fiscais.transaction_id)
-  const { data: linkedTxIds } = await sb
-    .from("nota_fiscais")
-    .select("transaction_id")
-    .not("transaction_id", "is", null);
+  // Transactions matched by NFs — transaction_id is already in the first
+  // fetch's select list; the old code re-queried the same table for it.
+  const linkedSet = new Set(all.map((r) => r.transaction_id).filter(Boolean));
 
-  const linkedSet = new Set((linkedTxIds ?? []).map((r) => r.transaction_id));
-
-  // Medical/education category IDs
-  const { data: medCats } = await sb
-    .from("categories")
-    .select("id")
-    .in("slug", ["saude", "educacao"]);
-  const medCatIds = (medCats ?? []).map((r) => r.id);
+  const medCatIds = (medCatsRes.data ?? []).map((r) => r.id);
 
   // Transactions in medical/education categories NOT already linked to a NF
   const { data: unlinkedTxs } = await sb

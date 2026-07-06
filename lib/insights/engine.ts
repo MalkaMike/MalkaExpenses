@@ -49,22 +49,47 @@ export async function getInsights(role: Role): Promise<Insight[]> {
   since.setUTCDate(since.getUTCDate() - 90);
   const sinceIso = since.toISOString().slice(0, 10);
 
+  // Paginated: 90 days already exceeds PostgREST's 1000-row cap (1,045 live)
+  // — the old single fetch fed the MoM comparisons an arbitrary subset.
+  const PAGE = 1000;
   let txs: Tx[] = [];
   if (role !== "admin") {
     const sh = sharedClient();
-    const { data } = await sh
-      .from("shared_transactions_v")
-      .select("date, amount, category_slug, description, is_transfer")
-      .gte("date", sinceIso);
-    txs = ((data ?? []) as Array<Tx>)
+    const raw: Tx[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await sh
+        .from("shared_transactions_v")
+        .select("date, amount, category_slug, description, is_transfer")
+        .gte("date", sinceIso)
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      raw.push(...((data ?? []) as Array<Tx>));
+      if (!data || data.length < PAGE) break;
+    }
+    txs = raw
       .map((t) => ({ ...t, amount: fromDb(t.amount) }))
       .filter((t) => !t.is_transfer);
   } else {
-    const { data } = await sb
-      .from("transactions")
-      .select("date, shared_amount, is_transfer, description_clean, description_raw, categories(slug)")
-      .gte("date", sinceIso);
-    txs = (data ?? []).map((r: {
+    type AdminRow = {
+      date: string;
+      shared_amount: number;
+      is_transfer: boolean;
+      description_clean: string | null;
+      description_raw: string;
+      categories: { slug: string } | { slug: string }[] | null;
+    };
+    const data: AdminRow[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const { data: page, error } = await sb
+        .from("transactions")
+        .select("date, shared_amount, is_transfer, description_clean, description_raw, categories(slug)")
+        .gte("date", sinceIso)
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      data.push(...((page ?? []) as AdminRow[]));
+      if (!page || page.length < PAGE) break;
+    }
+    txs = data.map((r: {
       date: string;
       shared_amount: number;
       is_transfer: boolean;

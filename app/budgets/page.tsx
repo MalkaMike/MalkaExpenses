@@ -16,49 +16,82 @@ export default async function BudgetsPage() {
   const lang = await getLang();
   const sb = serverClient();
 
-  const { data: budgets } = await sb
-    .from("budgets")
-    .select("id, category_id, monthly_limit, notes, categories(slug, name)")
-    .order("monthly_limit", { ascending: false });
-
   // This month's spend per category from shared view (or table for admin)
   const now = new Date();
   const ym = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
   const start = `${ym}-01`;
 
+  // Previous month date range (needed up-front: one fetch covers prev+current)
+  const prevDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const prevYm = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}`;
+  const prevStart = `${prevYm}-01`;
+
+  // One paginated fetch spanning prev+current month serves the category
+  // breakdown AND both weekly charts. The old version fetched the current
+  // month twice (catSpend + weekly) across 3 sequential stages — and the
+  // admin weekly queries were missing .eq("is_fake", false), so fake rows
+  // polluted the weekly chart.
+  type SpendRow = { amount: number; date: string; category_slug: string | null };
+  async function loadSpendRows(): Promise<SpendRow[]> {
+    const out: SpendRow[] = [];
+    const PAGE = 1000;
+    for (let fromIdx = 0; ; fromIdx += PAGE) {
+      if (role !== "admin") {
+        const sh = sharedClient();
+        const { data, error } = await sh
+          .from("shared_transactions_v")
+          .select("amount, date, category_slug, is_transfer")
+          .gte("date", prevStart)
+          .eq("is_transfer", false)
+          .range(fromIdx, fromIdx + PAGE - 1);
+        if (error) throw error;
+        for (const r of data ?? []) {
+          out.push({ amount: fromDb(Number(r.amount)), date: r.date as string, category_slug: r.category_slug });
+        }
+        if (!data || data.length < PAGE) break;
+      } else {
+        const { data, error } = await sb
+          .from("transactions")
+          .select("shared_amount, date, is_transfer, categories(slug)")
+          .gte("date", prevStart)
+          .eq("is_fake", false)
+          .eq("is_transfer", false)
+          .range(fromIdx, fromIdx + PAGE - 1);
+        if (error) throw error;
+        for (const r of (data ?? []) as {
+          shared_amount: number;
+          date: string;
+          is_transfer: boolean;
+          categories: { slug: string } | { slug: string }[] | null;
+        }[]) {
+          out.push({
+            amount: fromDb(Number(r.shared_amount)),
+            date: r.date,
+            category_slug:
+              (Array.isArray(r.categories) ? r.categories[0]?.slug : r.categories?.slug) ?? null
+          });
+        }
+        if (!data || data.length < PAGE) break;
+      }
+    }
+    return out;
+  }
+
+  const [budgetsRes, spendRows] = await Promise.all([
+    sb
+      .from("budgets")
+      .select("id, category_id, monthly_limit, notes, categories(slug, name)")
+      .order("monthly_limit", { ascending: false }),
+    loadSpendRows()
+  ]);
+  const budgets = budgetsRes.data;
+
   const catSpend = new Map<string, number>();
-  if (role !== "admin") {
-    const sh = sharedClient();
-    const { data } = await sh
-      .from("shared_transactions_v")
-      .select("amount, category_slug, is_transfer")
-      .gte("date", start)
-      .eq("is_transfer", false);
-    for (const r of data ?? []) {
-      const amt = fromDb(Number(r.amount));
-      if (amt >= 0) continue;
-      const slug = r.category_slug ?? "outros";
-      catSpend.set(slug, (catSpend.get(slug) ?? 0) + -amt);
-    }
-  } else {
-    const { data } = await sb
-      .from("transactions")
-      .select("shared_amount, is_transfer, categories(slug)")
-      .gte("date", start)
-      .eq("is_fake", false)
-      .eq("is_transfer", false);
-    for (const r of (data ?? []) as {
-      shared_amount: number;
-      is_transfer: boolean;
-      categories: { slug: string } | { slug: string }[] | null;
-    }[]) {
-      const amt = fromDb(Number(r.shared_amount));
-      if (amt >= 0) continue;
-      const slug =
-        (Array.isArray(r.categories) ? r.categories[0]?.slug : r.categories?.slug) ??
-        "outros";
-      catSpend.set(slug, (catSpend.get(slug) ?? 0) + -amt);
-    }
+  for (const r of spendRows) {
+    if (r.date < start) continue; // category breakdown = current month only
+    if (r.amount >= 0) continue;
+    const slug = r.category_slug ?? "outros";
+    catSpend.set(slug, (catSpend.get(slug) ?? 0) + -r.amount);
   }
 
   const rows: BudgetRow[] = ((budgets ?? []) as {
@@ -92,80 +125,17 @@ export default async function BudgetsPage() {
     return 3;
   }
 
-  // Current month date range
-  const curStart = `${ym}-01`;
+  // Weekly totals from the same spendRows fetch (no second round-trip)
   const curLastDay = new Date(now.getUTCFullYear(), now.getUTCMonth() + 1, 0).getUTCDate();
   const curEnd = `${ym}-${String(curLastDay).padStart(2, "0")}`;
-
-  // Previous month date range
-  const prevDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-  const prevYm = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, "0")}`;
-  const prevStart = `${prevYm}-01`;
-  const prevLastDay = new Date(prevDate.getUTCFullYear(), prevDate.getUTCMonth() + 1, 0).getUTCDate();
-  const prevEnd = `${prevYm}-${String(prevLastDay).padStart(2, "0")}`;
-
   const weekTotals: [number, number, number, number] = [0, 0, 0, 0];
   const prevWeekTotals: [number, number, number, number] = [0, 0, 0, 0];
-
-  if (role !== "admin") {
-    const sh = sharedClient();
-    const [{ data: curData }, { data: prevData }] = await Promise.all([
-      sh
-        .from("shared_transactions_v")
-        .select("amount, date, is_transfer")
-        .gte("date", curStart)
-        .lte("date", curEnd)
-        .eq("is_transfer", false),
-      sh
-        .from("shared_transactions_v")
-        .select("amount, date, is_transfer")
-        .gte("date", prevStart)
-        .lte("date", prevEnd)
-        .eq("is_transfer", false)
-    ]);
-    for (const r of curData ?? []) {
-      const amt = fromDb(Number(r.amount));
-      if (amt >= 0) continue;
-      const day = new Date(r.date as string).getUTCDate();
-      const wi = weekIndex(day);
-      weekTotals[wi] += -amt;
-    }
-    for (const r of prevData ?? []) {
-      const amt = fromDb(Number(r.amount));
-      if (amt >= 0) continue;
-      const day = new Date(r.date as string).getUTCDate();
-      const wi = weekIndex(day);
-      prevWeekTotals[wi] += -amt;
-    }
-  } else {
-    const [{ data: curData }, { data: prevData }] = await Promise.all([
-      sb
-        .from("transactions")
-        .select("shared_amount, date, is_transfer")
-        .gte("date", curStart)
-        .lte("date", curEnd)
-        .eq("is_transfer", false),
-      sb
-        .from("transactions")
-        .select("shared_amount, date, is_transfer")
-        .gte("date", prevStart)
-        .lte("date", prevEnd)
-        .eq("is_transfer", false)
-    ]);
-    for (const r of (curData ?? []) as { shared_amount: number; date: string; is_transfer: boolean }[]) {
-      const amt = fromDb(Number(r.shared_amount));
-      if (amt >= 0) continue;
-      const day = new Date(r.date).getUTCDate();
-      const wi = weekIndex(day);
-      weekTotals[wi] += -amt;
-    }
-    for (const r of (prevData ?? []) as { shared_amount: number; date: string; is_transfer: boolean }[]) {
-      const amt = fromDb(Number(r.shared_amount));
-      if (amt >= 0) continue;
-      const day = new Date(r.date).getUTCDate();
-      const wi = weekIndex(day);
-      prevWeekTotals[wi] += -amt;
-    }
+  for (const r of spendRows) {
+    if (r.amount >= 0) continue;
+    const day = Number(r.date.slice(8, 10));
+    const wi = weekIndex(day);
+    if (r.date >= start && r.date <= curEnd) weekTotals[wi] += -r.amount;
+    else if (r.date.startsWith(prevYm)) prevWeekTotals[wi] += -r.amount;
   }
 
   const weeks: WeekBar[] = [

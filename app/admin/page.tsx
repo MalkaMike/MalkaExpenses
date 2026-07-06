@@ -28,18 +28,22 @@ export default async function AdminDashboard({
     redirect(`/login?next=${encodeURIComponent(sp.next ?? "/admin")}`);
   }
 
-  const [gmailAdmin, gmailHealth, accounts] = await Promise.all([
+  // Single parallel stage — the two blocks were sequential Promise.alls with
+  // no dependency between them (a full extra round-trip tier per page load).
+  const sb = serverClient();
+  const [
+    gmailAdmin,
+    gmailHealth,
+    accounts,
+    { count: total },
+    { count: pending },
+    { count: fakes },
+    { count: hidden },
+    { count: nfFound }
+  ] = await Promise.all([
     getConnectionStatus("admin"),
     getConnectionStatus("health"),
-    getAccountsWithBalances("admin")
-  ]);
-  const totalReal = accounts.reduce((s, a) => s + (a.realBalance ?? 0), 0);
-  const totalShared = accounts.reduce((s, a) => s + a.sharedBalance, 0);
-  const deltaHidden = totalReal - totalShared;
-
-  const sb = serverClient();
-  const [{ count: total }, { count: pending }, { count: fakes }, { count: hidden }, { count: nfFound }] =
-    await Promise.all([
+    getAccountsWithBalances("admin"),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", false),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("status", "pending_review"),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", true),
@@ -48,9 +52,12 @@ export default async function AdminDashboard({
         .select("*", { count: "exact", head: true })
         .eq("shared_amount", 0)
         .neq("status", "pending_review"),
-      // Found nota fiscais the admin hasn't triaged yet (confirmed IS NULL).
-      sb.from("transaction_receipts").select("*", { count: "exact", head: true }).is("confirmed", null),
-    ]);
+    // Found nota fiscais the admin hasn't triaged yet (confirmed IS NULL).
+    sb.from("transaction_receipts").select("*", { count: "exact", head: true }).is("confirmed", null)
+  ]);
+  const totalReal = accounts.reduce((s, a) => s + (a.realBalance ?? 0), 0);
+  const totalShared = accounts.reduce((s, a) => s + a.sharedBalance, 0);
+  const deltaHidden = totalReal - totalShared;
 
   return (
     <>
