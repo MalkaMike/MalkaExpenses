@@ -145,10 +145,40 @@ export async function GET(req: NextRequest) {
     .lt("attempted_at", cutoff);
   if (cleanupErr) console.error("[weekly-snapshot] login_attempts cleanup failed:", cleanupErr.message);
 
+  // Retention: data_snapshots are large cold backups — each row embeds the full
+  // transactions/accounts/merchant_clusters JSONB (~1.7MB today and growing with
+  // the transaction table). Left unbounded this is the first thing to blow the
+  // 500MB tier. Keep ~1 year of weekly snapshots; prune older. Guard: only prune
+  // once we hold more than a year's worth (>52), so a clock-skewed run can never
+  // delete recent recovery history down to nothing.
+  //
+  // audit_log is deliberately NOT pruned here: it's the financial audit trail
+  // (~288kB / ~500 rows, negligible growth) and losing it costs accountability
+  // for almost no storage. If it ever needs a cap, that's a separate, explicit
+  // decision — not silently bundled into snapshot housekeeping.
+  let snapshotRetention = "skipped (under 1-year window)";
+  const { count: snapCount } = await sb
+    .from("data_snapshots")
+    .select("id", { count: "exact", head: true });
+  if ((snapCount ?? 0) > 52) {
+    const snapCutoff = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+    const { error: snapErr, count: prunedCount } = await sb
+      .from("data_snapshots")
+      .delete({ count: "exact" })
+      .lt("taken_at", snapCutoff);
+    if (snapErr) {
+      console.error("[weekly-snapshot] data_snapshots retention failed:", snapErr.message);
+      snapshotRetention = `failed: ${snapErr.message}`;
+    } else {
+      snapshotRetention = `pruned ${prunedCount ?? 0} older than 1 year`;
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     week_of: weekOf,
     ...stats,
-    login_attempts_cleanup: cleanupErr ? `failed: ${cleanupErr.message}` : "ok"
+    login_attempts_cleanup: cleanupErr ? `failed: ${cleanupErr.message}` : "ok",
+    data_snapshots_retention: snapshotRetention
   });
 }
