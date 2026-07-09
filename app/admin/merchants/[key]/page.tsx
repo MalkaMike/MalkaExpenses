@@ -91,38 +91,11 @@ export default async function MerchantDetailPage({
     return out;
   }
 
-  // Cluster list for rename/merge combobox — admin only.
-  // Skipped for health role to avoid the ~120KB DB round-trip.
-  type ClusterOption = { key: string; name: string };
-  async function loadAllClusters(): Promise<ClusterOption[]> {
-    const out: ClusterOption[] = [];
-    const seenKeys = new Set<string>();
-    let cOff = 0;
-    while (true) {
-      const { data } = await sb
-        .from("merchant_clusters")
-        .select("canonical_key, canonical_name")
-        .order("canonical_name", { ascending: true })
-        .range(cOff, cOff + 999);
-      if (!data || !data.length) break;
-      for (const r of data) {
-        const k = r.canonical_key as string;
-        if (k === key) continue; // exclude current cluster
-        if (seenKeys.has(k)) continue;
-        seenKeys.add(k);
-        out.push({ key: k, name: r.canonical_name as string });
-      }
-      if (data.length < 1000) break;
-      cOff += 1000;
-    }
-    return out;
-  }
-
   // ONE parallel stage for everything that doesn't need the tx list —
   // previously these ran one-after-another (~8-12 sequential round-trips
   // per ficha open; the list page got this treatment in c3d09aa, the
   // detail page didn't).
-  const [txs, catsRes, accountsRes, researchRes, tagsRes, allClusters, mergeRowsRes] = await Promise.all([
+  const [txs, catsRes, accountsRes, researchRes, tagsRes, mergeRowsRes] = await Promise.all([
     loadTxs(),
     sb.from("categories").select("id, slug, name").order("name"),
     sb.from("accounts").select("id, name, bank").eq("is_archived", false),
@@ -132,7 +105,6 @@ export default async function MerchantDetailPage({
     role === "admin"
       ? sb.from("reimbursement_tags").select("id, slug, name, color, icon").order("slug")
       : Promise.resolve({ data: null }),
-    role === "admin" ? loadAllClusters() : Promise.resolve([] as ClusterOption[]),
     role === "admin"
       ? sb
           .from("admin_modifications")
@@ -303,7 +275,6 @@ export default async function MerchantDetailPage({
         currentSharedTotal={totalShared}
         currentName={displayName}
         tags={tagList}
-        allClusters={allClusters}
         mergeHistory={mergeHistory}
         role={role as "admin" | "health"}
         pendingCount={pendingCount}

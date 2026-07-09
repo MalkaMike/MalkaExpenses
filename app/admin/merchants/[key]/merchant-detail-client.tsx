@@ -6,6 +6,7 @@ import { formatBRL, formatDate, formatInt } from "@/lib/format";
 import { ReceiptFinderButton } from "@/components/receipt-finder-button";
 import { MoveDescriptionButton } from "@/components/move-description-button";
 import { safeJson } from "@/lib/http";
+import { fetchAllClusters, invalidateClustersCache } from "@/lib/merchants/clusters-client";
 
 type Row = {
   id: string;
@@ -55,7 +56,6 @@ type Props = {
   currentSharedTotal: number;
   currentName: string;
   tags: ReimbTag[];
-  allClusters: ClusterOption[];
   mergeHistory: MergeHistoryItem[];
   role: "admin" | "health";  // health = Ayelet: read-only, no ocultar/aprovar controls
   pendingCount: number;
@@ -71,7 +71,6 @@ export function MerchantDetailClient({
   currentSharedTotal,
   currentName,
   tags,
-  allClusters,
   mergeHistory,
   role,
   pendingCount,
@@ -80,6 +79,24 @@ export function MerchantDetailClient({
   research
 }: Props) {
   const router = useRouter();
+
+  // Cluster list for the rename/merge combobox — lazily fetched on first
+  // interaction (was a ~120KB prop baked into every ficha's RSC payload).
+  // The current cluster is excluded (you can't merge a merchant into itself).
+  const [allClusters, setAllClusters] = useState<ClusterOption[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(false);
+  // No per-component "already fetched" guard: the module-level cache in
+  // clusters-client dedupes the network call, and relying on it means a
+  // post-merge invalidateClustersCache() actually forces a refetch on the next
+  // open (a component ref would stay stale across router.refresh()).
+  function ensureClusters() {
+    setClustersLoading(true);
+    fetchAllClusters()
+      .then((c) => setAllClusters(c.filter((x) => x.key !== canonicalKey)))
+      .catch((e) => console.error("[merchant-detail] cluster list load failed:", (e as Error).message))
+      .finally(() => setClustersLoading(false));
+  }
+
   const [shareBusy, setShareBusy] = useState<"hide" | "show" | "set" | null>(null);
   const [shareErr, setShareErr] = useState<string | null>(null);
   const [shareDone, setShareDone] = useState<string | null>(null);
@@ -360,6 +377,8 @@ export function MerchantDetailClient({
         const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
+      // Cluster set changed (source absorbed) — refetch on next open.
+      invalidateClustersCache();
       // Navigate to the surviving (target) cluster — it now contains all txs
       router.push(`/admin/merchants/${encodeURIComponent(target.key)}`);
     } catch (e) {
@@ -376,8 +395,12 @@ export function MerchantDetailClient({
       setEditingName(false);
       return;
     }
-    const match = allClusters.find(
-      (c) => c.name.trim().toLowerCase() === trimmed.toLowerCase()
+    // Ensure the cluster list is loaded before deciding rename-vs-merge — if the
+    // user types and submits faster than the lazy fetch resolves, an exact match
+    // would be missed and we'd rename instead of merging into the existing one.
+    const clusters = await fetchAllClusters().catch(() => allClusters);
+    const match = clusters.find(
+      (c) => c.key !== canonicalKey && c.name.trim().toLowerCase() === trimmed.toLowerCase()
     );
     if (match) {
       await mergeInto(match);
@@ -396,6 +419,8 @@ export function MerchantDetailClient({
         const j = await safeJson(r);
         throw new Error(j.error ?? `Erro ${r.status}`);
       }
+      // Display name changed — refetch the combobox list on next open.
+      invalidateClustersCache();
       setEditingName(false);
       router.refresh();
     } catch (e) {
@@ -452,6 +477,8 @@ export function MerchantDetailClient({
         }
       }
       const count = selectedForMerge.size;
+      // Cluster set changed (sources absorbed) — refetch on next open.
+      invalidateClustersCache();
       setSelectedForMerge(new Map());
       setEditingName(false);
       setDropdownOpen(false);
@@ -474,9 +501,6 @@ export function MerchantDetailClient({
       .filter((c) => c.name.toLowerCase().includes(q))
       .slice(0, 15);
   }, [nameDraft, currentName, allClusters]);
-  const exactMatch = matchingSuggestions.find(
-    (c) => c.name.trim().toLowerCase() === nameDraft.trim().toLowerCase()
-  );
 
   async function openInSheets() {
     setSheetsErr(null);
@@ -566,6 +590,7 @@ export function MerchantDetailClient({
                 setSelectedForMerge(new Map());
                 setDropdownOpen(false);
                 setEditingName(true);
+                ensureClusters();
                 setTimeout(() => { searchRef.current?.focus(); searchRef.current?.select(); }, 50);
               }}
               className="px-3 py-1.5 rounded-lg text-xs border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30 transition flex items-center gap-1.5"
@@ -582,6 +607,7 @@ export function MerchantDetailClient({
                 setSelectedForMerge(new Map());
                 setEditingName(true);
                 setDropdownOpen(true);
+                ensureClusters();
                 setTimeout(() => searchRef.current?.focus(), 50);
               }}
               className="px-3 py-1.5 rounded-lg text-xs border border-outline-variant text-on-surface-variant hover:text-on-surface hover:border-primary/30 transition flex items-center gap-1.5"
@@ -629,6 +655,15 @@ export function MerchantDetailClient({
                 </>
               )}
             </div>
+
+            {/* Loading state while the cluster list lazy-loads */}
+            {dropdownOpen && clustersLoading && allClusters.length === 0 && (
+              <div className="relative z-20 mb-2">
+                <div className="rounded-xl bg-surface-container-lowest border border-outline-variant soft-ambient-shadow px-3 py-3 flex items-center gap-2 text-xs text-on-surface-variant">
+                  <Loader2 size={12} className="animate-spin" /> Carregando merchants…
+                </div>
+              </div>
+            )}
 
             {/* Dropdown with checkboxes */}
             {dropdownOpen && matchingSuggestions.length > 0 && (
@@ -1293,7 +1328,7 @@ export function MerchantDetailClient({
                             <MoveDescriptionButton
                               descriptionRaw={r.descriptionRaw}
                               currentName={currentName}
-                              allClusters={allClusters}
+                              currentKey={canonicalKey}
                             />
                             <ReceiptFinderButton
                               transactionId={r.id}

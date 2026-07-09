@@ -3,22 +3,21 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRightLeft, Loader2, Search, X, Plus, ChevronRight } from "lucide-react";
 import { safeJson } from "@/lib/http";
-
-type ClusterOption = { key: string; name: string };
+import { fetchAllClusters, invalidateClustersCache, type ClusterOption } from "@/lib/merchants/clusters-client";
 
 type Props = {
   /** Original bank description (e.g. "PIX CLAUDIA STELZER") */
   descriptionRaw: string;
   /** Display name of the current merchant */
   currentName: string;
-  /** All other clusters available as move targets (excludes current) */
-  allClusters: ClusterOption[];
+  /** canonical_key of the current merchant — excluded from move targets */
+  currentKey: string;
 };
 
 // ↗ button on each transaction row. Opens a popover to reassign this
 // specific bank description (and all rows sharing it) to another merchant —
 // either an existing one or a new name.
-export function MoveDescriptionButton({ descriptionRaw, currentName, allClusters }: Props) {
+export function MoveDescriptionButton({ descriptionRaw, currentName, currentKey }: Props) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -27,9 +26,23 @@ export function MoveDescriptionButton({ descriptionRaw, currentName, allClusters
   const [done, setDone] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Move targets are fetched lazily on first open and shared (module-scoped
+  // cache) with every other row's button and the rename/merge combobox — the
+  // list is no longer shipped in the ficha's RSC payload.
+  const [allClusters, setAllClusters] = useState<ClusterOption[]>([]);
+  const [clustersLoading, setClustersLoading] = useState(false);
+
   useEffect(() => {
-    if (open) setTimeout(() => searchRef.current?.focus(), 50);
-  }, [open]);
+    if (!open) return;
+    setTimeout(() => searchRef.current?.focus(), 50);
+    // Fetch on every open — the module-level cache dedupes the network call and
+    // refetches only after invalidateClustersCache() (e.g. post move-to-new).
+    setClustersLoading(true);
+    fetchAllClusters()
+      .then((c) => setAllClusters(c.filter((x) => x.key !== currentKey)))
+      .catch((e) => console.error("[move-description] cluster list load failed:", (e as Error).message))
+      .finally(() => setClustersLoading(false));
+  }, [open, currentKey]);
 
   const suggestions = (() => {
     const q = query.trim().toLowerCase();
@@ -62,6 +75,7 @@ export function MoveDescriptionButton({ descriptionRaw, currentName, allClusters
       }
       const j = await r.json();
       setDone(`${j.transactions_affected} transação(ões) movida(s) para "${target.name}"`);
+      invalidateClustersCache();
       router.refresh();
       setTimeout(() => setOpen(false), 1200);
     } catch (e) {
@@ -92,6 +106,7 @@ export function MoveDescriptionButton({ descriptionRaw, currentName, allClusters
       }
       const j = await r.json();
       setDone(`${j.transactions_affected} transação(ões) movida(s) para novo merchant "${newName}"`);
+      invalidateClustersCache();
       router.refresh();
       setTimeout(() => setOpen(false), 1200);
     } catch (e) {
@@ -184,7 +199,13 @@ export function MoveDescriptionButton({ descriptionRaw, currentName, allClusters
                   ))}
                 </ul>
               )}
-              {!busy && suggestions.length === 0 && !query.trim() && (
+              {!busy && clustersLoading && allClusters.length === 0 && (
+                <div className="p-4 text-center">
+                  <Loader2 size={16} className="animate-spin mx-auto text-on-surface-variant" />
+                  <p className="text-xs text-on-surface-variant mt-1.5">Carregando merchants…</p>
+                </div>
+              )}
+              {!busy && !clustersLoading && suggestions.length === 0 && !query.trim() && (
                 <p className="px-3 py-4 text-center text-xs text-on-surface-variant">
                   Nenhum merchant encontrado
                 </p>
