@@ -24,8 +24,8 @@ export default async function QueuePage() {
       />
       <div className="px-4 pt-5 max-w-6xl mx-auto pb-28">
         <p className="text-[11px] text-on-surface-variant mb-5">
-          Todas as notas médicas da família. Abra uma nota para ver o médico, o registro,
-          o valor e o PDF, e vá marcando conforme envia ao seguro.
+          Uma linha por nota médica. Clique no título de uma coluna para ordenar do seu jeito,
+          e clique na linha para abrir a nota — médico, registro, valor, PDF e o que pedir.
         </p>
         <QueueClient />
       </div>

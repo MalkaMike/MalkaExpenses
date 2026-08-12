@@ -2,14 +2,15 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
-  CheckCircle2, Send, Loader2, AlertTriangle, FileText, ChevronLeft,
+  CheckCircle2, Send, Loader2, AlertTriangle, FileText, X,
   Stethoscope, User, Building2, Phone, ArrowRight, Wallet,
-  ClipboardList, Upload, Paperclip
+  ClipboardList, Upload, Paperclip, ChevronUp, ChevronDown
 } from "lucide-react";
 import { formatDate, formatBRL } from "@/lib/format";
 import {
-  STATE_LABEL, STATE_ORDER, NEXT_ACTION, type ClaimState
+  STATE_LABEL, NEXT_ACTION, type ClaimState
 } from "@/lib/health/claim-status";
+import { sortClaims, defaultDir, type SortKey } from "@/lib/health/claim-sort";
 import {
   GAP_LABEL, PATIENT_SOURCE_LABEL, REQUIRED_DOCUMENTS,
   type ClaimGap, type PatientSource
@@ -205,21 +206,23 @@ function Detail({
 
   return (
     <div className="space-y-5">
-      <button
-        onClick={onBack}
-        className="lg:hidden inline-flex items-center gap-1 text-xs text-on-surface-variant"
-      >
-        <ChevronLeft size={14} /> Voltar à lista
-      </button>
-
       <header className="space-y-2">
         <div className="flex items-start justify-between gap-3">
           <h2 className="text-base font-semibold text-on-surface leading-snug">
             {claim.providerName ?? "—"}
           </h2>
-          <span className={`shrink-0 text-[10px] font-semibold px-2 py-1 rounded-lg ${STATE_CLS[claim.state]}`}>
-            {STATE_LABEL[claim.state]}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className={`text-[10px] font-semibold px-2 py-1 rounded-lg ${STATE_CLS[claim.state]}`}>
+              {STATE_LABEL[claim.state]}
+            </span>
+            <button
+              onClick={onBack}
+              aria-label="Fechar"
+              className="p-1.5 rounded-lg text-on-surface-variant hover:bg-on-surface-variant/10 transition"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </div>
         <p className="text-2xl font-bold text-on-surface tabular-nums">
           {claim.amount != null ? formatBRL(claim.amount) : "—"}
@@ -440,6 +443,17 @@ function Detail({
   );
 }
 
+// ─────────────────────────────────────────────────────────── sorting
+
+const COLUMNS: { key: SortKey; label: string; align?: "right"; hideOnMobile?: boolean }[] = [
+  { key: "date", label: "Data" },
+  { key: "provider", label: "Prestador" },
+  { key: "patient", label: "Paciente", hideOnMobile: true },
+  { key: "amount", label: "Valor", align: "right" },
+  { key: "state", label: "Situação" },
+  { key: "owner", label: "Quem faz", hideOnMobile: true }
+];
+
 // ─────────────────────────────────────────────────────────── page
 
 export function QueueClient() {
@@ -473,6 +487,15 @@ export function QueueClient() {
 
   const selected = claims.find((c) => c.id === selectedId) ?? null;
 
+  useEffect(() => {
+    if (!selectedId) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setSelectedId(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedId]);
+
   async function advance(to: ClaimState, extra: { amount?: number; submittedAt?: string }) {
     if (!selected) return;
     setBusy(true);
@@ -493,10 +516,23 @@ export function QueueClient() {
     }
   }
 
-  const groups = useMemo(
-    () => STATE_ORDER.map((s) => ({ state: s, items: claims.filter((c) => c.state === s) }))
-      .filter((g) => g.items.length > 0),
-    [claims]
+  // Default order = the work to be done first, biggest amount at the top of
+  // each state. She can re-sort by any column from there.
+  const [sortKey, setSortKey] = useState<SortKey>("state");
+  const [sortDir, setSortDir] = useState<1 | -1>(1);
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === 1 ? -1 : 1));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(defaultDir(key));
+  }
+
+  const sorted = useMemo(
+    () => sortClaims(claims, sortKey, sortDir),
+    [claims, sortKey, sortDir]
   );
 
   const pendingTotal = useMemo(
@@ -533,82 +569,138 @@ export function QueueClient() {
   }
 
   return (
-    <div className="lg:grid lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] lg:gap-6">
-      {/* list */}
-      <div className={`${selected ? "hidden lg:block" : ""} space-y-5`}>
-        {warnings.map((w) => (
-          <p key={w} className="text-[11px] text-[#f59e0b] flex items-start gap-1">
-            <AlertTriangle size={11} className="mt-0.5 shrink-0" /> {w}
-          </p>
-        ))}
+    <div className="space-y-4">
+      {warnings.map((w) => (
+        <p key={w} className="text-[11px] text-[#f59e0b] flex items-start gap-1">
+          <AlertTriangle size={11} className="mt-0.5 shrink-0" /> {w}
+        </p>
+      ))}
 
-        <div className="rounded-xl border border-outline-variant p-3">
-          <p className="text-[10px] uppercase tracking-wider text-on-surface-variant">A receber do plano</p>
-          <p className="text-lg font-bold text-on-surface tabular-nums">{formatBRL(pendingTotal)}</p>
-        </div>
+      <div className="flex items-baseline gap-2">
+        <span className="text-[10px] uppercase tracking-wider text-on-surface-variant">
+          A receber do plano
+        </span>
+        <span className="text-lg font-bold text-on-surface tabular-nums">
+          {formatBRL(pendingTotal)}
+        </span>
+        <span className="text-[11px] text-on-surface-variant">· {claims.length} notas</span>
+      </div>
 
-        {groups.map((g) => (
-          <section key={g.state}>
-            <h2 className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">
-              {STATE_LABEL[g.state]} ({g.items.length})
-            </h2>
-            <div className="space-y-2">
-              {g.items.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => { setSelectedId(c.id); setActionError(null); }}
-                  className={`w-full text-left p-3 rounded-xl border transition ${
-                    c.id === selectedId
-                      ? "border-primary bg-primary/5"
-                      : "border-outline-variant bg-surface-container-lowest hover:border-primary/40"
-                  }`}
+      <div className="overflow-x-auto rounded-xl border border-outline-variant">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-outline-variant">
+              {COLUMNS.map((col) => (
+                <th
+                  key={col.key}
+                  scope="col"
+                  aria-sort={
+                    sortKey === col.key ? (sortDir === 1 ? "ascending" : "descending") : "none"
+                  }
+                  className={`${col.hideOnMobile ? "hidden sm:table-cell" : ""} ${
+                    col.align === "right" ? "text-right" : "text-left"
+                  } p-0`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="text-sm font-medium text-on-surface truncate">{c.providerName ?? "—"}</p>
-                    <span className="text-sm font-semibold text-on-surface tabular-nums shrink-0">
-                      {c.amount != null ? formatBRL(c.amount) : "—"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className="text-[10px] text-on-surface-variant">{fmt(c.emissionDate)}</span>
-                    {c.patient && <span className="text-[10px] text-on-surface-variant">· {c.patient}</span>}
-                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${OWNER_CLS[c.guidance.owner]}`}>
-                      {OWNER_LABEL[c.guidance.owner]}
-                    </span>
-                    {c.insurer === "anterior" && (
-                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded text-[#f59e0b] bg-[#f59e0b]/10">
-                        Bradesco
-                      </span>
-                    )}
-                    {c.gaps.length > 0 && (
-                      <span className="text-[10px] text-[#f59e0b] inline-flex items-center gap-0.5">
-                        <AlertTriangle size={9} /> {c.gaps.length}
-                      </span>
-                    )}
-                  </div>
-                </button>
+                  <button
+                    onClick={() => toggleSort(col.key)}
+                    className={`w-full px-3 py-2.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider transition hover:text-on-surface ${
+                      col.align === "right" ? "justify-end" : ""
+                    } ${sortKey === col.key ? "text-on-surface" : "text-on-surface-variant"}`}
+                  >
+                    {col.label}
+                    {sortKey === col.key &&
+                      (sortDir === 1 ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
+                  </button>
+                </th>
               ))}
-            </div>
-          </section>
-        ))}
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((c) => (
+              <tr
+                key={c.id}
+                onClick={() => { setSelectedId(c.id); setActionError(null); }}
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedId(c.id);
+                    setActionError(null);
+                  }
+                }}
+                className="border-b border-outline-variant last:border-0 cursor-pointer hover:bg-primary/5 focus:bg-primary/5 focus:outline-none"
+              >
+                <td className="px-3 py-2.5 text-[12px] text-on-surface-variant whitespace-nowrap tabular-nums">
+                  {fmt(c.emissionDate)}
+                </td>
+                <td className="px-3 py-2.5 text-on-surface">
+                  <span className="font-medium">{c.providerName ?? "—"}</span>
+                  {c.insurer === "anterior" && (
+                    <span className="ml-1.5 text-[9px] font-semibold px-1.5 py-0.5 rounded text-[#f59e0b] bg-[#f59e0b]/10 whitespace-nowrap">
+                      Bradesco
+                    </span>
+                  )}
+                  {c.gaps.length > 0 && (
+                    <span
+                      title={c.gaps.map((g) => GAP_LABEL[g]).join(" · ")}
+                      className="ml-1.5 text-[10px] text-[#f59e0b] inline-flex items-center gap-0.5 align-middle"
+                    >
+                      <AlertTriangle size={10} /> {c.gaps.length}
+                    </span>
+                  )}
+                  {/* On a phone the patient column is hidden — keep the name visible here. */}
+                  {c.patient && (
+                    <span className="sm:hidden block text-[11px] text-on-surface-variant">
+                      {c.patient}
+                    </span>
+                  )}
+                </td>
+                <td className="hidden sm:table-cell px-3 py-2.5 text-[12px] text-on-surface-variant">
+                  {c.patient ?? "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right font-semibold text-on-surface tabular-nums whitespace-nowrap">
+                  {c.amount != null ? formatBRL(c.amount) : "—"}
+                </td>
+                <td className="px-3 py-2.5">
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg whitespace-nowrap ${STATE_CLS[c.state]}`}
+                  >
+                    {STATE_LABEL[c.state]}
+                  </span>
+                </td>
+                <td className="hidden sm:table-cell px-3 py-2.5">
+                  <span
+                    className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg whitespace-nowrap ${OWNER_CLS[c.guidance.owner]}`}
+                  >
+                    {OWNER_LABEL[c.guidance.owner]}
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* detail */}
-      <div className={selected ? "" : "hidden lg:block"}>
-        {selected ? (
-          <Detail
-            claim={selected}
-            onBack={() => setSelectedId(null)}
-            onAdvance={advance}
-            busy={busy}
-            error={actionError}
-          />
-        ) : (
-          <div className="hidden lg:flex items-center justify-center h-full text-sm text-on-surface-variant">
-            Escolha uma nota à esquerda.
+      {selected && (
+        <div
+          onClick={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl bg-surface-container-lowest border-t sm:border border-outline-variant max-h-[92vh] overflow-y-auto p-4 sm:p-5"
+          >
+            <Detail
+              claim={selected}
+              onBack={() => setSelectedId(null)}
+              onAdvance={advance}
+              busy={busy}
+              error={actionError}
+            />
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
