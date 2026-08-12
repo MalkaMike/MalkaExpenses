@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { syncPluggyItem } from "@/lib/pluggy/sync";
 import { verifyCronSecret } from "@/lib/auth/cron";
+import { checkIngestFreshness, freshnessAlertHtml } from "@/lib/pluggy/freshness";
+import { sendEmail } from "@/lib/gmail/send";
+import { env } from "@/lib/env";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -32,13 +35,46 @@ export async function GET(req: NextRequest) {
   }
 
   let inserted = 0;
+  // syncPluggyItem collects non-fatal failures in `errors` instead of throwing.
+  // This used to be discarded here, so a sync could fail every account and still
+  // report ok:true — the error channel existed and nothing ever read it.
+  const errors: string[] = [];
   for (const id of itemIds) {
     try {
       const r = await syncPluggyItem(sb, id);
       inserted += r.inserted;
+      errors.push(...r.errors);
     } catch (e) {
-      console.error("[cron pluggy-sync] item failed", id, e);
+      errors.push(`item ${id} threw: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  return NextResponse.json({ ok: true, items: itemIds.length, inserted });
+  if (errors.length) console.error("[cron pluggy-sync] errors", errors);
+
+  // Liveness check. `inserted: 0` is normal on a quiet day, so a single run
+  // proves nothing — only the age of the newest ingested row does.
+  const freshness = await checkIngestFreshness(sb);
+  if (freshness.isStale) {
+    console.error("[cron pluggy-sync] INGESTION STALE", freshness);
+    if (env.ALERT_EMAIL) {
+      try {
+        await sendEmail({
+          to: env.ALERT_EMAIL,
+          subject: `[Casa] Sem transações novas há ${freshness.daysStale ?? "?"} dias`,
+          body_html: freshnessAlertHtml(freshness, errors)
+        });
+      } catch (e) {
+        // The alarm failing must not take the sync down with it, but it must
+        // not vanish either — a silent alarm is worse than none.
+        console.error("[cron pluggy-sync] freshness alert failed to send", e);
+      }
+    }
+  }
+
+  return NextResponse.json({
+    ok: errors.length === 0,
+    items: itemIds.length,
+    inserted,
+    errors,
+    freshness
+  });
 }

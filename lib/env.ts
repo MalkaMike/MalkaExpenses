@@ -19,6 +19,10 @@ const schema = z.object({
   // No min-length here: the value is "sensitive" in Vercel (unreadable via API),
   // and a failed parse would crash the whole app at boot.
   CRON_SECRET: z.string().optional(),
+  // Where operational alarms go (e.g. "bank ingestion has gone quiet").
+  // Unset = alarms still hit the server logs but nobody is emailed, which is
+  // how a 10-week outage went unnoticed in Aug 2026. Set it.
+  ALERT_EMAIL: z.string().email().optional(),
   // Gmail OAuth for nota fiscal lookup (admin only)
   GOOGLE_OAUTH_CLIENT_ID: z.string().optional(),
   GOOGLE_OAUTH_CLIENT_SECRET: z.string().optional(),
@@ -38,6 +42,7 @@ export const env = schema.parse({
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
   GOOGLE_GENAI_API_KEY: process.env.GOOGLE_GENAI_API_KEY,
   CRON_SECRET: process.env.CRON_SECRET,
+  ALERT_EMAIL: process.env.ALERT_EMAIL,
   GOOGLE_OAUTH_CLIENT_ID: process.env.GOOGLE_OAUTH_CLIENT_ID,
   GOOGLE_OAUTH_CLIENT_SECRET: process.env.GOOGLE_OAUTH_CLIENT_SECRET,
   NEXT_PUBLIC_APP_NAME: process.env.NEXT_PUBLIC_APP_NAME
