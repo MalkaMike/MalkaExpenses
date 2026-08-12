@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   CheckCircle2, Send, Loader2, AlertTriangle, FileText, ChevronLeft,
-  Stethoscope, User, Building2, Phone, ArrowRight, Wallet
+  Stethoscope, User, Building2, Phone, ArrowRight, Wallet,
+  ClipboardList, Upload, Paperclip
 } from "lucide-react";
 import { formatDate, formatBRL } from "@/lib/format";
 import {
@@ -13,6 +14,9 @@ import {
   GAP_LABEL, PATIENT_SOURCE_LABEL, REQUIRED_DOCUMENTS,
   type ClaimGap, type PatientSource
 } from "@/lib/health/claim-info";
+import {
+  OWNER_LABEL, INSURER_LABEL, type ClaimOwner, type Guidance, type Insurer
+} from "@/lib/health/claim-guidance";
 
 type Claim = {
   id: string;
@@ -37,6 +41,14 @@ type Claim = {
   submittedAt: string | null;
   notes: string | null;
   gaps: ClaimGap[];
+  guidance: Guidance;
+  insurer: Insurer;
+};
+
+const OWNER_CLS: Record<ClaimOwner, string> = {
+  secretary: "text-primary bg-primary/10",
+  mickael: "text-[#8b5cf6] bg-[#8b5cf6]/10",
+  blocked: "text-on-surface-variant bg-on-surface-variant/10"
 };
 
 const STATE_CLS: Record<ClaimState, string> = {
@@ -49,6 +61,116 @@ const STATE_CLS: Record<ClaimState, string> = {
 
 function fmt(d: string | null) {
   return d ? formatDate(d.slice(0, 10)) : "—";
+}
+
+type Attachment = { name: string; size: number | null; uploadedAt: string | null; url: string };
+
+/**
+ * Documents the secretary collects for this claim. They are parked here so the
+ * whole set can be attached to one email to the insurer later — which is why
+ * the count is what matters, not any single file.
+ */
+function Attachments({ claimId }: { claimId: string }) {
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const input = useRef<HTMLInputElement>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const r = await fetch(`/api/admin/health/queue/${claimId}/attachments`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? `erro ${r.status}`);
+      setFiles(d.attachments ?? []);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, [claimId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function upload(file: File) {
+    setBusy(true);
+    setErr(null);
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      const r = await fetch(`/api/admin/health/queue/${claimId}/attachments`, { method: "POST", body });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error ?? `erro ${r.status}`);
+      await load();
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = "";
+    }
+  }
+
+  return (
+    <section className="rounded-xl border border-outline-variant p-4 space-y-3">
+      <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant flex items-center gap-1">
+        <Paperclip size={11} /> Documentos guardados ({files.length})
+      </p>
+      <p className="text-[11px] text-on-surface-variant">
+        Guarde aqui o laudo do médico e o comprovante de pagamento. O Mickael envia tudo junto ao seguro depois.
+      </p>
+
+      {loading && <Loader2 size={14} className="animate-spin text-on-surface-variant" />}
+
+      {!loading && files.length === 0 && (
+        <p className="text-[11px] text-[#f59e0b]">Nenhum documento guardado ainda.</p>
+      )}
+
+      {files.map((f) => (
+        <a
+          key={f.name}
+          href={f.url}
+          target="_blank"
+          rel="noreferrer"
+          className="flex items-center gap-2 text-[12px] text-primary hover:underline"
+        >
+          <FileText size={12} className="shrink-0" />
+          <span className="truncate">{f.name}</span>
+          {f.size != null && (
+            <span className="text-on-surface-variant shrink-0">
+              {(f.size / 1024).toFixed(0)} KB
+            </span>
+          )}
+        </a>
+      ))}
+
+      <input
+        ref={input}
+        type="file"
+        accept=".pdf,image/*"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) upload(f);
+        }}
+      />
+      <button
+        onClick={() => input.current?.click()}
+        disabled={busy}
+        className="w-full py-2.5 rounded-xl bg-primary/10 text-primary font-semibold text-sm hover:bg-primary/15 transition disabled:opacity-50 flex items-center justify-center gap-2"
+      >
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+        {busy ? "Enviando..." : "Guardar documento"}
+      </button>
+
+      {err && (
+        <p className="text-[11px] text-red-400 flex items-center gap-1">
+          <AlertTriangle size={11} /> {err}
+        </p>
+      )}
+    </section>
+  );
 }
 
 function Field({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
@@ -109,10 +231,58 @@ function Detail({
         )}
       </header>
 
+      {/* The instruction comes first — it is why she opened the card. */}
+      <section className="rounded-xl border-2 border-primary/40 bg-primary/5 p-4 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-primary flex items-center gap-1">
+            <ClipboardList size={11} /> O que pedir
+          </p>
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-lg ${OWNER_CLS[claim.guidance.owner]}`}>
+            {OWNER_LABEL[claim.guidance.owner]}
+          </span>
+        </div>
+
+        {claim.guidance.groupLabel && (
+          <p className="text-[11px] font-semibold text-on-surface">{claim.guidance.groupLabel}</p>
+        )}
+
+        <ol className="space-y-1.5">
+          {claim.guidance.ask.map((a, i) => (
+            <li key={a} className="text-[12px] text-on-surface flex gap-2">
+              <span className="text-primary font-bold shrink-0">{i + 1}.</span>
+              <span>{a}</span>
+            </li>
+          ))}
+        </ol>
+
+        {claim.guidance.warning && (
+          <p className="text-[11px] text-[#f59e0b] flex items-start gap-1.5 pt-1">
+            <AlertTriangle size={11} className="mt-0.5 shrink-0" />
+            <span>{claim.guidance.warning}</span>
+          </p>
+        )}
+
+        {claim.guidance.owner === "mickael" && (
+          <p className="text-[11px] text-[#8b5cf6]">Não é com você — o Mickael cuida desta.</p>
+        )}
+        {claim.guidance.owner === "blocked" && (
+          <p className="text-[11px] text-on-surface-variant">
+            Não acione o prestador ainda — aguarda resposta do corretor.
+          </p>
+        )}
+      </section>
+
+      {claim.insurer === "anterior" && (
+        <p className="text-[11px] text-[#f59e0b] flex items-start gap-1.5">
+          <AlertTriangle size={11} className="mt-0.5 shrink-0" />
+          Atendimento anterior a 25/02/2026 — é do {INSURER_LABEL.anterior}, NÃO enviar para a APRIL.
+        </p>
+      )}
+
       {claim.gaps.length > 0 && (
         <div className="rounded-xl border border-[#f59e0b]/30 bg-[#f59e0b]/5 p-3 space-y-1.5">
           <p className="text-[10px] font-bold uppercase tracking-wider text-[#f59e0b] flex items-center gap-1">
-            <AlertTriangle size={11} /> Pendências desta nota
+            <AlertTriangle size={11} /> Falta nesta nota
           </p>
           {claim.gaps.map((g) => (
             <p key={g} className="text-[11px] text-on-surface-variant">• {GAP_LABEL[g]}</p>
@@ -188,6 +358,8 @@ function Detail({
           </p>
         </section>
       )}
+
+      <Attachments claimId={claim.id} />
 
       <section className="rounded-xl border border-outline-variant p-4 space-y-2">
         <p className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
@@ -403,6 +575,14 @@ export function QueueClient() {
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className="text-[10px] text-on-surface-variant">{fmt(c.emissionDate)}</span>
                     {c.patient && <span className="text-[10px] text-on-surface-variant">· {c.patient}</span>}
+                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${OWNER_CLS[c.guidance.owner]}`}>
+                      {OWNER_LABEL[c.guidance.owner]}
+                    </span>
+                    {c.insurer === "anterior" && (
+                      <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded text-[#f59e0b] bg-[#f59e0b]/10">
+                        Bradesco
+                      </span>
+                    )}
                     {c.gaps.length > 0 && (
                       <span className="text-[10px] text-[#f59e0b] inline-flex items-center gap-0.5">
                         <AlertTriangle size={9} /> {c.gaps.length}

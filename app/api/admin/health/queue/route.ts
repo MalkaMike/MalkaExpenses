@@ -9,6 +9,7 @@ import {
   type NfLike
 } from "@/lib/health/claim-info";
 import { isClaimState, type ClaimState } from "@/lib/health/claim-status";
+import { guidanceFor, insurerFor } from "@/lib/health/claim-guidance";
 
 export const runtime = "nodejs";
 
@@ -114,7 +115,12 @@ export async function GET() {
       reimbursedAmount: nf.reimbursement_amount == null ? null : Number(nf.reimbursement_amount),
       submittedAt: nf.reimbursement_submitted_at,
       notes: nf.reimbursement_notes,
-      gaps: claimGaps(nf, patient)
+      gaps: claimGaps(nf, patient),
+      // What to ask this provider for, and whose job it is. Also which insurer
+      // the treatment date falls under — sending a pre-25/02/2026 invoice to
+      // APRIL, or phoning a 2025 provider "for APRIL", is a wasted trip.
+      guidance: guidanceFor(nf.provider_name, nf.nf_number),
+      insurer: insurerFor(nf.emission_date)
     };
   });
 
