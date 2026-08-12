@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAnyHealthRole } from "@/lib/auth/admin";
+import { requireAnyHealthRole, getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import {
   resolvePatient,
@@ -27,6 +27,7 @@ export const runtime = "nodejs";
 // value she cannot check what the insurer paid back or prioritise by size.
 export async function GET() {
   await requireAnyHealthRole();
+  const role = await getRole();
   const sb = serverClient();
 
   const [nfRes, rosterRes, providersRes] = await Promise.all([
@@ -124,5 +125,16 @@ export async function GET() {
     };
   });
 
-  return NextResponse.json({ claims, warnings });
+  // The secretary's queue is her to-do list, so it carries only her work.
+  // Invoices Mickael kept for himself, and the ones frozen pending the broker,
+  // are filtered out server-side rather than merely greyed out — a task she
+  // must not start does not belong on the list at all. Admin/health see all.
+  const visible =
+    role === "secretary" ? claims.filter((c) => c.guidance.owner === "secretary") : claims;
+
+  return NextResponse.json({
+    claims: visible,
+    warnings,
+    hiddenFromSecretary: role === "secretary" ? claims.length - visible.length : 0
+  });
 }

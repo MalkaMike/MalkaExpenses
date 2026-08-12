@@ -65,7 +65,11 @@ function isAlwaysOpen(pathname: string): boolean {
   ) return true;
   return (
     pathname.startsWith("/api/pluggy/webhook") ||
-    pathname.startsWith("/api/cron/")
+    pathname.startsWith("/api/cron/") ||
+    // Secretary sign-in link. The route itself validates the token in constant
+    // time and 404s on anything else — it must reach the handler rather than be
+    // bounced to /login, which is the whole point of a password-free link.
+    pathname.startsWith("/celina/")
   );
 }
 

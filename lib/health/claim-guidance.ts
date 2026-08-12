@@ -15,8 +15,6 @@ export type ClaimOwner = "secretary" | "mickael" | "blocked";
 
 export type Guidance = {
   owner: ClaimOwner;
-  /** 1 = do first. Drives ordering inside each status column. */
-  priority: number;
   /** Invoices sharing a group are one process — same episode, same request. */
   group?: string;
   groupLabel?: string;
@@ -25,6 +23,9 @@ export type Guidance = {
   /** The thing that gets this claim refused if missed. */
   warning?: string;
 };
+
+// No priority ranking here, deliberately (Mickael, 2026-08-12): the secretary
+// works the whole list rather than a ranked queue. Ordering stays chronological.
 
 export const OWNER_LABEL: Record<ClaimOwner, string> = {
   secretary: "Celina",
@@ -35,7 +36,6 @@ export const OWNER_LABEL: Record<ClaimOwner, string> = {
 const BY_PROVIDER: Record<string, Guidance> = {
   "SOCIEDADE BENEF ISRAELITABRAS HOSPITAL ALBERT EINSTEIN": {
     owner: "secretary",
-    priority: 1,
     group: "ilay-apendicite",
     groupLabel: "Apendicite do Ilay — internação de 27/05/2026",
     ask: [
@@ -50,7 +50,6 @@ const BY_PROVIDER: Record<string, Guidance> = {
   },
   "FABIANA IMAGAWA SERVICOS MEDICOS LTDA": {
     owner: "secretary",
-    priority: 1,
     group: "ilay-apendicite",
     groupLabel: "Apendicite do Ilay — internação de 27/05/2026",
     ask: [
@@ -61,7 +60,6 @@ const BY_PROVIDER: Record<string, Guidance> = {
   },
   "MARIANNI CHRISTINA MOREIRA COSTA": {
     owner: "secretary",
-    priority: 2,
     ask: [
       "Um laudo único cobrindo todos os atendimentos, com o DIAGNÓSTICO — por que o Lavi faz fonoaudiologia",
       "Pedir que o laudo separe as datas das sessões"
@@ -71,7 +69,6 @@ const BY_PROVIDER: Record<string, Guidance> = {
   },
   "D V KATZ SERVIÇOS MEDICOS EIRELI ME": {
     owner: "secretary",
-    priority: 3,
     ask: [
       "Laudo da consulta com o diagnóstico",
       "Correção do nome da paciente na nota"
@@ -81,21 +78,18 @@ const BY_PROVIDER: Record<string, Guidance> = {
   },
   "FLEURY S/A": {
     owner: "mickael",
-    priority: 2,
     ask: ["Mickael liga para o Dr. Hélio"],
     warning:
       "Não é da apendicite do Ilay — é exame do próprio Mickael. O que precisa ser obtido é a INDICAÇÃO CLÍNICA registrada: se os exames investigavam algo, paga 100%; se foi check-up de rotina, cai no teto de €/$2.000 e exigia autorização prévia. Falta o PDF da nota."
   },
   "DANIEL HABIB SERVICOS MEDICOS S/S LTDA": {
     owner: "mickael",
-    priority: 3,
     ask: ["Mickael liga para o Dr. Habib"],
     warning:
       "A nota já traz CID 10 J 02 (faringite aguda) — é a mais bem documentada do lote. O Dr. Habib é também quem pode dar a indicação clínica dos exames do Fleury."
   },
   "CEDIPI - CLINICA ESP EM DOENCAS INFEC E PARAS E EM IMUN LTDA": {
     owner: "blocked",
-    priority: 3,
     ask: ["Não acionar a clínica ainda"],
     warning:
       "As notas já trazem o nome e o preço de cada vacina, que é o que a apólice exige — documento não é o problema. O problema é se vacinação de rotina tem cobertura: a apólice só cita vacinas dentro de \"medicamentos ambulatoriais (incluindo vacinas antimaláricas)\". Sem registro de envio nem de recusa no sistema. Perguntar ao corretor antes."
@@ -113,7 +107,6 @@ const BY_INVOICE: Record<string, Partial<Guidance>> = {
 /** Providers with no entry get a safe default rather than an empty panel. */
 const DEFAULT: Guidance = {
   owner: "secretary",
-  priority: 3,
   ask: ["Laudo médico datado e assinado, com o diagnóstico e a data do atendimento"]
 };
 

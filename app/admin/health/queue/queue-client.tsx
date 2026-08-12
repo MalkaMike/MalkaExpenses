@@ -262,12 +262,9 @@ function Detail({
           </p>
         )}
 
-        {claim.guidance.owner === "mickael" && (
-          <p className="text-[11px] text-[#8b5cf6]">Não é com você — o Mickael cuida desta.</p>
-        )}
         {claim.guidance.owner === "blocked" && (
           <p className="text-[11px] text-on-surface-variant">
-            Não acione o prestador ainda — aguarda resposta do corretor.
+            Aguarda resposta do corretor — não acionar o prestador ainda.
           </p>
         )}
       </section>

@@ -31,7 +31,11 @@ describe("guidanceFor", () => {
     const surgeon = guidanceFor("FABIANA IMAGAWA SERVICOS MEDICOS LTDA", "936");
     expect(einstein.group).toBe("ilay-apendicite");
     expect(surgeon.group).toBe("ilay-apendicite");
-    expect(einstein.priority).toBe(1);
+  });
+
+  it("carries no priority ranking — she works the whole list", () => {
+    const g = guidanceFor("SOCIEDADE BENEF ISRAELITABRAS HOSPITAL ALBERT EINSTEIN", "16883309");
+    expect("priority" in g).toBe(false);
   });
 
   it("puts the R$20.000 advance in the Einstein warning", () => {
