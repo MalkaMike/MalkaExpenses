@@ -22,9 +22,10 @@ export default async function QueuePage() {
         title="Fila Celina · APRIL"
         crumbs={crumbs}
       />
-      <div className="px-4 pt-5 max-w-2xl mx-auto pb-28">
+      <div className="px-4 pt-5 max-w-6xl mx-auto pb-28">
         <p className="text-[11px] text-on-surface-variant mb-5">
-          Processos enviados por email. Confirme o recebimento dos documentos e depois que enviou ao seguro.
+          Todas as notas médicas da família. Abra uma nota para ver o médico, o registro,
+          o valor e o PDF, e vá marcando conforme envia ao seguro.
         </p>
         <QueueClient />
       </div>

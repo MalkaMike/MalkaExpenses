@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/auth/admin";
+import { requireAnyHealthRole, getRole } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { downloadFile, type StorageBucket } from "@/lib/storage/supabase-storage";
 import { readFile } from "fs/promises";
@@ -15,18 +15,28 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  await requireAdmin();
+  // Opened to the secretary so she can attach the invoice to the claim —
+  // without it her queue is unworkable. Scoped below: she gets medical
+  // invoices only, never the flight/education ones that share this table.
+  await requireAnyHealthRole();
+  const role = await getRole();
 
   const { id } = await params;
   const sb = serverClient();
 
   const { data: nf } = await sb
     .from("nota_fiscais")
-    .select("file_name, provider_name, storage_bucket, storage_path")
+    .select("file_name, provider_name, storage_bucket, storage_path, is_medical")
     .eq("id", id)
     .maybeSingle();
 
   if (!nf) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+
+  if (role === "secretary" && !nf.is_medical) {
+    // 404 rather than 403 — don't confirm the row exists to a role that has
+    // no business knowing about it.
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
