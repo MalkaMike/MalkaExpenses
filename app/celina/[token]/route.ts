@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import { isValidSecretaryLink } from "@/lib/auth/secretary-link";
 import { loginSecretary } from "@/lib/auth/secretary";
 import { writeAudit } from "@/lib/auth/admin";
@@ -23,6 +24,13 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     await writeAudit("secretary_link_rejected", { newValue: { ok: false } });
     return new NextResponse("Not Found", { status: 404 });
   }
+
+  // Drop any other role first, matching what the password login does. Without
+  // this, opening the link while signed in as admin leaves the admin cookie in
+  // place — getRole() checks admin first, so you would keep the admin view and
+  // believe you were looking at the secretary's.
+  const jar = await cookies();
+  for (const name of ["pf_admin", "pf_health", "pf_household"]) jar.delete(name);
 
   await loginSecretary();
   await writeAudit("secretary_link_login", { newValue: { ok: true } });
