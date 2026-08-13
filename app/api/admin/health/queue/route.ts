@@ -136,36 +136,37 @@ export async function GET() {
   const visible =
     role === "secretary" ? claims.filter((c) => c.guidance.owner === "secretary") : claims;
 
-  // How many documents are already collected per claim. This is the single
-  // fact that answers "where did I stop?" without opening every card — without
-  // it every session starts blind.
+  // How many documents are already collected per claim — the single fact that
+  // answers "where did I stop?" without opening every card.
   //
-  // Object storage has no count API, so this is one prefix listing per visible
-  // claim, in parallel. That is ~23-33 calls on a 33-invoice table: acceptable
-  // here, and the honest cost of keeping storage itself as the record with no
-  // second table to drift. If this list ever grows past a few hundred, move the
-  // counts to their own table rather than widening the fan-out.
+  // ONE query against the storage metadata (view `claim_attachment_counts`).
+  // The first version listed the bucket once per claim, ~23 parallel calls from
+  // a serverless function; it worked in dev and returned nothing in production,
+  // so every row showed "?" and both document filters counted zero.
   const counts = new Map<string, number>();
-  const listed = await Promise.all(
-    visible.map(async (c) => {
-      const { data, error } = await sb.storage
-        .from("claim-attachments")
-        .list(c.id, { limit: 100 });
-      if (error) return { id: c.id, n: null as number | null };
-      // Supabase returns a placeholder row for an empty prefix.
-      return { id: c.id, n: (data ?? []).filter((f) => f.name && f.id !== null).length };
-    })
-  );
-  const failed = listed.filter((r) => r.n === null).length;
-  for (const r of listed) if (r.n !== null) counts.set(r.id, r.n);
-  if (failed > 0) {
+  let countsFailed: string | null = null;
+  const countRes = await sb
+    .from("claim_attachment_counts")
+    .select("nota_fiscal_id, attachment_count");
+  if (countRes.error) {
+    countsFailed = countRes.error.message;
     // "Unknown" must never render as "zero documents" — that would send her to
-    // re-collect paperwork she already has.
-    warnings.push(`não consegui contar os documentos de ${failed} nota(s)`);
+    // re-collect paperwork she already has. The message goes with it, so the
+    // next person does not have to guess like I did.
+    warnings.push(`não consegui contar os documentos guardados: ${countsFailed}`);
+  } else {
+    for (const row of countRes.data ?? []) {
+      counts.set(row.nota_fiscal_id as string, Number(row.attachment_count));
+    }
   }
 
   return NextResponse.json({
-    claims: visible.map((c) => ({ ...c, attachmentCount: counts.get(c.id) ?? null })),
+    // A claim absent from the view genuinely has no documents — that is 0, not
+    // unknown. Only a failed query makes the count unknowable.
+    claims: visible.map((c) => ({
+      ...c,
+      attachmentCount: countsFailed ? null : counts.get(c.id) ?? 0
+    })),
     warnings,
     hiddenFromSecretary: role === "secretary" ? claims.length - visible.length : 0
   });

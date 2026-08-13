@@ -181,6 +181,14 @@ export const GAP_LABEL: Record<ClaimGap, string> = {
   no_cnpj: "Sem CNPJ do prestador — consta no PDF"
 };
 
+/** Two or three words, for the reason column in the list. */
+export const GAP_SHORT: Record<ClaimGap, string> = {
+  patient_unknown: "Falta o paciente",
+  patient_unconfirmed: "Confirmar paciente",
+  no_pdf: "Falta o PDF",
+  no_cnpj: "Falta o CNPJ"
+};
+
 export const PATIENT_SOURCE_LABEL: Record<PatientSource, string> = {
   field: "cadastrado no sistema",
   description: "lido da descrição da nota",

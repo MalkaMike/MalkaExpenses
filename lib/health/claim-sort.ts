@@ -9,7 +9,9 @@
 import { STATE_ORDER, type ClaimState } from "./claim-status";
 import type { ClaimOwner } from "./claim-guidance";
 
-export type SortKey = "date" | "provider" | "patient" | "amount" | "state" | "owner" | "docs";
+export type SortKey =
+  | "date" | "provider" | "patient" | "amount" | "state" | "owner" | "docs"
+  | "insurer" | "gap";
 
 /** Only the fields the table sorts on — the row type is free to carry more. */
 export type SortableClaim = {
@@ -19,6 +21,10 @@ export type SortableClaim = {
   amount: number | null;
   state: ClaimState;
   guidance: { owner: ClaimOwner };
+  /** Which insurer the treatment date falls under. */
+  insurer?: "april" | "anterior";
+  /** Blocking gaps only; the list column shows the first one. */
+  blockingGaps?: string[];
   /** null = the count could not be read. Never treat that as zero. */
   attachmentCount?: number | null;
 };
@@ -36,6 +42,10 @@ function sortValue(c: SortableClaim, key: SortKey): number | string | null {
     // undefined and null both mean "unknown" and sort to the end, so an
     // unreadable count never masquerades as "no documents yet".
     case "docs": return c.attachmentCount ?? null;
+    // APRIL first: those are the claims that can still be filed today.
+    case "insurer": return c.insurer === "april" ? 0 : 1;
+    // Blocked rows first — they are the ones needing a phone call.
+    case "gap": return (c.blockingGaps?.length ?? 0) > 0 ? 0 : 1;
   }
 }
 
