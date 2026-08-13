@@ -43,7 +43,7 @@ export async function GET() {
       .eq("is_medical", true)
       .order("emission_date", { ascending: false }),
     sb.from("policy_dependents").select("name, relationship"),
-    sb.from("family_providers").select("full_name, specialty, phone, clinic")
+    sb.from("family_providers").select("cnpj, full_name, specialty, phone, whatsapp, clinic, address, notes, confidence")
   ]);
 
   if (nfRes.error) {
@@ -57,15 +57,37 @@ export async function GET() {
   if (providersRes.error) warnings.push(`lista de médicos indisponível: ${providersRes.error.message}`);
 
   const roster = (rosterRes.data ?? []).map((d) => d.name as string).filter(Boolean);
-  const specialtyByName = new Map<string, { specialty: string | null; clinic: string | null; phone: string | null }>();
+  type Contact = {
+    specialty: string | null;
+    clinic: string | null;
+    phone: string | null;
+    whatsapp: string | null;
+    address: string | null;
+    contactNotes: string | null;
+    contactConfidence: string | null;
+  };
+
+  // Two lookups. CNPJ is the real key: an invoice carries the billing entity's
+  // legal name ("SOCIEDADE BENEF ISRAELITABRAS...") and never the doctor's, so
+  // matching on the name failed on nearly every row and the secretary saw "sem
+  // telefone cadastrado" for the one task she has. Name stays as the fallback
+  // for practitioners who bill personally.
+  const byCnpj = new Map<string, Contact>();
+  const byName = new Map<string, Contact>();
+  const digits = (v: string | null | undefined) => (v ?? "").replace(/\D/g, "");
+
   for (const p of providersRes.data ?? []) {
-    if (p.full_name) {
-      specialtyByName.set((p.full_name as string).toUpperCase(), {
-        specialty: (p.specialty as string) ?? null,
-        clinic: (p.clinic as string) ?? null,
-        phone: (p.phone as string) ?? null
-      });
-    }
+    const contact: Contact = {
+      specialty: (p.specialty as string) ?? null,
+      clinic: (p.clinic as string) ?? null,
+      phone: (p.phone as string) ?? null,
+      whatsapp: (p.whatsapp as string) ?? null,
+      address: (p.address as string) ?? null,
+      contactNotes: (p.notes as string) ?? null,
+      contactConfidence: (p.confidence as string) ?? null
+    };
+    if (p.cnpj) byCnpj.set(digits(p.cnpj as string), contact);
+    if (p.full_name) byName.set((p.full_name as string).toUpperCase(), contact);
   }
 
   const claims = (nfRes.data ?? []).map((row) => {
@@ -85,7 +107,9 @@ export async function GET() {
 
     const patient = resolvePatient(nf, roster);
     const council = extractCouncilId(nf.service_description);
-    const known = specialtyByName.get((nf.provider_name ?? "").toUpperCase());
+    const known =
+      byCnpj.get(digits(nf.provider_cnpj)) ??
+      byName.get((nf.provider_name ?? "").toUpperCase());
     const state: ClaimState = isClaimState(nf.reimbursement_status)
       ? nf.reimbursement_status
       : "not_submitted";
@@ -104,6 +128,12 @@ export async function GET() {
       specialty: known?.specialty ?? null,
       clinic: known?.clinic ?? null,
       phone: known?.phone ?? null,
+      whatsapp: known?.whatsapp ?? null,
+      providerAddress: known?.address ?? null,
+      contactNotes: known?.contactNotes ?? null,
+      // 'probable'/'unconfirmed' means nobody has dialled it. The UI says so
+      // rather than presenting a web-search result as a verified number.
+      contactConfidence: known?.contactConfidence ?? null,
       patient: patient.name || null,
       patientSource: patient.source,
       patientConfirmed: patient.confirmed,

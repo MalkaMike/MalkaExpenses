@@ -31,6 +31,10 @@ type Claim = {
   specialty: string | null;
   clinic: string | null;
   phone: string | null;
+  whatsapp: string | null;
+  providerAddress: string | null;
+  contactNotes: string | null;
+  contactConfidence: string | null;
   patient: string | null;
   patientSource: PatientSource;
   patientConfirmed: boolean;
@@ -399,18 +403,32 @@ function Detail({
           <section className="space-y-2">
             <Label>Falar com o prestador</Label>
             {claim.phone ? (
-              <div className="flex flex-wrap gap-2">
-                <a href={`tel:${claim.phone}`} className={PILL_FILLED}>
-                  <Phone size={14} /> {claim.phone}
-                </a>
-                <a
-                  href={`https://wa.me/${waNumber(claim.phone)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={PILL_OUTLINED}
-                >
-                  WhatsApp
-                </a>
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-2">
+                  <a href={`tel:${claim.phone}`} className={PILL_FILLED}>
+                    <Phone size={14} /> {claim.phone}
+                  </a>
+                  <a
+                    href={`https://wa.me/${waNumber(claim.whatsapp ?? claim.phone)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={PILL_OUTLINED}
+                  >
+                    WhatsApp
+                  </a>
+                </div>
+                {claim.providerAddress && (
+                  <p className="text-ap-caption text-ash">{claim.providerAddress}</p>
+                )}
+                {/* Never present a web-search result as a verified number. */}
+                {claim.contactConfidence !== "confirmed" && (
+                  <p className="text-ap-caption text-ash">
+                    Contato encontrado em busca pública, ainda não confirmado por ligação.
+                  </p>
+                )}
+                {claim.contactNotes && (
+                  <p className="text-ap-caption text-carbon">{claim.contactNotes}</p>
+                )}
               </div>
             ) : (
               // An absence must look like a gap, not like nothing.
