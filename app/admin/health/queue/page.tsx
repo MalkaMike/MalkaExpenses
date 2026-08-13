@@ -16,13 +16,13 @@ export default async function QueuePage() {
   return (
     <>
       <PageHeader title="Reembolsos de saúde" crumbs={crumbs} />
-      <div className="mx-auto max-w-5xl px-4 pb-28 pt-6">
+      <div className="mx-auto max-w-3xl px-4 pb-28 pt-6">
         <p className="mb-6 text-ap-body font-light text-ash">
-          Uma linha por nota. Clique numa linha para ver o que pedir ao médico, guardar os
-          documentos e abrir o PDF.
+          Um prestador por linha. Abra um para ver o que pedir, ligar e guardar os documentos —
+          uma ligação resolve todas as notas daquele prestador.
         </p>
-        {/* Role decides density and which columns carry information: for the
-            secretary "Quem faz" is always her own name. */}
+        {/* Role decides whose progress the bar counts: for the secretary it is
+            her own steps, not the ones that are Mickael's. */}
         <QueueClient role={role} />
       </div>
     </>

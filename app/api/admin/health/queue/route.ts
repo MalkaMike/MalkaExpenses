@@ -188,52 +188,42 @@ export async function GET() {
   const visible =
     role === "secretary" ? claims.filter((c) => c.guidance.owner === "secretary") : claims;
 
-  // How many documents are already collected per claim — the single fact that
-  // answers "where did I stop?" without opening every card.
-  //
-  // ONE query against the storage metadata (view `claim_attachment_counts`).
-  // The first version listed the bucket once per claim, ~23 parallel calls from
-  // a serverless function; it worked in dev and returned nothing in production,
-  // so every row showed "?" and both document filters counted zero.
-  const counts = new Map<string, number>();
+  // Documents and ticked steps are keyed by PROVIDER now, because one report
+  // covers all of that provider's visits. Both read in one query each; the
+  // client groups the claims with the same pure function the tests cover.
+  const attachmentsByKey: Record<string, number> = {};
   let countsFailed: string | null = null;
   const countRes = await sb
-    .from("claim_attachment_counts")
-    .select("nota_fiscal_id, attachment_count");
+    .from("provider_attachment_counts")
+    .select("provider_key, attachment_count");
   if (countRes.error) {
     countsFailed = countRes.error.message;
     // "Unknown" must never render as "zero documents" — that would send her to
-    // re-collect paperwork she already has. The message goes with it, so the
-    // next person does not have to guess like I did.
+    // re-collect paperwork she already has.
     warnings.push(`não consegui contar os documentos guardados: ${countsFailed}`);
   } else {
     for (const row of countRes.data ?? []) {
-      counts.set(row.nota_fiscal_id as string, Number(row.attachment_count));
+      attachmentsByKey[row.provider_key as string] = Number(row.attachment_count);
     }
   }
 
-  // Which request steps are already ticked, for every claim, in one query.
-  const stepsDone = new Map<string, number[]>();
-  const doneRes = await sb.from("claim_steps").select("nota_fiscal_id, step_index");
+  const stepsDoneByKey: Record<string, number[]> = {};
+  const doneRes = await sb.from("provider_steps").select("provider_key, step_index");
   if (doneRes.error) {
     warnings.push(`não consegui ler os passos já feitos: ${doneRes.error.message}`);
   } else {
     for (const row of doneRes.data ?? []) {
-      const id = row.nota_fiscal_id as string;
-      const list = stepsDone.get(id) ?? [];
-      list.push(Number(row.step_index));
-      stepsDone.set(id, list);
+      const k = row.provider_key as string;
+      (stepsDoneByKey[k] ??= []).push(Number(row.step_index));
     }
   }
 
   return NextResponse.json({
-    // A claim absent from the view genuinely has no documents — that is 0, not
-    // unknown. Only a failed query makes the count unknowable.
-    claims: visible.map((c) => ({
-      ...c,
-      attachmentCount: countsFailed ? null : counts.get(c.id) ?? 0,
-      stepsDone: stepsDone.get(c.id) ?? []
-    })),
+    claims: visible,
+    // null = the counts could not be read at all. A provider missing from the
+    // map genuinely has no documents, which is 0 — the client tells them apart.
+    attachmentsByKey: countsFailed ? null : attachmentsByKey,
+    stepsDoneByKey,
     warnings,
     hiddenFromSecretary: role === "secretary" ? claims.length - visible.length : 0
   });
