@@ -11,23 +11,19 @@ export default async function QueuePage() {
     redirect("/login?next=/admin/health/queue");
   }
 
-  const crumbs =
-    role === "secretary"
-      ? []
-      : [{ href: "/admin/health", label: "Saúde" }];
+  const crumbs = role === "secretary" ? [] : [{ href: "/admin/health", label: "Saúde" }];
 
   return (
     <>
-      <PageHeader
-        title="Fila Celina · APRIL"
-        crumbs={crumbs}
-      />
-      <div className="px-4 pt-5 max-w-6xl mx-auto pb-28">
-        <p className="text-[11px] text-on-surface-variant mb-5">
-          Uma linha por nota médica. Clique no título de uma coluna para ordenar do seu jeito,
-          e clique na linha para abrir a nota — médico, registro, valor, PDF e o que pedir.
+      <PageHeader title="Reembolsos de saúde" crumbs={crumbs} />
+      <div className="mx-auto max-w-5xl px-4 pb-28 pt-6">
+        <p className="mb-6 text-ap-body font-light text-ash">
+          Uma linha por nota. Clique numa linha para ver o que pedir ao médico, guardar os
+          documentos e abrir o PDF.
         </p>
-        <QueueClient />
+        {/* Role decides density and which columns carry information: for the
+            secretary "Quem faz" is always her own name. */}
+        <QueueClient role={role} />
       </div>
     </>
   );

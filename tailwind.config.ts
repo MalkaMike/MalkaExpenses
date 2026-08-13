@@ -78,6 +78,23 @@ const config: Config = {
         // Background alias
         "background":    "#fbf9f6",
         "on-background": "#1b1c1a",
+
+        // ── Apple style reference (DESIGN.md) ──────────────────────────────
+        // Piloted on the health claim queue. Kept as its own named set so it
+        // never silently overrides the Stitch palette above; rolling it out
+        // further is a deliberate per-screen decision, not a side effect.
+        "apple-blue":   "#0071e3", // filled action buttons ONLY — never text
+        "link-blue":    "#0066cc", // outlined action borders, inline links
+        "signal-blue":  "#2997ff", // decorative borders and icon strokes
+        "carbon":       "#1d1d1f", // primary ink
+        "frost":        "#f5f5f7", // page canvas
+        "ice":          "#f4f8fb", // elevated wash
+        "smoke":        "#333333",
+        "graphite":     "#474747",
+        "ash":          "#707070", // muted body text
+        "mist":         "#858585",
+        "hairline":     "#d2d2d7", // the only border colour on light surfaces
+        "pebble":       "#e2e2e5", // button fills, disabled surfaces
       },
 
       fontFamily: {
@@ -99,6 +116,15 @@ const config: Config = {
         "label-md":          ["0.75rem", { lineHeight: "1rem",     letterSpacing: "0.02em",  fontWeight: "500" }],
         "currency-lg":       ["2rem",    { lineHeight: "2.5rem",   fontWeight: "700" }],
         "currency-md":       ["1rem",    { lineHeight: "1.5rem",   fontWeight: "600" }],
+
+        // Apple scale (DESIGN.md). The negative tracking is what makes this
+        // type read as precise rather than merely large — it is not optional.
+        "ap-caption":     ["12px", { lineHeight: "1.33", letterSpacing: "-0.264px" }],
+        "ap-body-sm":     ["14px", { lineHeight: "1.29", letterSpacing: "-0.224px" }],
+        "ap-body":        ["17px", { lineHeight: "1.47", letterSpacing: "-0.272px" }],
+        "ap-subheading":  ["21px", { lineHeight: "1.24", letterSpacing: "-0.105px" }],
+        "ap-heading-sm":  ["28px", { lineHeight: "1.18", letterSpacing: "0.196px" }],
+        "ap-heading":     ["40px", { lineHeight: "1.14", letterSpacing: "0.44px" }],
       },
 
       borderRadius: {
@@ -109,6 +135,10 @@ const config: Config = {
         "2xl":   "1rem",
         "3xl":   "1.5rem",
         full:    "9999px",
+        // Apple has exactly two radii: 8px for cards/images/inputs, and a full
+        // capsule for every interactive pill. Nothing in between.
+        "ap-card": "8px",
+        "ap-pill": "980px",
       },
 
       boxShadow: {

@@ -28,7 +28,15 @@ describe("packToken / unpackToken", () => {
   it("rejects tampered signature", async () => {
     const token = await packToken("household");
     const parts = token.split(".");
-    parts[3] = parts[3].replace(/a/g, "b"); // corrupt hex sig
+    // Flip the first hex digit to a DIFFERENT one. The previous version did
+    // `.replace(/a/g, "b")`, which left the signature untouched whenever it
+    // happened to contain no "a" — the test then handed unpackToken a perfectly
+    // valid token and failed at random. A test of a signature check must be
+    // certain it actually changed the signature.
+    const sig = parts[3];
+    const flipped = sig[0] === "0" ? "1" : "0";
+    parts[3] = flipped + sig.slice(1);
+    expect(parts[3]).not.toBe(sig);
     expect(await unpackToken(parts.join("."), "household")).toBeNull();
   });
 

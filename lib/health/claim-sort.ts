@@ -9,7 +9,7 @@
 import { STATE_ORDER, type ClaimState } from "./claim-status";
 import type { ClaimOwner } from "./claim-guidance";
 
-export type SortKey = "date" | "provider" | "patient" | "amount" | "state" | "owner";
+export type SortKey = "date" | "provider" | "patient" | "amount" | "state" | "owner" | "docs";
 
 /** Only the fields the table sorts on — the row type is free to carry more. */
 export type SortableClaim = {
@@ -19,6 +19,8 @@ export type SortableClaim = {
   amount: number | null;
   state: ClaimState;
   guidance: { owner: ClaimOwner };
+  /** null = the count could not be read. Never treat that as zero. */
+  attachmentCount?: number | null;
 };
 
 const OWNER_RANK: Record<ClaimOwner, number> = { secretary: 0, mickael: 1, blocked: 2 };
@@ -31,6 +33,9 @@ function sortValue(c: SortableClaim, key: SortKey): number | string | null {
     case "amount": return c.amount;
     case "state": return STATE_ORDER.indexOf(c.state);
     case "owner": return OWNER_RANK[c.guidance.owner];
+    // undefined and null both mean "unknown" and sort to the end, so an
+    // unreadable count never masquerades as "no documents yet".
+    case "docs": return c.attachmentCount ?? null;
   }
 }
 
@@ -64,7 +69,10 @@ export function sortClaims<T extends SortableClaim>(claims: T[], key: SortKey, d
   );
 }
 
-/** Money and dates read most usefully biggest/newest first; text reads A→Z. */
+/**
+ * Money and dates read biggest/newest first; text reads A→Z. Documents default
+ * ascending, because "which ones have nothing yet" is the useful question.
+ */
 export function defaultDir(key: SortKey): 1 | -1 {
   return key === "amount" || key === "date" ? -1 : 1;
 }

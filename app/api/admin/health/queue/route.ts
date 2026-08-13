@@ -36,7 +36,7 @@ export async function GET() {
       .select(
         `id, nf_number, emission_date, provider_name, provider_cnpj_formatted,
          provider_cnpj, patient_name, recipient_name, service_description,
-         total_amount, storage_path, transaction_id,
+         total_amount, storage_path, storage_bucket, transaction_id,
          reimbursement_status, reimbursement_amount, reimbursement_submitted_at,
          reimbursement_notes`
       )
@@ -80,6 +80,7 @@ export async function GET() {
       reimbursement_amount: string | number | null;
       reimbursement_submitted_at: string | null;
       reimbursement_notes: string | null;
+      storage_bucket: string | null;
     };
 
     const patient = resolvePatient(nf, roster);
@@ -110,7 +111,10 @@ export async function GET() {
       // transactions.real_amount) — do not run it through fromDb().
       amount: nf.total_amount == null ? null : Number(nf.total_amount),
       serviceDescription: nf.service_description,
-      hasPdf: !!nf.storage_path,
+      // BOTH columns, because the PDF route needs both — with only a path it
+      // falls back to reading local disk, which does not exist in production.
+      // A button that promises a file it cannot serve is worse than no button.
+      hasPdf: !!(nf.storage_bucket && nf.storage_path),
       matchedPayment: !!nf.transaction_id,
       state,
       reimbursedAmount: nf.reimbursement_amount == null ? null : Number(nf.reimbursement_amount),
@@ -132,8 +136,36 @@ export async function GET() {
   const visible =
     role === "secretary" ? claims.filter((c) => c.guidance.owner === "secretary") : claims;
 
+  // How many documents are already collected per claim. This is the single
+  // fact that answers "where did I stop?" without opening every card — without
+  // it every session starts blind.
+  //
+  // Object storage has no count API, so this is one prefix listing per visible
+  // claim, in parallel. That is ~23-33 calls on a 33-invoice table: acceptable
+  // here, and the honest cost of keeping storage itself as the record with no
+  // second table to drift. If this list ever grows past a few hundred, move the
+  // counts to their own table rather than widening the fan-out.
+  const counts = new Map<string, number>();
+  const listed = await Promise.all(
+    visible.map(async (c) => {
+      const { data, error } = await sb.storage
+        .from("claim-attachments")
+        .list(c.id, { limit: 100 });
+      if (error) return { id: c.id, n: null as number | null };
+      // Supabase returns a placeholder row for an empty prefix.
+      return { id: c.id, n: (data ?? []).filter((f) => f.name && f.id !== null).length };
+    })
+  );
+  const failed = listed.filter((r) => r.n === null).length;
+  for (const r of listed) if (r.n !== null) counts.set(r.id, r.n);
+  if (failed > 0) {
+    // "Unknown" must never render as "zero documents" — that would send her to
+    // re-collect paperwork she already has.
+    warnings.push(`não consegui contar os documentos de ${failed} nota(s)`);
+  }
+
   return NextResponse.json({
-    claims: visible,
+    claims: visible.map((c) => ({ ...c, attachmentCount: counts.get(c.id) ?? null })),
     warnings,
     hiddenFromSecretary: role === "secretary" ? claims.length - visible.length : 0
   });
