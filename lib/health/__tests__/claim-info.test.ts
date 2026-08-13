@@ -5,7 +5,9 @@ import {
   extractDoctorName,
   canonicaliseName,
   claimGaps,
-  type NfLike
+  type NfLike,
+  claimDeadline,
+  daysUntil
 } from "../claim-info";
 
 const ROSTER = [
@@ -190,5 +192,34 @@ describe("claimGaps", () => {
     const row = nf({ patient_name: "Ilay Malka", storage_path: null, provider_cnpj: null });
     const gaps = claimGaps(row, resolvePatient(row, ROSTER));
     expect(gaps).toEqual(expect.arrayContaining(["no_pdf", "no_cnpj"]));
+  });
+});
+
+describe("claimDeadline / daysUntil", () => {
+  it("gives two years from the service date", () => {
+    expect(claimDeadline("2026-06-02")).toBe("2028-06-02");
+    expect(claimDeadline("2024-12-27")).toBe("2026-12-27");
+  });
+
+  it("handles a leap day without inventing one", () => {
+    // 29 Feb 2024 is real and two years on lands 1 March 2026.
+    expect(claimDeadline("2024-02-29")).toBe("2026-03-01");
+    // 29 Feb 2026 does not exist. JS would roll it to 1 March and answer
+    // "2028-03-01"; a deadline computed from a date that never happened is a
+    // confident lie, so it must refuse.
+    expect(claimDeadline("2026-02-29")).toBe(null);
+    expect(claimDeadline("2026-13-01")).toBe(null);
+  });
+
+  it("returns null when the invoice has no date", () => {
+    expect(claimDeadline(null)).toBe(null);
+    expect(claimDeadline("nao-e-data")).toBe(null);
+  });
+
+  it("counts whole days, negative once past", () => {
+    expect(daysUntil("2026-08-20", "2026-08-13")).toBe(7);
+    expect(daysUntil("2026-08-13", "2026-08-13")).toBe(0);
+    expect(daysUntil("2026-08-01", "2026-08-13")).toBe(-12);
+    expect(daysUntil(null, "2026-08-13")).toBe(null);
   });
 });

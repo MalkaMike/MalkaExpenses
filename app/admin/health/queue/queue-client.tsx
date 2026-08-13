@@ -5,18 +5,18 @@ import { toast } from "sonner";
 import {
   CheckCircle2, Send, Loader2, AlertTriangle, FileText, X, Phone,
   ArrowRight, Wallet, Paperclip, ClipboardList, Upload, Camera,
-  ChevronUp, ChevronDown, Search, RotateCcw
+  ChevronUp, ChevronDown, Search, RotateCcw, Square, CheckSquare, Trash2, CalendarClock
 } from "lucide-react";
 import { formatDate, formatBRL } from "@/lib/format";
 import { STATE_LABEL, NEXT_ACTION, type ClaimState } from "@/lib/health/claim-status";
 import { sortClaims, defaultDir, type SortKey } from "@/lib/health/claim-sort";
 import { displayProvider } from "@/lib/health/provider-name";
 import {
-  GAP_LABEL, GAP_SHORT, PATIENT_SOURCE_LABEL, REQUIRED_DOCUMENTS,
+  GAP_LABEL, GAP_SHORT, PATIENT_SOURCE_LABEL, REQUIRED_DOCUMENTS, daysUntil,
   type ClaimGap, type PatientSource
 } from "@/lib/health/claim-info";
 import {
-  OWNER_LABEL, INSURER_LABEL, type Guidance, type Insurer
+  OWNER_LABEL, INSURER_LABEL, type ClaimOwner, type Guidance, type Insurer
 } from "@/lib/health/claim-guidance";
 import type { Role } from "@/lib/auth/admin";
 
@@ -33,7 +33,7 @@ type Claim = {
   phone: string | null;
   whatsapp: string | null;
   providerAddress: string | null;
-  contactNotes: string | null;
+  contactPerson: string | null;
   contactConfidence: string | null;
   patient: string | null;
   patientSource: PatientSource;
@@ -48,7 +48,10 @@ type Claim = {
   notes: string | null;
   gaps: ClaimGap[];
   guidance: Guidance;
+  steps: { text: string; owner: ClaimOwner }[];
+  stepsDone: number[];
   insurer: Insurer;
+  deadline: string | null;
   attachmentCount: number | null;
 };
 
@@ -135,6 +138,7 @@ function Attachments({
   claimId: string;
   onCountChange: (n: number) => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [files, setFiles] = useState<Attachment[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<Pending | null>(null);
@@ -181,6 +185,24 @@ function Attachments({
     }
   }, [claimId, load]);
 
+  const remove = useCallback(async (name: string) => {
+    setConfirmDelete(null);
+    try {
+      const r = await fetch(
+        `/api/admin/health/queue/${claimId}/attachments/${encodeURIComponent(name)}`,
+        { method: "DELETE" }
+      );
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error ?? `erro ${r.status}`);
+      }
+      toast.success(`"${name}" apagado`);
+      await load();
+    } catch (e) {
+      toast.error(`Não consegui apagar: ${(e as Error).message}`);
+    }
+  }, [claimId, load]);
+
   return (
     <section className="space-y-2">
       <div className="flex items-baseline justify-between">
@@ -206,22 +228,49 @@ function Attachments({
       )}
 
       {files.map((f) => (
-        <a
-          key={f.name}
-          href={f.url}
-          target="_blank"
-          rel="noreferrer"
-          className={`${CARD} flex items-center gap-2 px-3 py-2 transition hover:border-link-blue`}
-        >
+        <div key={f.name} className={`${CARD} flex items-center gap-2 px-3 py-2`}>
           <FileText size={14} className="shrink-0 text-ash" />
-          <span className="min-w-0 flex-1 truncate text-ap-body-sm text-carbon">{f.name}</span>
+          <a
+            href={f.url}
+            target="_blank"
+            rel="noreferrer"
+            className="min-w-0 flex-1 truncate text-ap-body-sm text-carbon hover:underline"
+          >
+            {f.name}
+          </a>
           <span className="shrink-0 text-ap-caption tabular-nums text-ash">
             {f.size != null && `${(f.size / 1024).toFixed(0)} KB`}
           </span>
           {justSaved === f.name && (
             <CheckCircle2 size={14} className="shrink-0 text-link-blue" aria-label="guardado agora" />
           )}
-        </a>
+          {/* Two steps, because there are no versions in the bucket: deleting a
+              claim document destroys the evidence for good. */}
+          {confirmDelete === f.name ? (
+            <span className="flex shrink-0 items-center gap-1.5">
+              <button
+                onClick={() => remove(f.name)}
+                className="text-ap-caption font-semibold text-error underline"
+              >
+                apagar
+              </button>
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="text-ap-caption text-ash underline"
+              >
+                cancelar
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(f.name)}
+              aria-label={`Apagar ${f.name}`}
+              className="shrink-0 rounded-ap-pill p-1 text-mist transition hover:text-error"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       ))}
 
       {pending && (
@@ -288,12 +337,13 @@ function Attachments({
 // ─────────────────────────────────────────────────────── detail card
 
 function Detail({
-  claim, onClose, onAdvance, onCountChange, busy, error
+  claim, onClose, onAdvance, onCountChange, onToggleStep, busy, error
 }: {
   claim: Claim;
   onClose: () => void;
   onAdvance: (to: ClaimState, extra: { amount?: number; submittedAt?: string }) => void;
   onCountChange: (id: string, n: number) => void;
+  onToggleStep: (id: string, index: number, done: boolean) => void;
   busy: boolean;
   error: string | null;
 }) {
@@ -308,7 +358,7 @@ function Detail({
   const countChanged = useCallback((n: number) => onCountChange(claim.id, n), [claim.id, onCountChange]);
   const blocking = blockingOf(claim);
   const hints = claim.gaps.filter((g) => !BLOCKING.includes(g));
-  const hasDoctor = Boolean(claim.doctorName || claim.council || claim.specialty || claim.clinic);
+  const hasDoctor = Boolean(claim.doctorName || claim.council);
 
   return (
     // Header is a flex sibling of the scroll area, not a sticky child of it:
@@ -328,6 +378,24 @@ function Detail({
               <span className="text-ap-caption text-ash">
                 NF {claim.nfNumber ?? "—"} · {fmt(claim.emissionDate)}
               </span>
+              {claim.deadline && (() => {
+                // Six months is enough time to chase a hospital report; less
+                // than that and the row needs to look different from the rest.
+                const left = daysUntil(claim.deadline, new Date().toISOString().slice(0, 10));
+                const tight = left != null && left < 180;
+                return (
+                  <span
+                    className={`inline-flex items-center gap-1 text-ap-caption ${
+                      tight ? "font-semibold text-carbon" : "text-ash"
+                    }`}
+                    title="Dois anos a partir do atendimento (Condições Gerais da apólice)"
+                  >
+                    <CalendarClock size={12} />
+                    prazo {fmt(claim.deadline)}
+                    {tight && (left! > 0 ? ` — faltam ${left} dias` : " — VENCIDO")}
+                  </span>
+                );
+              })()}
             </p>
           </div>
           <button
@@ -373,14 +441,40 @@ function Detail({
           {claim.guidance.groupLabel && (
             <p className="text-ap-body-sm font-semibold text-carbon">{claim.guidance.groupLabel}</p>
           )}
-          <ol className="space-y-1.5">
-            {claim.guidance.ask.map((a, i) => (
-              <li key={a} className="flex gap-2 text-ap-body-sm text-carbon">
-                <span className="shrink-0 font-semibold text-ash">{i + 1}.</span>
-                <span>{a}</span>
-              </li>
-            ))}
-          </ol>
+          {/* One checkbox per step, saved on the spot. Five requests down one
+              phone call is exactly where an interrupted call used to mean
+              starting the card again tomorrow. The list numbers itself — the
+              manual "1." that used to sit here made every copy read "1. 1.". */}
+          <ul className="space-y-2">
+            {claim.steps.map((step, i) => {
+              const done = claim.stepsDone.includes(i);
+              return (
+                <li key={step.text} className="text-ap-body-sm">
+                  <button
+                    onClick={() => onToggleStep(claim.id, i, !done)}
+                    className="flex w-full items-start gap-2 text-left"
+                    aria-pressed={done}
+                  >
+                    {done ? (
+                      <CheckSquare size={15} className="mt-0.5 shrink-0 text-apple-blue" />
+                    ) : (
+                      <Square size={15} className="mt-0.5 shrink-0 text-mist" />
+                    )}
+                    <span className={done ? "text-ash line-through" : "text-carbon"}>
+                      {step.text}
+                      {/* Only flag the steps that are NOT this card's owner:
+                          marking every step would be noise. */}
+                      {step.owner !== claim.guidance.owner && (
+                        <span className={`${CHIP} ml-1.5 bg-pebble align-middle text-carbon`}>
+                          {OWNER_LABEL[step.owner]}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
           {claim.guidance.owner === "blocked" && (
             <p className="text-ap-caption text-ash">
               Aguarda o corretor — não acionar o prestador ainda.
@@ -426,8 +520,10 @@ function Detail({
                     Contato encontrado em busca pública, ainda não confirmado por ligação.
                   </p>
                 )}
-                {claim.contactNotes && (
-                  <p className="text-ap-caption text-carbon">{claim.contactNotes}</p>
+                {claim.contactPerson && (
+                  <p className="text-ap-caption text-ash">
+                    Responsável no prestador: {claim.contactPerson}
+                  </p>
                 )}
               </div>
             ) : (
@@ -674,6 +770,49 @@ export function QueueClient({ role }: { role: Role }) {
       setBusy(false);
     }
   }
+
+  // Ticking a step is optimistic: she taps, it strikes through immediately,
+  // and a server refusal puts it back with the reason. Waiting for a round trip
+  // on a checkbox is how a list stops being usable during a phone call.
+  const toggleStep = useCallback(async (id: string, index: number, done: boolean) => {
+    setClaims((cs) =>
+      cs.map((c) =>
+        c.id === id
+          ? {
+              ...c,
+              stepsDone: done
+                ? [...c.stepsDone, index]
+                : c.stepsDone.filter((i) => i !== index)
+            }
+          : c
+      )
+    );
+    try {
+      const r = await fetch(`/api/admin/health/queue/${id}/steps`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ index, done })
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        throw new Error(d.error ?? `erro ${r.status}`);
+      }
+    } catch (e) {
+      toast.error(`Não consegui marcar: ${(e as Error).message}`);
+      setClaims((cs) =>
+        cs.map((c) =>
+          c.id === id
+            ? {
+                ...c,
+                stepsDone: done
+                  ? c.stepsDone.filter((i) => i !== index)
+                  : [...c.stepsDone, index]
+              }
+            : c
+        )
+      );
+    }
+  }, []);
 
   // An upload inside the card must move the counter on the row behind it.
   const setCount = useCallback((id: string, n: number) => {
@@ -998,6 +1137,7 @@ export function QueueClient({ role }: { role: Role }) {
               onClose={() => setSelectedId(null)}
               onAdvance={advance}
               onCountChange={setCount}
+              onToggleStep={toggleStep}
               busy={busy}
               error={actionError}
             />

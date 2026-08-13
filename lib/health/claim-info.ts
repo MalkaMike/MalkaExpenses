@@ -202,3 +202,33 @@ export const REQUIRED_DOCUMENTS = [
   "Formulário de pré-aprovação, quando o tratamento exigir",
   "Em internação: relatório hospitalar e Atestado Médico Confidencial"
 ] as const;
+
+/**
+ * Outer limit for filing. The policy's General Conditions bar legal action
+ * "two years from the event which gave rise to them"; no separate
+ * administrative window is stated anywhere in the documents, so two years from
+ * the service date is the operative limit. Shown per claim because the
+ * Bradesco-era invoices are the OLDEST and therefore the first to die, which
+ * is the opposite of the order their value suggests.
+ */
+export function claimDeadline(emissionDate: string | null): string | null {
+  if (!emissionDate) return null;
+  const day = emissionDate.slice(0, 10);
+  const d = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
+  // JS rolls an impossible date forward: "2026-02-29" silently becomes 1 March
+  // and would print a confident deadline computed from a date that does not
+  // exist. Round-trip it and refuse rather than answer with a plausible lie.
+  if (d.toISOString().slice(0, 10) !== day) return null;
+  d.setUTCFullYear(d.getUTCFullYear() + 2);
+  return d.toISOString().slice(0, 10);
+}
+
+/** Whole days until the filing limit. Negative once it has passed. */
+export function daysUntil(deadline: string | null, today: string): number | null {
+  if (!deadline) return null;
+  const a = Date.parse(`${deadline}T00:00:00Z`);
+  const b = Date.parse(`${today.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return Math.round((a - b) / 86400000);
+}

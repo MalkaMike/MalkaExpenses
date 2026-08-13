@@ -13,16 +13,29 @@
 
 export type ClaimOwner = "secretary" | "mickael" | "blocked";
 
+/**
+ * One step of the request. A bare string inherits the claim's owner; give a
+ * step its own owner when the work is somebody else's — a card stamped "Celina"
+ * whose fourth item is Mickael's bank receipt sends her to ask a hospital for
+ * something the hospital does not have.
+ */
+export type Ask = string | { text: string; owner: ClaimOwner };
+
 export type Guidance = {
   owner: ClaimOwner;
   /** Invoices sharing a group are one process — same episode, same request. */
   group?: string;
   groupLabel?: string;
   /** What to request, in the order to ask for it. */
-  ask: string[];
+  ask: Ask[];
   /** The thing that gets this claim refused if missed. */
   warning?: string;
 };
+
+/** Normalised steps, each with the owner who actually does it. */
+export function askSteps(g: Guidance): { text: string; owner: ClaimOwner }[] {
+  return g.ask.map((a) => (typeof a === "string" ? { text: a, owner: g.owner } : a));
+}
 
 // No priority ranking here, deliberately (Mickael, 2026-08-12): the secretary
 // works the whole list rather than a ranked queue. Ordering stays chronological.
@@ -39,14 +52,18 @@ const BY_PROVIDER: Record<string, Guidance> = {
     group: "ilay-apendicite",
     groupLabel: "Apendicite do Ilay — internação de 27/05/2026",
     ask: [
-      "Relatório hospitalar completo da internação",
+      "Relatório hospitalar completo da internação — pedir em einstein.br/atendimento/solicitacao-documentos",
       "Laudo com o diagnóstico (apendicite) dizendo expressamente que foi EMERGÊNCIA e que a cirurgia era inadiável",
       "Atestado Médico Confidencial — no formulário do próprio seguro, levar impresso",
-      "Comprovante do pagamento adiantado de R$ 20.000,00",
-      "A nota do médico que ainda não foi emitida — pedir que emitam"
+      "A nota do médico que ainda não foi emitida — pedir que emitam",
+      { text: "Comprovante do pagamento adiantado de R$ 20.000,00 (extrato do pagamento)", owner: "mickael" },
+      {
+        text: "Avisar a APRIL por e-mail que foi emergência e não houve autorização prévia — o e-mail cria o registro datado",
+        owner: "mickael"
+      }
     ],
     warning:
-      "A nota mostra R$ 20.000,00 de adiantamento e líquido de R$ 3.134,41. Sem o comprovante do adiantamento, o seguro reembolsa só os R$ 3.134,41. Falta também autorização prévia (era emergência) — avisar a APRIL por e-mail agora cria registro datado da urgência."
+      "A nota mostra R$ 20.000,00 de adiantamento e líquido de R$ 3.134,41. Sem o comprovante do adiantamento, o seguro reembolsa só os R$ 3.134,41."
   },
   "FABIANA IMAGAWA SERVICOS MEDICOS LTDA": {
     owner: "secretary",

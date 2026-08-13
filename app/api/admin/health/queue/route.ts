@@ -6,10 +6,11 @@ import {
   extractCouncilId,
   extractDoctorName,
   claimGaps,
+  claimDeadline,
   type NfLike
 } from "@/lib/health/claim-info";
 import { isClaimState, type ClaimState } from "@/lib/health/claim-status";
-import { guidanceFor, insurerFor } from "@/lib/health/claim-guidance";
+import { guidanceFor, insurerFor, askSteps } from "@/lib/health/claim-guidance";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,7 @@ export async function GET() {
 
   const roster = (rosterRes.data ?? []).map((d) => d.name as string).filter(Boolean);
   type Contact = {
+    fullName: string | null;
     specialty: string | null;
     clinic: string | null;
     phone: string | null;
@@ -78,6 +80,7 @@ export async function GET() {
 
   for (const p of providersRes.data ?? []) {
     const contact: Contact = {
+      fullName: (p.full_name as string) ?? null,
       specialty: (p.specialty as string) ?? null,
       clinic: (p.clinic as string) ?? null,
       phone: (p.phone as string) ?? null,
@@ -120,10 +123,24 @@ export async function GET() {
       emissionDate: nf.emission_date ? nf.emission_date.slice(0, 10) : null,
       providerName: nf.provider_name,
       cnpj: nf.provider_cnpj_formatted ?? nf.provider_cnpj,
-      // The doctor named in the invoice text; when the provider is itself a
-      // known individual practitioner (not a billing company), that name is
-      // the doctor and serves as the fallback.
-      doctorName: extractDoctorName(nf.service_description) ?? (known ? nf.provider_name : null),
+      // The doctor named in the invoice text. The fallback to provider_name
+      // only holds when the provider IS the practitioner — i.e. the contact we
+      // matched carries that very name. Falling back whenever a contact existed
+      // turned "SOCIEDADE BENEF ISRAELITABRAS HOSPITAL ALBERT EINSTEIN" into a
+      // doctor's name on a card that also said the invoice names no doctor.
+      doctorName:
+        extractDoctorName(nf.service_description) ??
+        (known?.fullName &&
+        known.fullName.toUpperCase() === (nf.provider_name ?? "").toUpperCase()
+          ? nf.provider_name
+          : null),
+      // Who answers for the provider, when that is somebody other than the
+      // treating doctor (a clinic's technical director, for instance).
+      contactPerson:
+        known?.fullName &&
+        known.fullName.toUpperCase() !== (nf.provider_name ?? "").toUpperCase()
+          ? known.fullName
+          : null,
       council,
       specialty: known?.specialty ?? null,
       clinic: known?.clinic ?? null,
@@ -155,7 +172,12 @@ export async function GET() {
       // the treatment date falls under — sending a pre-25/02/2026 invoice to
       // APRIL, or phoning a 2025 provider "for APRIL", is a wasted trip.
       guidance: guidanceFor(nf.provider_name, nf.nf_number),
-      insurer: insurerFor(nf.emission_date)
+      steps: askSteps(guidanceFor(nf.provider_name, nf.nf_number)),
+      insurer: insurerFor(nf.emission_date),
+      // Two years from the service date. The Bradesco-era invoices are the
+      // OLDEST, so they die first — the opposite of the order their value
+      // suggests, and invisible without this.
+      deadline: claimDeadline(nf.emission_date)
     };
   });
 
@@ -190,12 +212,27 @@ export async function GET() {
     }
   }
 
+  // Which request steps are already ticked, for every claim, in one query.
+  const stepsDone = new Map<string, number[]>();
+  const doneRes = await sb.from("claim_steps").select("nota_fiscal_id, step_index");
+  if (doneRes.error) {
+    warnings.push(`não consegui ler os passos já feitos: ${doneRes.error.message}`);
+  } else {
+    for (const row of doneRes.data ?? []) {
+      const id = row.nota_fiscal_id as string;
+      const list = stepsDone.get(id) ?? [];
+      list.push(Number(row.step_index));
+      stepsDone.set(id, list);
+    }
+  }
+
   return NextResponse.json({
     // A claim absent from the view genuinely has no documents — that is 0, not
     // unknown. Only a failed query makes the count unknowable.
     claims: visible.map((c) => ({
       ...c,
-      attachmentCount: countsFailed ? null : counts.get(c.id) ?? 0
+      attachmentCount: countsFailed ? null : counts.get(c.id) ?? 0,
+      stepsDone: stepsDone.get(c.id) ?? []
     })),
     warnings,
     hiddenFromSecretary: role === "secretary" ? claims.length - visible.length : 0
