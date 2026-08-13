@@ -11,10 +11,37 @@ Goal: understand and run Casa in under 30 minutes.
 ## 2. Run it locally (10 min)
 ```
 npm install
-cp .env.example .env.local   # fill from Vercel project env (ask Mickael)
+npx vercel login && npx vercel link
+npx vercel env pull .env.local --environment=production
 npm run dev                  # http://localhost:3000
 npm run typecheck && npm test
 ```
+
+**Two traps, both cost an afternoon on 2026-08-13. There is no `.env.example`;
+this is the procedure.**
+
+1. **`vercel env pull` cannot return the secrets.** Variables marked *Sensitive*
+   in Vercel come back as the literal string `[SENSITIVE]` — 11 characters,
+   for the owner too, with any flag. Everything still boots, then every check
+   fails for no visible reason. Get the real values from their sources instead:
+   - Supabase URL + `anon` + `service_role`: the Supabase dashboard, or
+     `GET https://api.supabase.com/v1/projects/<ref>/api-keys?reveal=true`
+     with a `SUPABASE_ACCESS_TOKEN`.
+   - `MODE_COOKIE_SECRET`, `CRON_SECRET`, the `*_PASSWORD_HASH` values: these
+     do **not** have to match production locally. Generate your own — any 32+
+     char random string, and `bcrypt.hashSync("<your password>", 10)` for a
+     hash. Note the secretary link at `/celina/<token>` is derived from
+     `MODE_COOKIE_SECRET`, so your local link differs from the real one.
+
+2. **Escape every `$` in `.env.local` as `\$`.** Next's env loader expands
+   `$VAR`, and a bcrypt hash is `$2a$10$...` — it arrives mangled (60 chars in,
+   32 out) and every password check returns 401 while the file looks correct.
+   Vercel does not expand, so production is unaffected and the bug is
+   local-only. Verify with:
+   ```
+   node -e "require('@next/env').loadEnvConfig(process.cwd(),true);console.log(process.env.ADMIN_PASSWORD_HASH.length)"
+   ```
+   60 is right; 32 means the dollars ate it.
 The migrations (`db/migrations/0001..0004`) are already applied to the shared
 Supabase project; you don't re-run them unless you spin up your own.
 

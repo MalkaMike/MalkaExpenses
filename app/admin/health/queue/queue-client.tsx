@@ -10,6 +10,7 @@ import {
 import { formatDate, formatBRL } from "@/lib/format";
 import { STATE_LABEL, NEXT_ACTION, type ClaimState } from "@/lib/health/claim-status";
 import { sortClaims, defaultDir, type SortKey } from "@/lib/health/claim-sort";
+import { displayProvider } from "@/lib/health/provider-name";
 import {
   GAP_LABEL, PATIENT_SOURCE_LABEL, REQUIRED_DOCUMENTS,
   type ClaimGap, type PatientSource
@@ -331,7 +332,7 @@ function Detail({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 id="claim-title" className="text-ap-subheading font-semibold leading-tight text-carbon">
-              {claim.providerName ?? "—"}
+              {displayProvider(claim.providerName)}
             </h2>
             <p className="mt-1 text-ap-heading-sm font-semibold tabular-nums text-carbon">
               {claim.amount != null ? formatBRL(claim.amount) : "—"}
@@ -465,22 +466,31 @@ function Detail({
           )}
         </section>
 
+        {/* Four empty dashes is not information. When the invoice names nobody,
+            say so in one line — that is a fact she can act on. */}
         <section className="space-y-3">
           <Label>Médico</Label>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Nome" value={claim.doctorName} />
-            <Field
-              label="Registro"
-              mono
-              value={
-                claim.council
-                  ? `${claim.council.council} ${claim.council.number}${claim.council.uf ? `-${claim.council.uf}` : ""}`
-                  : null
-              }
-            />
-            <Field label="Especialidade" value={claim.specialty} />
-            <Field label="Clínica" value={claim.clinic} />
-          </div>
+          {claim.doctorName || claim.council || claim.specialty || claim.clinic ? (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <Field label="Nome" value={claim.doctorName} />
+              <Field
+                label="Registro"
+                mono
+                value={
+                  claim.council
+                    ? `${claim.council.council} ${claim.council.number}${claim.council.uf ? `-${claim.council.uf}` : ""}`
+                    : null
+                }
+              />
+              <Field label="Especialidade" value={claim.specialty} />
+              <Field label="Clínica" value={claim.clinic} />
+            </div>
+          ) : (
+            <p className="text-ap-body-sm text-ash">
+              A nota não nomeia o médico — o seguro pede o nome e o registro (CRM) no laudo,
+              então peça isso ao prestador.
+            </p>
+          )}
         </section>
 
         <section className="space-y-1.5">
@@ -697,7 +707,13 @@ export function QueueClient({ role }: { role: Role }) {
     setSortDir(defaultDir(key));
   }
 
-  const columns = COLUMNS.filter((c) => !c.adminOnly || role !== "secretary");
+  // A column whose every cell says the same thing carries no information and
+  // costs a third of a phone's width. 23 identical "A enviar" chips told her
+  // nothing she could act on.
+  const showState = new Set(claims.map((c) => c.state)).size > 1;
+  const columns = COLUMNS.filter(
+    (c) => (!c.adminOnly || role !== "secretary") && (c.key !== "state" || showState)
+  );
 
   const filtered = useMemo(
     () => claims.filter(FILTERS.find((f) => f.key === filter)!.match),
@@ -825,6 +841,32 @@ export function QueueClient({ role }: { role: Role }) {
         })}
       </div>
 
+      {/* Sorting must survive the phone, where the sortable header is hidden. */}
+      <div className="flex items-center gap-2 sm:hidden">
+        <label htmlFor="ordenar" className="text-ap-caption text-ash">Ordenar por</label>
+        <select
+          id="ordenar"
+          value={sortKey}
+          onChange={(e) => {
+            const k = e.target.value as SortKey;
+            setSortKey(k);
+            setSortDir(defaultDir(k));
+          }}
+          className="rounded-ap-pill border border-hairline bg-white px-3 py-2 text-ap-body-sm text-carbon"
+        >
+          {columns.map((col) => (
+            <option key={col.key} value={col.key}>{col.label}</option>
+          ))}
+        </select>
+        <button
+          onClick={() => setSortDir((d) => (d === 1 ? -1 : 1))}
+          aria-label="Inverter a ordem"
+          className="rounded-ap-pill border border-hairline bg-white px-3 py-2 text-carbon"
+        >
+          {sortDir === 1 ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+      </div>
+
       {sorted.length === 0 ? (
         <div className={`${CARD} space-y-2 p-10 text-center`}>
           <p className="text-ap-subheading font-semibold text-carbon">Nada neste filtro</p>
@@ -835,8 +877,10 @@ export function QueueClient({ role }: { role: Role }) {
         </div>
       ) : (
         <div className="overflow-hidden rounded-ap-card border border-hairline bg-white">
-          <table className="w-full">
-            <thead>
+          <table className="w-full max-sm:block">
+            {/* Sorting by column header needs a header; on a phone the header is
+                hidden, so the select above carries it. */}
+            <thead className="max-sm:hidden">
               <tr className="border-b border-hairline">
                 {columns.map((col) => (
                   <th
@@ -863,7 +907,7 @@ export function QueueClient({ role }: { role: Role }) {
                 ))}
               </tr>
             </thead>
-            <tbody>
+            <tbody className="max-sm:block">
               {sorted.map((c) => (
                 <tr
                   key={c.id}
@@ -877,59 +921,64 @@ export function QueueClient({ role }: { role: Role }) {
                       setActionError(null);
                     }
                   }}
-                  className="cursor-pointer border-b border-hairline last:border-0 transition-colors hover:bg-frost focus:bg-frost focus:outline-none"
+                  className="cursor-pointer border-b border-hairline last:border-0 transition-colors hover:bg-frost focus:bg-frost focus:outline-none max-sm:grid max-sm:grid-cols-[1fr_auto] max-sm:items-baseline max-sm:gap-x-3 max-sm:px-4 max-sm:py-3.5"
                 >
-                  <td className="px-4 py-4">
-                    <span className="text-ap-body-sm font-semibold text-carbon">
-                      {c.providerName ?? "—"}
+                  <td className="px-4 py-4 max-sm:col-start-1 max-sm:row-span-2 max-sm:p-0">
+                    <span className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span className="text-ap-body-sm font-semibold text-carbon">
+                        {displayProvider(c.providerName)}
+                      </span>
+                      {/* Two thirds of the list is Bradesco-era, so the tag has
+                          to be a word, not a sentence — 16 full-width banners
+                          drowned the names they were meant to qualify. */}
+                      {c.insurer === "anterior" && (
+                        <span className="rounded-ap-pill bg-pebble px-2 py-0.5 text-ap-caption text-carbon">
+                          Bradesco
+                        </span>
+                      )}
+                      {c.gaps.filter((g) => BLOCKING.includes(g)).map((g) => (
+                        <span
+                          key={g}
+                          className="rounded-ap-pill border border-hairline px-2 py-0.5 text-ap-caption text-carbon"
+                        >
+                          {g === "no_pdf" ? "Sem PDF" : "Paciente?"}
+                        </span>
+                      ))}
                     </span>
                     <span className="mt-0.5 block text-ap-caption text-ash md:hidden">
                       {c.patient ?? "paciente não identificado"}
                       <span className="sm:hidden"> · {fmt(c.emissionDate)}</span>
                     </span>
-                    {(isBlocked(c) || c.insurer === "anterior") && (
-                      <span className="mt-1.5 flex flex-wrap gap-1.5">
-                        {c.gaps.filter((g) => BLOCKING.includes(g)).map((g) => (
-                          <span
-                            key={g}
-                            className="rounded-ap-pill border border-hairline px-2 py-0.5 text-ap-caption text-carbon"
-                          >
-                            {g === "no_pdf" ? "Sem PDF" : "Paciente?"}
-                          </span>
-                        ))}
-                        {c.insurer === "anterior" && (
-                          <span className="rounded-ap-pill bg-pebble px-2 py-0.5 text-ap-caption text-carbon">
-                            {INSURER_LABEL.anterior}
-                          </span>
-                        )}
-                      </span>
-                    )}
                   </td>
-                  <td className="hidden px-4 py-4 text-ap-body-sm text-ash md:table-cell">
+                  <td className="hidden whitespace-nowrap px-4 py-4 text-ap-body-sm text-ash md:table-cell">
                     {c.patient ?? "—"}
                   </td>
                   <td className="hidden whitespace-nowrap px-4 py-4 text-ap-body-sm tabular-nums text-ash sm:table-cell">
                     {fmt(c.emissionDate)}
                   </td>
-                  <td className="whitespace-nowrap px-4 py-4 text-right text-ap-body-sm font-semibold tabular-nums text-carbon">
+                  <td className="whitespace-nowrap px-4 py-4 text-right text-ap-body-sm font-semibold tabular-nums text-carbon max-sm:col-start-2 max-sm:row-start-1 max-sm:p-0">
                     {c.amount != null ? formatBRL(c.amount) : "—"}
                   </td>
-                  <td className="px-4 py-4 text-center">
+                  <td className="px-4 py-4 text-center max-sm:col-start-2 max-sm:row-start-2 max-sm:p-0 max-sm:text-right">
                     {c.attachmentCount == null ? (
-                      <span className="text-ap-caption text-ash">?</span>
+                      // Unknown is not zero — saying "none" would send her to
+                      // re-collect paperwork that may already be there.
+                      <span className="text-ap-caption text-ash" title="não consegui contar">?</span>
                     ) : c.attachmentCount === 0 ? (
-                      <span className="text-ap-caption text-ash">nenhum</span>
+                      <span className="text-ap-caption text-mist">—</span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-ap-body-sm font-semibold text-carbon">
                         <Paperclip size={13} /> {c.attachmentCount}
                       </span>
                     )}
                   </td>
-                  <td className="hidden px-4 py-4 lg:table-cell">
-                    <span className="whitespace-nowrap rounded-ap-pill bg-pebble px-3 py-1 text-ap-caption font-semibold text-carbon">
-                      {STATE_LABEL[c.state]}
-                    </span>
-                  </td>
+                  {showState && (
+                    <td className="hidden px-4 py-4 lg:table-cell">
+                      <span className="whitespace-nowrap rounded-ap-pill bg-pebble px-3 py-1 text-ap-caption font-semibold text-carbon">
+                        {STATE_LABEL[c.state]}
+                      </span>
+                    </td>
+                  )}
                   {role !== "secretary" && (
                     <td className="hidden px-4 py-4 text-ap-body-sm text-ash lg:table-cell">
                       {OWNER_LABEL[c.guidance.owner]}

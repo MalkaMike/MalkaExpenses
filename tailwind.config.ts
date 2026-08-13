@@ -17,29 +17,29 @@ const config: Config = {
         info:    "rgb(var(--info) / <alpha-value>)",
         purple:  "rgb(var(--purple) / <alpha-value>)",
 
-        // ── Stitch "Malka Casa" — exact palette from project 6041564693018001250 ──
-        // Surfaces (warm paper white)
-        "surface":                   "#fbf9f6",
-        "surface-dim":               "#dbdad7",
-        "surface-bright":            "#fbf9f6",
+        // ── Surfaces. Values follow the Apple reference (DESIGN.md); the
+        // ── Material-style names are kept so no screen has to be renamed.
+        "surface":                   "#f5f5f7",
+        "surface-dim":               "#e2e2e5",
+        "surface-bright":            "#ffffff",
         "surface-container-lowest":  "#ffffff",
-        "surface-container-low":     "#f5f3f0",
-        "surface-container":         "#efeeeb",
-        "surface-container-high":    "#eae8e5",
-        "surface-container-highest": "#e4e2df",
-        "surface-variant":           "#e4e2df",
+        "surface-container-low":     "#f4f8fb",
+        "surface-container":         "#f5f5f7",
+        "surface-container-high":    "#e2e2e5",
+        "surface-container-highest": "#e2e2e5",
+        "surface-variant":           "#e2e2e5",
         "surface-tint":              "#565e74",
 
         // On-surface
-        "on-surface":           "#1b1c1a",
-        "on-surface-variant":   "#45464d",
-        "outline":              "#76777d",
-        "outline-variant":      "#c6c6cd",
+        "on-surface":           "#1d1d1f",
+        "on-surface-variant":   "#707070",
+        "outline":              "#858585",
+        "outline-variant":      "#d2d2d7",
         "inverse-surface":      "#30312f",
         "inverse-on-surface":   "#f2f0ed",
 
-        // Primary (authoritative black)
-        "primary":                  "#000000",
+        // Primary — the one chromatic action colour
+        "primary":                  "#0071e3",
         "on-primary":               "#ffffff",
         "primary-container":        "#131b2e",
         "on-primary-container":     "#7c839b",
@@ -76,13 +76,12 @@ const config: Config = {
         "on-error-container": "#93000a",
 
         // Background alias
-        "background":    "#fbf9f6",
-        "on-background": "#1b1c1a",
+        "background":    "#f5f5f7",
+        "on-background": "#1d1d1f",
 
         // ── Apple style reference (DESIGN.md) ──────────────────────────────
-        // Piloted on the health claim queue. Kept as its own named set so it
-        // never silently overrides the Stitch palette above; rolling it out
-        // further is a deliberate per-screen decision, not a side effect.
+        // Same values as the semantic tokens above, addressable directly for
+        // screens written against the reference rather than the legacy names.
         "apple-blue":   "#0071e3", // filled action buttons ONLY — never text
         "link-blue":    "#0066cc", // outlined action borders, inline links
         "signal-blue":  "#2997ff", // decorative borders and icon strokes
@@ -131,9 +130,9 @@ const config: Config = {
         sm:      "0.25rem",
         DEFAULT: "0.5rem",
         lg:      "0.5rem",   // matches Stitch: rounded-lg = 0.5rem
-        xl:      "0.75rem",
-        "2xl":   "1rem",
-        "3xl":   "1.5rem",
+        xl:      "0.5rem",
+        "2xl":   "0.5rem",
+        "3xl":   "0.75rem",
         full:    "9999px",
         // Apple has exactly two radii: 8px for cards/images/inputs, and a full
         // capsule for every interactive pill. Nothing in between.
@@ -142,11 +141,13 @@ const config: Config = {
       },
 
       boxShadow: {
-        // Stitch "soft ambient" depth
-        card:        "0px 4px 20px rgba(0,0,0,0.05)",
-        "card-hover":"0px 8px 32px rgba(0,0,0,0.08)",
-        modal:       "0px 8px 32px rgba(0,0,0,0.12)",
-        sm:          "0 0 0 1px rgba(0,0,0,0.04)",
+        // Not elevation: Apple builds hierarchy from hairline borders and surface
+        // shifts. These stayed as "shadow-*" names so existing screens inherit
+        // the hairline without being rewritten.
+        card:        "0 0 0 1px #d2d2d7",
+        "card-hover":"0 0 0 1px #858585",
+        modal:       "0 0 0 1px #d2d2d7",
+        sm:          "0 0 0 1px #d2d2d7",
       },
 
       spacing: {
