@@ -11,14 +11,17 @@ Goal: understand and run Casa in under 30 minutes.
 ## 2. Run it locally (10 min)
 ```
 npm install
+cp .env.example .env.local   # the skeleton: 18 keys, all secrets blank
 npx vercel login && npx vercel link
 npx vercel env pull .env.local --environment=production
 npm run dev                  # http://localhost:3000
 npm run typecheck && npm test
 ```
 
-**Two traps, both cost an afternoon on 2026-08-13. There is no `.env.example`;
-this is the procedure.**
+The template gives you the key names, never the values — every secret in it is
+deliberately empty. Filling them is the part that bites.
+
+**Two traps, both cost an afternoon on 2026-08-13.**
 
 1. **`vercel env pull` cannot return the secrets.** Variables marked *Sensitive*
    in Vercel come back as the literal string `[SENSITIVE]` — 11 characters,
