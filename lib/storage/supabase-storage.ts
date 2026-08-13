@@ -11,12 +11,17 @@ export async function uploadFile(
   bucket: StorageBucket,
   path: string,
   bytes: Buffer,
-  mimeType: string
+  mimeType: string,
+  // Overwrite by default, because the importers re-upload the same invoice by
+  // its own file name and expect that to be idempotent. Pass false wherever a
+  // name collision means two DIFFERENT documents — overwriting there destroys
+  // evidence with no trace.
+  opts: { upsert?: boolean } = {}
 ): Promise<void> {
   const sb = serverClient();
   const { error } = await sb.storage.from(bucket).upload(path, bytes, {
     contentType: mimeType,
-    upsert: true,
+    upsert: opts.upsert ?? true,
   });
   if (error) throw new Error(`Storage upload [${bucket}/${path}]: ${error.message}`);
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAnyHealthRole, getRole, writeAudit } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
 import { uploadFile } from "@/lib/storage/supabase-storage";
+import { safeName, freeName } from "@/lib/health/attachment-name";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -36,11 +37,14 @@ async function loadInvoice(id: string) {
   return { sb, data, error };
 }
 
-// Keep the stored name recognisable but safe: no separators, no traversal.
-function safeName(raw: string): string {
-  const base = raw.split(/[\\/]/).pop() ?? "documento";
-  const cleaned = base.replace(/[^A-Za-z0-9._-]/g, "_").replace(/_{2,}/g, "_").slice(-120);
-  return cleaned || "documento";
+/** Names already stored against this claim — the collision set for freeName(). */
+async function existingNames(
+  sb: ReturnType<typeof serverClient>,
+  id: string
+): Promise<string[]> {
+  const { data, error } = await sb.storage.from(BUCKET).list(id, { limit: 100 });
+  if (error) throw new Error(`Não consegui ler os documentos já guardados: ${error.message}`);
+  return (data ?? []).filter((f) => f.name && f.id !== null).map((f) => f.name);
 }
 
 export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
@@ -105,12 +109,23 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     );
   }
 
-  const name = safeName(file.name);
-  const path = `${id}/${name}`;
+  // Never overwrite: a repeated "documento.pdf" is almost always a second,
+  // different document, and losing one gets the claim refused for a paper
+  // nobody knows is missing. Collisions get -2, -3… and the stored name is
+  // returned so the UI can say exactly what it saved.
+  const sb = serverClient();
+  const requested = safeName(file.name);
+  let name: string;
+  try {
+    name = freeName(requested, await existingNames(sb, id));
+  } catch (e) {
+    return NextResponse.json({ error: (e as Error).message }, { status: 500 });
+  }
+
   const bytes = Buffer.from(await file.arrayBuffer());
 
   try {
-    await uploadFile(BUCKET, path, bytes, file.type);
+    await uploadFile(BUCKET, `${id}/${name}`, bytes, file.type, { upsert: false });
   } catch (e) {
     // uploadFile throws with the bucket/path already in the message.
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
@@ -126,5 +141,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     }
   });
 
-  return NextResponse.json({ ok: true, name, size: file.size });
+  // `renamed` lets the UI say "guardei como laudo-2.pdf" instead of leaving her
+  // to wonder why the name changed.
+  return NextResponse.json({ ok: true, name, size: file.size, renamed: name !== requested });
 }

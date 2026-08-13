@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { packToken, unpackToken } from "./lib/auth/tokens";
+import { isAlwaysOpen, isHealthPath, isAdminGated } from "./lib/auth/route-access";
 
 // ============================================================================
 // Middleware — multi-role auth gate (runs on the edge runtime).
@@ -49,36 +50,6 @@ async function hasSecretary(req: NextRequest): Promise<boolean> {
   if (!t) return false;
   const ms = await unpackToken(t, "secretary");
   return ms !== null && (Date.now() - ms) / 86400000 <= SECRETARY_TIMEOUT_DAYS;
-}
-
-function isAlwaysOpen(pathname: string): boolean {
-  if (
-    pathname === "/login" ||
-    pathname === "/admin" ||
-    pathname === "/admin/" ||
-    pathname === "/api/login" ||
-    pathname === "/api/logout" ||
-    pathname === "/api/household/login" ||
-    pathname === "/api/household/logout" ||
-    pathname === "/api/admin/login" ||
-    pathname === "/api/admin/logout"
-  ) return true;
-  return (
-    pathname.startsWith("/api/pluggy/webhook") ||
-    pathname.startsWith("/api/cron/") ||
-    // Secretary sign-in link. The route itself validates the token in constant
-    // time and 404s on anything else — it must reach the handler rather than be
-    // bounced to /login, which is the whole point of a password-free link.
-    pathname.startsWith("/celina/")
-  );
-}
-
-function isHealthPath(pathname: string): boolean {
-  return pathname.startsWith("/admin/health") || pathname.startsWith("/api/admin/health");
-}
-
-function isAdminGated(pathname: string): boolean {
-  return pathname.startsWith("/admin/") || pathname.startsWith("/api/admin/");
 }
 
 function redirectTo(url: string, req: NextRequest): NextResponse {
