@@ -185,8 +185,15 @@ export async function GET() {
   // Invoices Mickael kept for himself, and the ones frozen pending the broker,
   // are filtered out server-side rather than merely greyed out — a task she
   // must not start does not belong on the list at all. Admin/health see all.
+  //
+  // The owner filter only governs job 1, chasing a doctor for a report. Job 2 —
+  // sending every pre-25/02 invoice to the previous insurer, which asks for no
+  // report — is hers for ALL of them, whoever owns the chasing. Filtering those
+  // out by owner hid most of her second job from her.
   const visible =
-    role === "secretary" ? claims.filter((c) => c.guidance.owner === "secretary") : claims;
+    role === "secretary"
+      ? claims.filter((c) => c.insurer === "anterior" || c.guidance.owner === "secretary")
+      : claims;
 
   // Documents and ticked steps are keyed by PROVIDER now, because one report
   // covers all of that provider's visits. Both read in one query each; the
