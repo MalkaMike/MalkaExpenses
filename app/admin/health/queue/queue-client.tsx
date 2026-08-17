@@ -34,7 +34,18 @@ export function QueueClient({ role }: { role: Role }) {
       const r = await fetch("/api/admin/health/queue");
       const d = await r.json();
       if (!r.ok) throw new Error(d.error ?? `erro ${r.status}`);
-      setClaims(d.claims ?? []);
+      // A response served from an old service-worker cache predates per-provider
+      // guidance, so every claim is missing `steps`/`guidance`. Rendering it
+      // throws deep inside groupByProvider and blanks the screen with no way
+      // out. Catch the shape here and say what to do instead.
+      const list: GroupableClaim[] = d.claims ?? [];
+      if (list.some((c) => !c.guidance || !c.steps)) {
+        throw new Error(
+          "Esta tela veio de uma versão antiga guardada no navegador. " +
+            "Recarregue com Ctrl+Shift+R para buscar a versão nova."
+        );
+      }
+      setClaims(list);
       setStepsDone(d.stepsDoneByKey ?? {});
       setAttachments(d.attachmentsByKey ?? null);
       setWarnings(d.warnings ?? []);
