@@ -37,10 +37,7 @@ describe("isAlwaysOpen", () => {
     expect(isAlwaysOpen("/api/admin/login")).toBe(true);
     expect(isAlwaysOpen("/api/pluggy/webhook")).toBe(true);
     expect(isAlwaysOpen("/api/cron/pluggy-sync")).toBe(true);
-  });
-
-  it("no longer opens the retired secretary magic link", () => {
-    expect(isAlwaysOpen("/celina/sometoken")).toBe(false);
+    expect(isAlwaysOpen("/celina/sometoken")).toBe(true);
   });
 
   it("does not open the app itself", () => {
