@@ -1,7 +1,7 @@
 import { formatBRL, formatDate } from "@/lib/format";
 import type { Role } from "@/lib/auth/admin";
 import { CategoryIcon } from "@/components/category-chip";
-import { getCategoryMeta, getCategoryDisplayName } from "@/lib/categories/meta";
+import { getCategoryDisplayName } from "@/lib/categories/meta";
 
 export type TxRowProps = {
   id: string;

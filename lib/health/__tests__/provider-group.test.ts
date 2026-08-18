@@ -156,3 +156,34 @@ describe("groupByProvider", () => {
     expect(groups[0].done).toBe(false);
   });
 });
+
+describe("groupByProvider — malformed payloads", () => {
+  it("skips a claim with no steps instead of throwing during render", () => {
+    // This is the real crash from 2026-08-17: a response cached by the old
+    // service worker predated per-provider guidance, so `steps` was undefined,
+    // `steps.length` threw inside render, and the secretary got a blank screen
+    // with no way out. One missing row beats a dead page.
+    const broken = { ...claim({ id: "a" }), steps: undefined } as unknown as GroupableClaim;
+    expect(() => groupByProvider([broken])).not.toThrow();
+    expect(groupByProvider([broken])).toEqual([]);
+  });
+
+  it("skips a claim with no guidance", () => {
+    const broken = { ...claim({ id: "a" }), guidance: undefined } as unknown as GroupableClaim;
+    expect(() => groupByProvider([broken])).not.toThrow();
+    expect(groupByProvider([broken])).toEqual([]);
+  });
+
+  it("keeps the good claims when only one is malformed", () => {
+    const ok = claim({ id: "good" });
+    const broken = {
+      ...claim({ id: "bad" }),
+      cnpj: null,
+      providerName: "OUTRO PRESTADOR",
+      steps: undefined,
+    } as unknown as GroupableClaim;
+    const groups = groupByProvider([ok, broken]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].claims.map((c) => c.id)).toEqual(["good"]);
+  });
+});

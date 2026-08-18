@@ -169,7 +169,7 @@ export async function getInsights(role: Role): Promise<Insight[]> {
     byMerchant.set(key, arr);
   }
   const recurring: Array<{ merchant: string; monthlyAvg: number; count: number; categorySlug: string | null }> = [];
-  for (const [merchant, occurrences] of byMerchant.entries()) {
+  for (const [, occurrences] of byMerchant.entries()) {
     if (occurrences.length < 2) continue;
     // sort by date
     occurrences.sort((a, b) => a.date.localeCompare(b.date));

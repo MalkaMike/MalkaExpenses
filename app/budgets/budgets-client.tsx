@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Plus, Trash2, Save, X, Loader2, Target } from "lucide-react";
 import { CategoryIcon } from "@/components/category-chip";
-import { getCategoryMeta, getCategoryTree, CATEGORY_META } from "@/lib/categories/meta";
+import { getCategoryMeta, getCategoryTree } from "@/lib/categories/meta";
 import { formatBRL } from "@/lib/format";
 import { useLang } from "@/lib/i18n/context";
 import { t, type Lang } from "@/lib/i18n/translations";

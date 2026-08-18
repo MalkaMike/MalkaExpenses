@@ -85,6 +85,12 @@ function TagIcon({ icon, size }: { icon: string; size: number }) {
   return <Tag size={size} />;
 }
 
+// Tagging one of these hides the merchant from the household view; tagging one
+// of the others surfaces it. Module scope on purpose: they never change, and as
+// in-component consts they were new arrays on every render.
+const HIDE_TAGS = ["kenlo", "laik"];
+const SHOW_TAGS = ["insurance", "suspeito"];
+
 export function MerchantsClient({
   groups, tags, direction, includeTransfers, onlyOutros,
   rowsLabel, emptyLabel, filteredCount,
@@ -267,9 +273,6 @@ export function MerchantsClient({
       setCatBusy((prev) => { const n = new Set(prev); n.delete(merchantKey); return n; });
     }
   }, [categories]);
-
-  const HIDE_TAGS = ["kenlo", "laik"];
-  const SHOW_TAGS = ["insurance", "suspeito"];
 
   const toggleTag = useCallback(async (merchantKey: string, tagSlug: string, txCount: number) => {
     const busyKey = `${merchantKey}|${tagSlug}`;

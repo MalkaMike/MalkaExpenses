@@ -18,7 +18,7 @@
  * verifying the migration succeeded (checksums logged to console).
  */
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
