@@ -25,6 +25,14 @@ export type BatchClaim = {
   hasPdf: boolean;
   state: ClaimState;
   insurer: "april" | "anterior";
+  /**
+   * Optional: who owns the chasing for this provider. Only "blocked" matters
+   * here — it marks a provider the broker has not cleared yet (the CEDIPI
+   * vaccines, whose coverage is genuinely undecided). They still go in the
+   * batch, because the instruction is to send everything, but they must be
+   * named on screen rather than swept silently into a bulk send.
+   */
+  guidance?: { owner: string } | null;
 };
 
 /**
@@ -48,6 +56,11 @@ export type BradescoBatch<T extends BatchClaim = BatchClaim> = {
    * the difference between "10 to send" and her discovering the gap one by one.
    */
   missingPdf: T[];
+  /**
+   * Pending invoices whose provider the broker has not cleared. Included in the
+   * send, but surfaced so pressing the button is a decision, not an accident.
+   */
+  awaitingBroker: T[];
   /** Nothing left to do: there were invoices and every one has gone. */
   done: boolean;
 };
@@ -74,6 +87,7 @@ export function bradescoBatch<T extends BatchClaim>(
     sentTotal: sum(sent),
     total: sum(all),
     missingPdf: pending.filter((c) => !c.hasPdf),
+    awaitingBroker: pending.filter((c) => c.guidance?.owner === "blocked"),
     done: all.length > 0 && pending.length === 0,
   };
 }

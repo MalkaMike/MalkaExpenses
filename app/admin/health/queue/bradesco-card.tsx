@@ -121,6 +121,22 @@ export function BradescoCard({
             ))}
           </ul>
 
+          {batch.awaitingBroker.length > 0 && (
+            <Notice>
+              {batch.awaitingBroker.length} nota(s) são de prestador que ainda
+              depende de resposta do corretor —{" "}
+              {[
+                ...new Set(
+                  batch.awaitingBroker.map((c) =>
+                    displayProvider(c.providerName),
+                  ),
+                ),
+              ].join(", ")}
+              . Elas entram no envio junto com as outras. Se preferir segurar
+              essas, fale com o Mickael antes de confirmar.
+            </Notice>
+          )}
+
           {batch.missingPdf.length > 0 && (
             <Notice>
               {batch.missingPdf.length} nota(s) não têm o PDF guardado, então

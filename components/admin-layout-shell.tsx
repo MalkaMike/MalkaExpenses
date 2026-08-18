@@ -3,9 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Inbox, Store, Receipt, Briefcase, Sparkles, Download,
-  Stethoscope, ShieldCheck, Users, History, Archive, Eye,
-  LayoutDashboard, Menu, X, LogOut,
+  Inbox,
+  Store,
+  Receipt,
+  Briefcase,
+  Sparkles,
+  Download,
+  Stethoscope,
+  ShieldCheck,
+  Users,
+  History,
+  Archive,
+  Eye,
+  LayoutDashboard,
+  Menu,
+  X,
+  LogOut,
 } from "lucide-react";
 import type { Role } from "@/lib/auth/admin";
 import { useAdminSidebar } from "@/lib/context/admin-sidebar";
@@ -29,31 +42,68 @@ type NavGroup = {
   items: NavItem[];
 };
 
+/** What this person is actually looking at, shown under the "Casa" brand. */
+const AREA_LABEL: Record<Role, string> = {
+  admin: "Admin",
+  health: "Saúde",
+  secretary: "Reembolsos",
+  household: "Casa",
+  // Never rendered — this shell only mounts behind an authenticated route — but
+  // the map is exhaustive so a new role cannot silently fall through to blank.
+  public: "Casa",
+};
+
 function buildGroups(role: Role, pendingCount: number): NavGroup[] {
   if (role === "secretary") {
-    return [{ label: "Saúde", items: [{ href: "/admin/health/queue", label: "Fila de envios", Icon: Users }] }];
+    return [
+      {
+        label: "Saúde",
+        items: [
+          { href: "/admin/health/queue", label: "Fila de envios", Icon: Users },
+        ],
+      },
+    ];
   }
 
   if (role === "health") {
-    return [{
-      label: "Saúde",
-      items: [
-        { href: "/admin/health", label: "Reembolsos médicos", Icon: Stethoscope, exact: true },
-        { href: "/admin/health/queue", label: "Fila de envios", Icon: Users },
-      ],
-    }];
+    return [
+      {
+        label: "Saúde",
+        items: [
+          {
+            href: "/admin/health",
+            label: "Reembolsos médicos",
+            Icon: Stethoscope,
+            exact: true,
+          },
+          { href: "/admin/health/queue", label: "Fila de envios", Icon: Users },
+        ],
+      },
+    ];
   }
 
   // admin — full access
   return [
     {
       label: "",
-      items: [{ href: "/admin", label: "Dashboard", Icon: LayoutDashboard, exact: true }],
+      items: [
+        {
+          href: "/admin",
+          label: "Dashboard",
+          Icon: LayoutDashboard,
+          exact: true,
+        },
+      ],
     },
     {
       label: "Finanças",
       items: [
-        { href: "/admin/inbox", label: "Caixa de entrada", Icon: Inbox, badge: pendingCount > 0 ? pendingCount : undefined },
+        {
+          href: "/admin/inbox",
+          label: "Caixa de entrada",
+          Icon: Inbox,
+          badge: pendingCount > 0 ? pendingCount : undefined,
+        },
         { href: "/admin/merchants", label: "Merchants", Icon: Store },
         { href: "/admin/nota-fiscais", label: "Notas Fiscais", Icon: Receipt },
         { href: "/admin/reembolsos", label: "Reembolsos", Icon: Briefcase },
@@ -64,8 +114,17 @@ function buildGroups(role: Role, pendingCount: number): NavGroup[] {
     {
       label: "Saúde",
       items: [
-        { href: "/admin/health", label: "Reembolsos médicos", Icon: Stethoscope, exact: true },
-        { href: "/admin/health/policy", label: "Apólice · Cofre", Icon: ShieldCheck },
+        {
+          href: "/admin/health",
+          label: "Reembolsos médicos",
+          Icon: Stethoscope,
+          exact: true,
+        },
+        {
+          href: "/admin/health/policy",
+          label: "Apólice · Cofre",
+          Icon: ShieldCheck,
+        },
         { href: "/admin/health/queue", label: "Fila de envios", Icon: Users },
       ],
     },
@@ -106,7 +165,13 @@ function SidebarContent({
   const groups = buildGroups(role, pendingCount);
 
   const displayName =
-    role === "admin" ? "Mickael" : role === "health" ? "Ayelet" : role === "secretary" ? "Celine" : role;
+    role === "admin"
+      ? "Mickael"
+      : role === "health"
+        ? "Ayelet"
+        : role === "secretary"
+          ? "Celine"
+          : role;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -119,8 +184,16 @@ function SidebarContent({
           <span className="text-white font-bold text-[11px]">C</span>
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-on-surface leading-tight">Casa</p>
-          <p className="text-[9px] text-on-surface-variant uppercase tracking-wider">Admin</p>
+          <p className="text-sm font-semibold text-on-surface leading-tight">
+            Casa
+          </p>
+          {/* Was the hard-coded word "Admin" for everyone, so the secretary's
+              sidebar told her she was an administrator. It also made a screenshot
+              impossible to read: the badge said ADMIN while the page below it was
+              plainly the secretary's. Say the actual area the person is in. */}
+          <p className="text-[9px] text-on-surface-variant uppercase tracking-wider">
+            {AREA_LABEL[role]}
+          </p>
         </div>
         {onClose && (
           <button
@@ -187,8 +260,12 @@ function SidebarContent({
             </span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium text-on-surface truncate">{displayName}</p>
-            <p className="text-[10px] text-on-surface-variant capitalize">{role}</p>
+            <p className="text-xs font-medium text-on-surface truncate">
+              {displayName}
+            </p>
+            <p className="text-[10px] text-on-surface-variant capitalize">
+              {role}
+            </p>
           </div>
           <button
             onClick={logout}
@@ -226,7 +303,11 @@ export function AdminLayoutShell({ role, pendingCount, children }: Props) {
           open ? "flex translate-x-0" : "flex -translate-x-full"
         }`}
       >
-        <SidebarContent role={role} pendingCount={pendingCount} onClose={close} />
+        <SidebarContent
+          role={role}
+          pendingCount={pendingCount}
+          onClose={close}
+        />
       </aside>
 
       {/* ── Mobile top bar ───────────────────────────────────────────────── */}
@@ -245,14 +326,14 @@ export function AdminLayoutShell({ role, pendingCount, children }: Props) {
         >
           <Menu size={20} />
         </button>
-        <span className="ml-2 font-semibold text-sm text-on-surface">Admin</span>
+        <span className="ml-2 font-semibold text-sm text-on-surface">
+          Admin
+        </span>
       </div>
 
       {/* ── Content area ─────────────────────────────────────────────────── */}
       {/* pt-12 on mobile to clear the fixed top bar; removed on desktop */}
-      <div className="flex-1 min-w-0 pt-12 md:pt-0">
-        {children}
-      </div>
+      <div className="flex-1 min-w-0 pt-12 md:pt-0">{children}</div>
     </div>
   );
 }
