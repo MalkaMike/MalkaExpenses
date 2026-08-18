@@ -71,6 +71,11 @@ export function BradescoCard({
           laudo nem relatório — basta enviar a nota. Não precisa ligar para
           nenhum médico aqui.
         </p>
+        <p className="mt-2 text-ap-body-sm text-carbon">
+          Como fazer: abra cada nota em &quot;Abrir nota&quot;, envie todas ao{" "}
+          {INSURER_LABEL.anterior} e só depois marque como enviadas no botão
+          abaixo.
+        </p>
       </div>
 
       {batch.done ? (
@@ -108,15 +113,29 @@ export function BradescoCard({
                       · {c.patient}
                     </span>
                   )}
-                  {!c.hasPdf && (
-                    <span className="ml-2 inline-flex items-center gap-1 text-ap-caption font-semibold text-carbon">
-                      <FileWarning size={11} /> sem PDF
-                    </span>
-                  )}
                 </span>
                 <span className="shrink-0 text-ap-body-sm tabular-nums text-carbon">
                   {formatBRL(c.amount ?? 0)}
                 </span>
+                {/* Her job here is to SEND these notas, so she has to be able to
+                    open each one. The first version listed them with no way to
+                    reach the document at all — she found the list, could not find
+                    the invoice, and was blocked on her first morning. Same route
+                    and same behaviour as the provider page. */}
+                {c.hasPdf ? (
+                  <a
+                    href={`/api/admin/nota-fiscais/${c.id}/pdf`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="shrink-0 text-ap-caption font-semibold text-link-blue underline"
+                  >
+                    Abrir nota
+                  </a>
+                ) : (
+                  <span className="inline-flex shrink-0 items-center gap-1 text-ap-caption text-ash">
+                    <FileWarning size={11} /> sem PDF
+                  </span>
+                )}
               </li>
             ))}
           </ul>
