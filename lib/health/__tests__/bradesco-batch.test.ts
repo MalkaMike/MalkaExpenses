@@ -56,6 +56,19 @@ describe("bradescoBatch", () => {
     expect(b.missingPdf.map((c) => c.id)).toEqual(["nopdf"]);
   });
 
+  it("names pending invoices whose provider the broker has not cleared", () => {
+    const b = bradescoBatch([
+      claim({ id: "vaccines", guidance: { owner: "blocked" } }),
+      claim({ id: "normal", guidance: { owner: "secretary" } }),
+      claim({ id: "no-guidance" }),
+      // Already sent, so no longer a decision to make.
+      claim({ id: "gone", guidance: { owner: "blocked" }, state: "submitted" }),
+    ]);
+    expect(b.awaitingBroker.map((c) => c.id)).toEqual(["vaccines"]);
+    // Still part of the send — flagged, not silently dropped.
+    expect(b.pending.map((c) => c.id)).toContain("vaccines");
+  });
+
   it("is done only when there was something and all of it has gone", () => {
     expect(bradescoBatch([]).done).toBe(false);
     expect(bradescoBatch([claim({ state: "submitted" })]).done).toBe(true);
