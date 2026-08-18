@@ -71,11 +71,21 @@ export function BradescoCard({
           laudo nem relatório — basta enviar a nota. Não precisa ligar para
           nenhum médico aqui.
         </p>
-        <p className="mt-2 text-ap-body-sm text-carbon">
-          Como fazer: abra cada nota em &quot;Abrir nota&quot;, envie todas ao{" "}
-          {INSURER_LABEL.anterior} e só depois marque como enviadas no botão
-          abaixo.
-        </p>
+        {/* Written as the steps she actually performs, in order. One batch beats
+            21 separate sends, and nobody has confirmed yet which channel the old
+            insurer accepts — so the first step is to ask them, not to guess. */}
+        <ol className="mt-2 list-decimal space-y-1 pl-5 text-ap-body-sm text-carbon">
+          <li>
+            Abra cada nota em &quot;Abrir nota&quot; e salve todas numa pasta no
+            computador.
+          </li>
+          <li>
+            Ligue para o {INSURER_LABEL.anterior} e confirme se dá para enviar
+            por e-mail, e para qual endereço.
+          </li>
+          <li>Envie todas de uma vez só, num envio único — não uma por uma.</li>
+          <li>Só depois de enviar, marque como enviadas no botão abaixo.</li>
+        </ol>
       </div>
 
       {batch.done ? (
