@@ -553,22 +553,28 @@ export function NotaFiscaisClient() {
       .finally(() => setLoadingList(false));
   }, [debouncedQ, category, activeTab, page, listRefresh]);
 
+  // Only the id is depended on, deliberately: re-fetching the detail every time
+  // any other field of `selected` changes would throw away the panel mid-edit.
+  // Naming it here says that to the linter honestly, instead of disabling the
+  // rule and losing the warning for real mistakes.
+  const selectedId = selected?.id ?? null;
+
   // Load detail on row click
   useEffect(() => {
-    if (!selected) { setDetail(null); return; }
+    if (!selectedId) { setDetail(null); return; }
     setLoadingDetail(true);
     setDetail(null);
-    fetch(`/api/admin/nota-fiscais/${selected.id}`)
+    fetch(`/api/admin/nota-fiscais/${selectedId}`)
       .then((r) => r.json())
       .then(setDetail)
       .finally(() => setLoadingDetail(false));
-  }, [selected?.id]);
+  }, [selectedId]);
 
   // Called after a prescription is scanned/paired: refresh detail + list.
   const onPrescriptionChanged = useCallback(() => {
     setListRefresh((x) => x + 1);
-    if (selected) {
-      fetch(`/api/admin/nota-fiscais/${selected.id}`)
+    if (selectedId) {
+      fetch(`/api/admin/nota-fiscais/${selectedId}`)
         .then((r) => r.json())
         .then(setDetail)
         .catch((e) => {
@@ -576,7 +582,7 @@ export function NotaFiscaisClient() {
           console.warn("[nota-fiscais] detail refresh failed:", (e as Error).message);
         });
     }
-  }, [selected?.id]);
+  }, [selectedId]);
 
   const saveReason = useCallback(async (nfId: string, reason: string | null) => {
     setSavingReason(nfId);
@@ -713,7 +719,7 @@ export function NotaFiscaisClient() {
 
       {/* Tab bar */}
       <div className="flex gap-0 mb-4 border-b border-outline-variant">
-        {tabItems.map(({ key, label, count, pendingCount, warn }) => {
+        {tabItems.map(({ key, label, count, warn }) => {
           const active = activeTab === key;
           return (
             <button

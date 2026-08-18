@@ -97,10 +97,17 @@ export function groupByProvider<T extends GroupableClaim>(
     const sorted = [...list].sort((a, b) =>
       (b.emissionDate ?? "").localeCompare(a.emissionDate ?? "")
     );
+    const head = sorted[0];
+    // A group only exists because a claim was pushed into it, so `head` is
+    // always present in practice. It is read defensively anyway: this function
+    // renders the secretary's whole screen, and reading `.steps` off undefined
+    // throws during render, which React answers with a blank page and no way
+    // out. Skipping one malformed group loses one row; throwing loses the job.
+    if (!head || !head.steps || !head.guidance) continue;
     const april = sorted.filter((c) => c.insurer === "april");
     const previous = sorted.filter((c) => c.insurer === "anterior");
     const sum = (l: T[]) => l.reduce((s, c) => s + (c.amount ?? 0), 0);
-    const steps = sorted[0].steps;
+    const steps = head.steps;
     const stepsDone = stepsDoneByKey.get(key) ?? [];
     const attachmentCount = attachmentsByKey ? attachmentsByKey.get(key) ?? 0 : null;
 
@@ -111,9 +118,9 @@ export function groupByProvider<T extends GroupableClaim>(
 
     groups.push({
       key,
-      providerName: sorted[0].providerName ?? "—",
-      cnpj: sorted[0].cnpj,
-      guidance: sorted[0].guidance,
+      providerName: head.providerName ?? "—",
+      cnpj: head.cnpj,
+      guidance: head.guidance,
       steps,
       stepsDone,
       claims: sorted,

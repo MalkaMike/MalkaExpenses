@@ -23,6 +23,17 @@ const eslintConfig = [
     // catches `.catch(() => {})` / `.catch(() => ({}))` promise swallows.
     rules: {
       "no-empty": ["error", { allowEmptyCatch: false }],
+      // This codebase marks a deliberately unused argument by prefixing it with
+      // an underscore (_req, _role). Without these patterns the linter flags the
+      // very convention used to silence it, which trains people to ignore it.
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
       "no-restricted-syntax": [
         "error",
         {

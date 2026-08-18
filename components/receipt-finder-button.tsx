@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { Paperclip, Loader2, ExternalLink, X, Check, RefreshCw, FileSearch, ShieldCheck, FileText, Eye } from "lucide-react";
+import { Paperclip, Loader2, ExternalLink, X, Check, RefreshCw, FileSearch, ShieldCheck, FileText } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { safeJson } from "@/lib/http";
 

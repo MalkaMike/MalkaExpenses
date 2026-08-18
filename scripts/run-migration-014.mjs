@@ -5,7 +5,7 @@
  * Run: node scripts/run-migration-014.mjs
  */
 import { readFileSync } from "fs";
-import { resolve, dirname } from "path";
+import { dirname } from "path";
 import { fileURLToPath } from "url";
 import * as os from "os";
 import * as path from "path";

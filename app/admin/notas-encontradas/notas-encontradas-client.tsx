@@ -2,7 +2,7 @@
 import { useState } from "react";
 import {
   Check, X, ExternalLink, Paperclip, ShieldCheck, FileText, Loader2, Inbox, CheckCheck,
-  Briefcase, Shield, Tag, ChevronRight, Pencil, CheckCheck as CheckCheckIcon
+  Briefcase, Shield, Tag, ChevronRight, Pencil
 } from "lucide-react";
 import { formatBRL, formatDate } from "@/lib/format";
 import { safeJson } from "@/lib/http";
@@ -79,7 +79,6 @@ const dayLabel = (d: string) => {
 // past + future transactions of that merchant).
 function CategoryPicker({
   merchantKey,
-  merchantName,
   currentCategoryId,
   categories,
   onSaved
@@ -201,7 +200,8 @@ export function NotasEncontradasClient({
   function toggleTag(receiptId: string, slug: string) {
     setSelectedTags((prev) => {
       const next = new Map(prev);
-      next.get(receiptId) === slug ? next.delete(receiptId) : next.set(receiptId, slug);
+      if (next.get(receiptId) === slug) next.delete(receiptId);
+      else next.set(receiptId, slug);
       return next;
     });
   }
@@ -226,7 +226,8 @@ export function NotasEncontradasClient({
   function setRowBusy(id: string, on: boolean) {
     setBusy((prev) => {
       const next = new Set(prev);
-      on ? next.add(id) : next.delete(id);
+      if (on) next.add(id);
+      else next.delete(id);
       return next;
     });
   }

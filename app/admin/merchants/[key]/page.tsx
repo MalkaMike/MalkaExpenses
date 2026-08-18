@@ -27,7 +27,6 @@ export default async function MerchantDetailPage({
   const { key: rawKey } = await params;
   const sp = await searchParams;
   const direction = sp.direction === "in" ? "in" : sp.direction === "all" ? "all" : "out";
-  const backLabel = direction === "in" ? "pagadores" : direction === "all" ? "tudo" : "comerciantes";
   const key = decodeURIComponent(rawKey);
 
   const sb = serverClient();
