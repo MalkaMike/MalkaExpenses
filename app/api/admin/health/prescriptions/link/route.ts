@@ -5,6 +5,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { recomputeOne } from "@/lib/eligibility/recompute";
 import { maybeQueueSecretaryEmail } from "@/lib/health/lifecycle";
 import { z } from "zod";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
     );
     await maybeQueueSecretaryEmail(nota_fiscal_id).then((r) => {
       if (!r.ok) console.warn("[prescriptions/link→queue-email]", nota_fiscal_id, r.detail);
-      else if (r.action === "queued") console.log("[prescriptions/link→queue-email] queued", nota_fiscal_id);
+      else if (r.action === "queued") log.info("prescription_email_queued", { notaFiscalId: nota_fiscal_id });
     });
   });
 

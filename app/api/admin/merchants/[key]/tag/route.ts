@@ -5,6 +5,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/http";
 import { rawDescriptionsForKeyDirect, preloadClusters } from "@/lib/merchants/clusters";
 import { ensureClusterRowsExist } from "@/lib/merchants/ensure-cluster";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -110,7 +111,7 @@ export async function POST(
       .eq("canonical_key", merchantKey)
       .select("id");
     if (revErr) console.error("[tag] is_reviewed by key failed:", revErr.message);
-    else console.log(`[tag] is_reviewed pass1: ${revRows?.length ?? 0} rows updated for ${merchantKey}`);
+    else log.info("tag_is_reviewed_pass1", { merchantKey, rowsUpdated: revRows?.length ?? 0 });
 
     // Pass 2: also update by description_raw in case some rows have a different
     // canonical_key in the DB. This normalises canonical_key and sets is_reviewed.
@@ -125,7 +126,7 @@ export async function POST(
       revRows2Count = revRows2?.length ?? 0;
       revErr2Message = revErr2?.message ?? null;
       if (revErr2) console.error("[tag] is_reviewed by desc failed:", revErr2.message);
-      else console.log(`[tag] is_reviewed pass2: ${revRows2Count} rows updated for ${merchantKey}`);
+      else log.info("tag_is_reviewed_pass2", { merchantKey, rowsUpdated: revRows2Count });
     }
 
     // Neither pass touched a row (and neither errored-but-partially-succeeded via

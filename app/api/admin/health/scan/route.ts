@@ -8,6 +8,7 @@ import { maybeQueueSecretaryEmail } from "@/lib/health/lifecycle";
 import { randomUUID } from "crypto";
 import { uploadFile } from "@/lib/storage/supabase-storage";
 import { fromDb } from "@/lib/money";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -174,7 +175,7 @@ export async function POST(req: NextRequest) {
         );
         await maybeQueueSecretaryEmail(link_nota_fiscal_id).then((r) => {
           if (!r.ok) console.warn("[scan→queue-email]", link_nota_fiscal_id, r.detail);
-          else if (r.action === "queued") console.log("[scan→queue-email] queued", link_nota_fiscal_id);
+          else if (r.action === "queued") log.info("scan_email_queued", { notaFiscalId: link_nota_fiscal_id });
         });
       });
 
