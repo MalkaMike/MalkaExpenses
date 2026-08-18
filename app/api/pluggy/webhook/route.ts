@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { after } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
 import { syncPluggyItem } from "@/lib/pluggy/sync";
+import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -34,7 +35,7 @@ export async function POST(req: NextRequest) {
   } | null;
 
   // Lightweight, fast log (no heavy work before responding).
-  console.log("[pluggy webhook]", body?.event ?? "(no event)", body?.eventId ?? "");
+  log.info("pluggy_webhook_received", { event: body?.event ?? null, eventId: body?.eventId ?? null });
 
   const itemId = body?.itemId;
   const event = body?.event ?? "";
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
       try {
         const sb = serverClient();
         const result = await syncPluggyItem(sb, itemId);
-        console.log("[pluggy webhook] synced", itemId, "inserted", result.inserted);
+        log.info("pluggy_webhook_synced", { itemId, inserted: result.inserted });
       } catch (e) {
         console.error("[pluggy webhook] async sync failed", itemId, e);
       }
