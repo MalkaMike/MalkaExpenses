@@ -1,5 +1,4 @@
 "use client";
-import { useRouter } from "next/navigation";
 import { Lock } from "lucide-react";
 import type { Role } from "@/lib/auth/admin";
 import { AlertsBell } from "@/components/alerts-bell";
@@ -7,17 +6,19 @@ import { LangToggle } from "@/components/lang-toggle";
 
 // Top banner for admin/household — renders nothing for public role.
 export function AdminBanner({ role }: { role: Role }) {
-  const router = useRouter();
 
   if (role === "public") return null;
 
   async function logout() {
-    // Hit the endpoint that clears THIS role's cookie (household couldn't log
-    // out before — it always called the admin endpoint).
-    await fetch(role === "admin" ? "/api/admin/logout" : "/api/household/logout", {
-      method: "POST"
-    });
-    router.refresh();
+    // /api/logout clears every role cookie, so there is nothing to branch on.
+    await fetch("/api/logout", { method: "POST" });
+    // Hard navigation, NOT router.refresh(): refresh only re-fetches the
+    // current route's server payload, and the middleware's redirect to /login
+    // doesn't become a browser navigation. The page re-rendered unchanged and
+    // the user was stuck on a screen they had just logged out of — with no way
+    // to reach /login and sign in as someone else. Matches admin-layout-shell
+    // and bottom-nav, which always did this correctly.
+    window.location.href = "/login";
   }
 
   return (
