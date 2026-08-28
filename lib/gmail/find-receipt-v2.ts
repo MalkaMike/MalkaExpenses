@@ -2,6 +2,7 @@ import "server-only";
 import { generateMerchantVariations } from "./merchant-variations";
 import { textContainsAmount, snippet } from "./value-match";
 import { extractAttachmentText } from "./extract-text";
+import { gmailMessageUrl } from "./message-url";
 
 // ============================================================================
 // findReceiptsForTransactionV2 — value-verified nota fiscal lookup.
@@ -189,6 +190,8 @@ export type ReceiptMatchV2 = {
   /** Context snippet around the matched value */
   matchSnippet: string;
   gmailUrl: string;
+  /** Mailbox this match came from (null for pre-0043 rows). */
+  sourceEmail?: string;
 };
 
 /** Pull the instalment marker out of a transaction description.
@@ -223,6 +226,7 @@ export async function findReceiptsForTransactionV2(args: {
   date: string;             // ISO YYYY-MM-DD — the BILLING date
   amount: number;           // ABS value in BRL (e.g. 1234.56)
   description?: string;     // raw/clean description; used to detect instalments
+  accountEmail?: string;    // mailbox being searched; makes the deep link open the right one
   dayWindow?: number;       // ±days; default 7 (wider than v1 because we filter by value)
   max?: number;             // max results returned; default 5
 }): Promise<ReceiptMatchV2[]> {
@@ -347,7 +351,8 @@ export async function findReceiptsForTransactionV2(args: {
           matchSource: "subject",
           matchReason: `Valor R$ ${subjMatch.match.raw.replace(/R\$\s*/i, "")} encontrado no assunto`,
           matchSnippet: snippet(subject, subjMatch.match.pos, 40),
-          gmailUrl: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
+          gmailUrl: gmailMessageUrl(msg.id, args.accountEmail),
+          sourceEmail: args.accountEmail
         });
         continue;
       }
@@ -366,7 +371,8 @@ export async function findReceiptsForTransactionV2(args: {
           matchSource: "snippet",
           matchReason: `Valor encontrado no preview do email`,
           matchSnippet: snippet(gmailSnippet, snipMatch.match.pos, 40),
-          gmailUrl: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
+          gmailUrl: gmailMessageUrl(msg.id, args.accountEmail),
+          sourceEmail: args.accountEmail
         });
         continue;
       }
@@ -393,7 +399,8 @@ export async function findReceiptsForTransactionV2(args: {
             matchSource: "email-body",
             matchReason: `Valor encontrado no corpo do email`,
             matchSnippet: snippet(bodyText, bodyMatch.match.pos, 70),
-            gmailUrl: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
+            gmailUrl: gmailMessageUrl(msg.id, args.accountEmail),
+            sourceEmail: args.accountEmail
           });
           continue;
         }
@@ -427,7 +434,8 @@ export async function findReceiptsForTransactionV2(args: {
             matchSource: method === "pdf-text" ? "pdf-text" : method === "vision-ocr" ? "vision-ocr" : "raw-text",
             matchReason: `Valor confirmado em ${att.filename ?? "anexo"} (${method === "pdf-text" ? "texto do PDF" : method === "vision-ocr" ? "OCR" : "texto"})`,
             matchSnippet: snippet(text, attMatch.match.pos, 60),
-            gmailUrl: `https://mail.google.com/mail/u/0/#inbox/${msg.id}`
+            gmailUrl: gmailMessageUrl(msg.id, args.accountEmail),
+            sourceEmail: args.accountEmail
           });
           attachmentMatchFound = true;
           break;

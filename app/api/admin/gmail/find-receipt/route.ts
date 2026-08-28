@@ -2,8 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/auth/admin";
 import { serverClient } from "@/lib/supabase/server";
-import { getValidAccessToken } from "@/lib/gmail/oauth";
-import { findReceiptsForTransactionV2 } from "@/lib/gmail/find-receipt-v2";
+import { getReceiptSearchCredentials } from "@/lib/gmail/oauth";
+import {
+  findReceiptsForTransactionV2,
+  type ReceiptMatchV2
+} from "@/lib/gmail/find-receipt-v2";
+import { gmailMessageUrl } from "@/lib/gmail/message-url";
 import { safeJson } from "@/lib/http";
 import { fromDb } from "@/lib/money";
 
@@ -74,7 +78,7 @@ export async function POST(req: NextRequest) {
           matchReason: r.match_reason ?? "",
           matchSnippet: r.match_snippet ?? "",
           confirmed: r.confirmed,
-          gmailUrl: `https://mail.google.com/mail/u/0/#inbox/${r.gmail_message_id}`
+          gmailUrl: gmailMessageUrl(r.gmail_message_id as string, r.source_email as string | null)
         }))
       });
     }
@@ -86,23 +90,30 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Live search
-  const cred = await getValidAccessToken();
-  if (!cred) {
+  // Live search — across EVERY connected mailbox (work + personal), same as
+  // the nightly cron. Which mailbox holds a given receipt is not knowable in
+  // advance, so both are searched and the results merged.
+  const creds = await getReceiptSearchCredentials();
+  if (creds.length === 0) {
     return NextResponse.json({ error: "Gmail not connected" }, { status: 412 });
   }
 
-  let matches;
+  let matches: ReceiptMatchV2[];
   try {
-    matches = await findReceiptsForTransactionV2({
-      accessToken: cred.accessToken,
-      merchantName: merchant_name,
-      date: tx.date as string,
-      amount: absAmount,
-      description: tx.description_raw as string | undefined,
-      dayWindow: 7,
-      max: 5
-    });
+    matches = [];
+    for (const cred of creds) {
+      const found = await findReceiptsForTransactionV2({
+        accessToken: cred.accessToken,
+        merchantName: merchant_name,
+        date: tx.date as string,
+        amount: absAmount,
+        description: tx.description_raw as string | undefined,
+        accountEmail: cred.email,
+        dayWindow: 7,
+        max: 5
+      });
+      matches.push(...found);
+    }
   } catch (e) {
     return NextResponse.json(
       { error: `Gmail search failed: ${(e as Error).message}` },
@@ -145,7 +156,8 @@ export async function POST(req: NextRequest) {
         confidence: m.confidence,
         match_source: m.matchSource,
         match_snippet: m.matchSnippet,
-        amount_brl: absAmount
+        amount_brl: absAmount,
+        source_email: m.sourceEmail ?? null
       })),
       { onConflict: "transaction_id,gmail_message_id" }
     );

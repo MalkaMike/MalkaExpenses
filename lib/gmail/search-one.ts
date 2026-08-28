@@ -1,6 +1,10 @@
 import "server-only";
 import type { serverClient } from "@/lib/supabase/server";
-import { findReceiptsForTransactionV2 } from "@/lib/gmail/find-receipt-v2";
+import {
+  findReceiptsForTransactionV2,
+  type ReceiptMatchV2
+} from "@/lib/gmail/find-receipt-v2";
+import type { ReceiptSearchCredential } from "@/lib/gmail/oauth";
 import { clusterFor } from "@/lib/merchants/clusters";
 import { fromDb } from "@/lib/money";
 
@@ -42,7 +46,7 @@ export type SearchableTx = {
 // ============================================================================
 export async function searchOneTransaction(
   sb: SB,
-  accessToken: string,
+  creds: ReceiptSearchCredential[],
   tx: SearchableTx
 ): Promise<SearchOneResult> {
   // real_amount is stored in CENTAVOS; findReceiptsForTransactionV2 matches
@@ -56,15 +60,25 @@ export async function searchOneTransaction(
 
   try {
     const cluster = clusterFor(tx.description_raw);
-    const matches = await findReceiptsForTransactionV2({
-      accessToken,
-      merchantName: cluster.name,
-      date: tx.date,
-      amount: absAmount,
-      description: tx.description_raw,
-      dayWindow: 7,
-      max: 5
-    });
+    // Search EVERY connected mailbox. A given receipt lives in exactly one of
+    // them and which one is not knowable in advance — shop receipts arrive in
+    // personal mail, supplier invoices in the work account. A failure in any
+    // mailbox throws to the catch below, so the row is recorded as errored and
+    // retried rather than stamped with a half-searched answer.
+    const matches: ReceiptMatchV2[] = [];
+    for (const cred of creds) {
+      const found = await findReceiptsForTransactionV2({
+        accessToken: cred.accessToken,
+        merchantName: cluster.name,
+        date: tx.date,
+        amount: absAmount,
+        description: tx.description_raw,
+        accountEmail: cred.email,
+        dayWindow: 7,
+        max: 5
+      });
+      matches.push(...found);
+    }
 
     if (matches.length > 0) {
       const { error: upsertErr } = await sb.from("transaction_receipts").upsert(
@@ -83,7 +97,8 @@ export async function searchOneTransaction(
           confidence: m.confidence,
           match_source: m.matchSource,
           match_snippet: m.matchSnippet,
-          amount_brl: absAmount
+          amount_brl: absAmount,
+          source_email: m.sourceEmail ?? null
         })),
         { onConflict: "transaction_id,gmail_message_id" }
       );

@@ -3,6 +3,7 @@ import { getRole } from "@/lib/auth/admin";
 import { PageHeader } from "@/components/page-header";
 import { serverClient } from "@/lib/supabase/server";
 import { clusterFor, preloadClusters } from "@/lib/merchants/clusters";
+import { gmailMessageUrl } from "@/lib/gmail/message-url";
 import { fromDb } from "@/lib/money";
 import {
   NotasEncontradasClient,
@@ -37,7 +38,7 @@ export default async function NotasEncontradasPage() {
   const { data: receipts } = await sb
     .from("transaction_receipts")
     .select(
-      "id, transaction_id, subject, from_name, from_email, sent_at, has_attachment, attachment_count, confidence, match_source, match_reason, match_snippet, amount_brl, created_at, gmail_message_id"
+      "id, transaction_id, subject, from_name, from_email, sent_at, has_attachment, attachment_count, confidence, match_source, match_reason, match_snippet, amount_brl, created_at, gmail_message_id, source_email"
     )
     .is("confirmed", null)
     .order("created_at", { ascending: false })
@@ -90,7 +91,7 @@ export default async function NotasEncontradasPage() {
     const cluster = clusterFor(tx.description_raw);
     rawItems.push({
       receiptId: r.id as string,
-      gmailUrl: `https://mail.google.com/mail/u/0/#inbox/${r.gmail_message_id}`,
+      gmailUrl: gmailMessageUrl(r.gmail_message_id as string, r.source_email as string | null),
       subject: (r.subject as string) ?? "(sem assunto)",
       fromName: (r.from_name as string) ?? null,
       fromEmail: (r.from_email as string) ?? null,

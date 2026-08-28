@@ -34,6 +34,7 @@ export default async function AdminDashboard({
   const [
     gmailAdmin,
     gmailHealth,
+    gmailReceipts,
     accounts,
     { count: total },
     { count: pending },
@@ -43,6 +44,7 @@ export default async function AdminDashboard({
   ] = await Promise.all([
     getConnectionStatus("admin"),
     getConnectionStatus("health"),
+    getConnectionStatus("receipts"),
     getAccountsWithBalances("admin"),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("is_fake", false),
       sb.from("transactions").select("*", { count: "exact", head: true }).eq("status", "pending_review"),
@@ -268,13 +270,48 @@ export default async function AdminDashboard({
               )}
             </div>
 
+            {/* Gmail pessoal (receipts) — SÓ leitura de notas. Não envia e-mail:
+                quem envia continua sendo a conta "Mickael" (admin). */}
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-outline-variant">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant w-14 shrink-0">
+                Pessoal
+              </span>
+              {gmailReceipts.connected ? (
+                <>
+                  <CheckCircle2 size={13} className="text-secondary shrink-0" />
+                  <span className="text-sm text-on-surface truncate flex-1">{gmailReceipts.email}</span>
+                  <Link
+                    href="/api/auth/gmail/connect?forRole=receipts"
+                    className="text-xs text-on-surface-variant hover:text-on-surface transition shrink-0"
+                  >
+                    Reconectar
+                  </Link>
+                  <GmailDisconnectButton role="receipts" label="Pessoal" />
+                </>
+              ) : (
+                <>
+                  <Mail size={13} className="text-on-surface-variant shrink-0" />
+                  <span className="text-sm text-on-surface-variant flex-1">
+                    Não conectado — notas de compra não são procuradas aqui
+                  </span>
+                  <Link
+                    href="/api/auth/gmail/connect?forRole=receipts"
+                    className="text-xs font-medium text-primary hover:text-primary/80 transition shrink-0"
+                  >
+                    Conectar
+                  </Link>
+                </>
+              )}
+            </div>
+
             {/* NF search is fully automatic: the daily cron is the ONLY searcher.
                 No manual bulk button → cron + manual can't double-search the same
                 transaction (closed the overlap race). */}
             {gmailAdmin.connected && (
               <div className="px-4 py-3 flex items-center gap-2 text-xs text-on-surface-variant">
                 <RefreshCw size={12} className="shrink-0" />
-                Busca de notas no Gmail roda automática todo dia às 03:30 (BRT).
+                Busca de notas roda automática todo dia às 03:30 (BRT), em
+                {gmailReceipts.connected ? " duas caixas: trabalho e pessoal." : " uma caixa só (trabalho)."}
               </div>
             )}
           </div>

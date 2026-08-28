@@ -202,6 +202,36 @@ export async function getValidAccessToken(role = "admin"): Promise<{
   }
 }
 
+/** Roles whose mailboxes the nota fiscal search reads, in order.
+ *
+ *  `admin` is the work account (also the sender for lib/gmail/send — do NOT
+ *  repoint it at a personal address to fix receipt coverage; that would silently
+ *  change the From on every outbound email). `receipts` is an OPTIONAL second
+ *  connection for the mailbox where shop receipts actually arrive.
+ *
+ *  Order matters only for which duplicate wins; matches from both are kept. */
+export const RECEIPT_SEARCH_ROLES = ["admin", "receipts"] as const;
+
+export type ReceiptSearchCredential = {
+  accessToken: string;
+  email: string;
+  role: string;
+};
+
+/** Every connected mailbox the receipt search should read.
+ *
+ *  Returns [] when nothing is connected — callers treat that as "skip", exactly
+ *  as they treated a null from getValidAccessToken() before. With only `admin`
+ *  connected this returns a single credential and behaviour is unchanged. */
+export async function getReceiptSearchCredentials(): Promise<ReceiptSearchCredential[]> {
+  const out: ReceiptSearchCredential[] = [];
+  for (const role of RECEIPT_SEARCH_ROLES) {
+    const cred = await getValidAccessToken(role);
+    if (cred) out.push({ ...cred, role });
+  }
+  return out;
+}
+
 /** Status check for the dashboard. Defaults to admin role for backward compat.
  * @param role  "admin" (default) or "health" */
 export async function getConnectionStatus(role = "admin"): Promise<{

@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 type Props = {
-  role: "admin" | "health";
+  role: "admin" | "health" | "receipts";
   label: string; // "Mickael" | "Ayelet" — used in the confirm dialog
 };
 

@@ -10,7 +10,10 @@ export const runtime = "nodejs";
 // encodes the target role in it ("nonce.targetRole") so the callback knows
 // which credential row to update.
 //
-// Admin can connect for any role via ?forRole=admin|health.
+// Admin can connect for any role via ?forRole=admin|health|receipts.
+// `receipts` is a second READ-ONLY mailbox for the nota fiscal search (personal
+// mail). It is deliberately NOT the `admin` row: admin is also the sender in
+// lib/gmail/send, so repointing it would change the From on outbound email.
 // Health can only connect their own account (no forRole override).
 export async function GET(req: NextRequest) {
   const sessionRole = await getRole();
@@ -23,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   // Admin can target any role; others can only target themselves.
   let targetRole: string;
-  if (sessionRole === "admin" && forRole && ["admin", "health"].includes(forRole)) {
+  if (sessionRole === "admin" && forRole && ["admin", "health", "receipts"].includes(forRole)) {
     targetRole = forRole;
   } else {
     targetRole = sessionRole;

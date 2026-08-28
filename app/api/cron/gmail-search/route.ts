@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverClient } from "@/lib/supabase/server";
-import { getValidAccessToken } from "@/lib/gmail/oauth";
+import { getReceiptSearchCredentials } from "@/lib/gmail/oauth";
 import { preloadClusters } from "@/lib/merchants/clusters";
 import { searchOneTransaction } from "@/lib/gmail/search-one";
 import { verifyCronSecret } from "@/lib/auth/cron";
@@ -26,8 +26,8 @@ export async function GET(req: NextRequest) {
     return new NextResponse("unauthorized", { status: 401 });
   }
 
-  const cred = await getValidAccessToken();
-  if (!cred) {
+  const creds = await getReceiptSearchCredentials();
+  if (creds.length === 0) {
     return NextResponse.json({ skipped: true, reason: "Gmail not connected" });
   }
 
@@ -75,7 +75,7 @@ export async function GET(req: NextRequest) {
       if (!timeLeft()) break;
       seen.add(tx.id);
       processed++;
-      const r = await searchOneTransaction(sb, cred.accessToken, tx);
+      const r = await searchOneTransaction(sb, creds, tx);
       if (r.found) found++;
     }
   }
@@ -108,7 +108,7 @@ export async function GET(req: NextRequest) {
       if (!timeLeft()) break;
       seen.add(tx.id);
       retried++;
-      const r = await searchOneTransaction(sb, cred.accessToken, tx);
+      const r = await searchOneTransaction(sb, creds, tx);
       if (r.found) retryFound++;
     }
   }
