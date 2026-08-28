@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   // Fetch the transaction
   const { data: tx } = await sb
     .from("transactions")
-    .select("id, date, real_amount, gmail_searched_at")
+    .select("id, date, real_amount, description_raw, gmail_searched_at")
     .eq("id", transaction_id)
     .maybeSingle();
   if (!tx) {
@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
       merchantName: merchant_name,
       date: tx.date as string,
       amount: absAmount,
+      description: tx.description_raw as string | undefined,
       dayWindow: 7,
       max: 5
     });

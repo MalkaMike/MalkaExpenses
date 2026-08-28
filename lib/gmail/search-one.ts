@@ -2,6 +2,7 @@ import "server-only";
 import type { serverClient } from "@/lib/supabase/server";
 import { findReceiptsForTransactionV2 } from "@/lib/gmail/find-receipt-v2";
 import { clusterFor } from "@/lib/merchants/clusters";
+import { fromDb } from "@/lib/money";
 
 type SB = ReturnType<typeof serverClient>;
 
@@ -44,7 +45,12 @@ export async function searchOneTransaction(
   accessToken: string,
   tx: SearchableTx
 ): Promise<SearchOneResult> {
-  const absAmount = Math.abs(Number(tx.real_amount));
+  // real_amount is stored in CENTAVOS; findReceiptsForTransactionV2 matches
+  // against BRL as written in an email ("R$ 107,80"). Without fromDb() this
+  // hunted for "R$ 10.780,00" on a R$ 107,80 purchase and could never match —
+  // which is why the cron found nothing while the admin button (already using
+  // fromDb) worked.
+  const absAmount = Math.abs(fromDb(Number(tx.real_amount)));
   const attempts = Number(tx.gmail_search_attempts ?? 0) + 1;
   const nowIso = new Date().toISOString();
 
@@ -55,6 +61,7 @@ export async function searchOneTransaction(
       merchantName: cluster.name,
       date: tx.date,
       amount: absAmount,
+      description: tx.description_raw,
       dayWindow: 7,
       max: 5
     });

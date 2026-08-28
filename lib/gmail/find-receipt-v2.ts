@@ -191,12 +191,38 @@ export type ReceiptMatchV2 = {
   gmailUrl: string;
 };
 
+/** Pull the instalment marker out of a transaction description.
+ *
+ *  Two shapes occur in the ledger:
+ *    • "(3/5)"          — suffix appended by lib/pluggy/sync from Pluggy metadata
+ *    • "IZIPIZI 04/04"  — trailing marker in the raw bank text (PDF imports)
+ *
+ *  Returns { number: 1, total: 1 } for anything that is not a recognisable
+ *  instalment, so callers can treat "not installed" and "instalment 1 of 1"
+ *  identically. */
+export function installmentInfoFrom(
+  description?: string | null
+): { number: number; total: number } {
+  const none = { number: 1, total: 1 };
+  if (!description) return none;
+  const tagged = description.match(/\((\d{1,2})\/(\d{1,2})\)\s*$/);
+  const m = tagged ?? description.match(/(\d{1,2})\/(\d{1,2})\s*$/);
+  if (!m) return none;
+  const number = Number(m[1]);
+  const total = Number(m[2]);
+  // total < 2 is not an instalment plan; number > total means we matched a
+  // date like "12/05" rather than an instalment marker.
+  if (!number || !total || total < 2 || number > total) return none;
+  return { number, total };
+}
+
 /** Main entry point — value-verified receipt search. */
 export async function findReceiptsForTransactionV2(args: {
   accessToken: string;
   merchantName: string;
-  date: string;             // ISO YYYY-MM-DD
+  date: string;             // ISO YYYY-MM-DD — the BILLING date
   amount: number;           // ABS value in BRL (e.g. 1234.56)
+  description?: string;     // raw/clean description; used to detect instalments
   dayWindow?: number;       // ±days; default 7 (wider than v1 because we filter by value)
   max?: number;             // max results returned; default 5
 }): Promise<ReceiptMatchV2[]> {
@@ -204,11 +230,57 @@ export async function findReceiptsForTransactionV2(args: {
   const max = args.max ?? 5;
   const absAmount = Math.abs(args.amount);
 
+  // A receipt email arrives when the purchase happens, but `date` is when the
+  // INSTALMENT is billed. Instalment N is billed roughly N-1 months after the
+  // purchase, so step back that far to land near the receipt. Without this,
+  // instalment rows searched a window months away from the email — and rows
+  // whose billing date is still in the future searched a future window, which
+  // can only ever return zero.
+  const { number: installment, total: installmentTotal } = installmentInfoFrom(
+    args.description
+  );
   const center = new Date(args.date);
+  if (installment > 1) {
+    center.setUTCMonth(center.getUTCMonth() - (installment - 1));
+  }
+
+  // Billing dates drift from purchase dates (statement close, weekends) and the
+  // month-stepping above is approximate, so widen the net for instalments. The
+  // window is ASYMMETRIC because a purchase always precedes its billing date —
+  // a symmetric one would spend half its span on dates that cannot hold the
+  // receipt.
+  // ponytail: fixed 30d back / 10d forward; tune per issuer only if misses show up.
+  const backDays = installment > 1 ? Math.max(dayWindow, 30) : dayWindow;
+  const forwardDays = installment > 1 ? 10 : dayWindow;
+
   const after = new Date(center);
-  after.setUTCDate(center.getUTCDate() - dayWindow);
+  after.setUTCDate(center.getUTCDate() - backDays);
   const before = new Date(center);
-  before.setUTCDate(center.getUTCDate() + dayWindow + 1);
+  before.setUTCDate(center.getUTCDate() + forwardDays + 1);
+
+  // Never search into the future — no email can exist there.
+  const now = new Date();
+  if (before.getTime() > now.getTime()) before.setTime(now.getTime());
+  if (after.getTime() > now.getTime()) return [];
+
+  // A receipt for an instalment purchase quotes the FULL price ("R$ 539,00"),
+  // while the ledger row carries one slice ("R$ 107,80"). Accept either, or a
+  // 5x plan could never match its own receipt.
+  const amountTargets =
+    installmentTotal > 1
+      ? [absAmount, Math.round(absAmount * installmentTotal * 100) / 100]
+      : [absAmount];
+
+  /** textContainsAmount, but tries the instalment slice AND the full price. */
+  const matchAmount = (
+    text: string
+  ): ReturnType<typeof textContainsAmount> => {
+    for (const target of amountTargets) {
+      const r = textContainsAmount(text, target);
+      if (r.found) return r;
+    }
+    return { found: false };
+  };
 
   const variations = generateMerchantVariations(args.merchantName);
   if (variations.length === 0) return [];
@@ -260,7 +332,7 @@ export async function findReceiptsForTransactionV2(args: {
       const gmailSnippet = msg.snippet ?? "";
 
       // ── Layer 1: subject/snippet (cheap, no download) ────────────────────
-      const subjMatch = textContainsAmount(subject, absAmount);
+      const subjMatch = matchAmount(subject);
       if (subjMatch.found && subjMatch.match) {
         matches.push({
           gmailMessageId: msg.id,
@@ -279,7 +351,7 @@ export async function findReceiptsForTransactionV2(args: {
         });
         continue;
       }
-      const snipMatch = textContainsAmount(gmailSnippet, absAmount);
+      const snipMatch = matchAmount(gmailSnippet);
       if (snipMatch.found && snipMatch.match) {
         matches.push({
           gmailMessageId: msg.id,
@@ -305,7 +377,7 @@ export async function findReceiptsForTransactionV2(args: {
       // a PDF attachment is just additional confirmation.
       const bodyText = extractEmailBody(msg.payload);
       if (bodyText) {
-        const bodyMatch = textContainsAmount(bodyText, absAmount);
+        const bodyMatch = matchAmount(bodyText);
         if (bodyMatch.found && bodyMatch.match) {
           const attachmentCount = Array.from(walkAttachments(msg.payload)).length;
           matches.push({
@@ -340,7 +412,7 @@ export async function findReceiptsForTransactionV2(args: {
           att.filename
         );
         if (!text) continue;
-        const attMatch = textContainsAmount(text, absAmount);
+        const attMatch = matchAmount(text);
         if (attMatch.found && attMatch.match) {
           matches.push({
             gmailMessageId: msg.id,
