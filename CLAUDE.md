@@ -62,6 +62,51 @@ node scripts/run-migration.mjs 00NN_name.sql    # WRITES - from db/migrations/ o
   about whether a route exists or works.
 - `lib/gmail/search.ts` is the old v1 search and is **imported by nothing**. Dead code.
 
+## The four buckets and three labels (2026-09-06)
+
+Every expense lands in exactly one **bucket**. Buckets are `reimbursement_tags` rows and the order
+below is the priority — first match wins:
+
+| Bucket | Tag slug | Meaning |
+|---|---|---|
+| Not-in-Family | `not_family` | Should not count in the family budget at all (mobile game, April insurance premium) |
+| Saúde | `insurance` | An expense **to be claimed back** from the health plan |
+| Kenlo + Laik | `kenlo`, `laik` | Work. Kenlo = dev/infra/AI stack + work travel; Laik = ads, media, design, marketing. Both are hidden from the shared household ledger (`shared_amount = 0`) |
+| Família | *(no tag)* | The default — everything else |
+
+**Labels** are also `reimbursement_tags` but do NOT move money out of a bucket; they only group it:
+`health_reimb` (money the plan paid back — stays in Família), `late_fees` (interest, multas,
+encargos — stays in Família), `suspeito`. A tag is a label purely by being absent from the bucket
+CASE in reporting queries — there is no flag for it, so **check the query, not the tag table**.
+
+**How a label sticks.** `merchant_rules.reimbursement_tag_id` (migration `0044`) holds a tag next to
+the category. Tagging a merchant writes the rule (`app/api/admin/merchants/[key]/tag`), and
+`categorizeFresh()` in `lib/pluggy/sync.ts` applies it to every newly-synced row — independently of
+the category cascade, so a tag-only rule never stops a row reaching the categorizer.
+
+**Rules match with `contains` on `description_raw`, so a pattern is a trap unless it is narrow.**
+Real false positives found in this ledger on 2026-09-06:
+
+- `ADOBE` matches inside **Banc-adoBe-nto**. Adobe uses `*ADOBE` (contains) + `ADOBE` (exact).
+- `amil` matches inside **Zara M-amil-a**.
+- `EINSTEIN` matches **DAMA EINSTEIN**, a restaurant inside the hospital that is *not* health.
+  Rules use unit names: `EINSTEIN MORUMBI`, `EINSTEIN IBI`, `ALBERTEINSTEIN`.
+- `Pagamento de boleto` reaches **22 different suppliers**. Never a rule.
+- `GITHUB  INC.` has **two** spaces in the statement. `RegistroBR` has no dot.
+
+`countOtherSuppliersMatchingPattern()` in `lib/merchants/merchant-rules.ts` now refuses to write a
+rule whose pattern also reaches another supplier. It fails **closed** — a check that cannot run
+skips the rule rather than writing a risky one.
+
+**Laik and Akiva move money in BOTH directions** (Akiva sent R$1,2 mi back). Any rule where sign
+matters must say `real_amount < 0`.
+
+**"Saldo em atraso" / "Crédito de atraso" on the Nubank card are the same amount, same day, and
+cancel out** — the bank rolling an unpaid balance. Not spending. Marked `is_transfer`.
+
+Full record, with every number and the query that produced it:
+`docs/handoff/2026-09-06-session-close.md`.
+
 ## House rules for this repo
 
 - Production data is read-only by default. Writes go through a **numbered migration** in
