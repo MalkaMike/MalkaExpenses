@@ -15,6 +15,7 @@ import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
 import { isCcPaymentDescription } from "@/lib/reconciliation/cc-matcher";
 import { mapPluggyCategory } from "@/lib/pluggy/mappers";
 import { toDb, fromDb } from "@/lib/money";
+import { matchesRulePattern } from "@/lib/merchants/rule-pattern";
 
 type SB = ReturnType<typeof serverClient>;
 
@@ -33,6 +34,10 @@ export type PluggySyncResult = {
 function isoToDate(iso: string): string {
   return iso.slice(0, 10);
 }
+
+// Reimbursement tags that also hide a transaction from the shared household
+// ledger — mirrors hideOnTag in app/api/admin/merchants/[key]/tag/route.ts.
+const HIDE_ON_TAG_SLUGS = new Set(["kenlo", "laik"]);
 
 // How far back to pull on the first sync of an account.
 function defaultFromDate(): string {
@@ -321,20 +326,30 @@ async function categorizeFresh(
   }>,
   errors: string[]
 ): Promise<number> {
-  // Merchant rules + slug map in parallel (independent reads).
-  const [rulesRes, catsRes] = await Promise.all([
+  // Merchant rules + slug map + reimbursement tags in parallel (independent reads).
+  const [rulesRes, catsRes, tagsRes] = await Promise.all([
     sb
       .from("merchant_rules")
-      .select("pattern, pattern_type, category_id, confidence_default")
+      .select("pattern, pattern_type, category_id, reimbursement_tag_id, confidence_default")
       .order("hit_count", { ascending: false }),
-    sb.from("categories").select("id, slug")
+    sb.from("categories").select("id, slug"),
+    sb.from("reimbursement_tags").select("id, slug")
   ]);
   if (rulesRes.error) errors.push(`merchant_rules read failed: ${rulesRes.error.message}`);
   if (catsRes.error) errors.push(`categories read failed: ${catsRes.error.message}`);
+  if (tagsRes.error) errors.push(`reimbursement_tags read failed: ${tagsRes.error.message}`);
   const rules = rulesRes.data;
   const slugToId = new Map<string, string>();
   for (const c of catsRes.data ?? []) slugToId.set(c.slug as string, c.id as string);
   const ccPayId = slugToId.get("cartao_pagamento");
+  const tagIdToSlug = new Map<string, string>();
+  for (const t of tagsRes.data ?? []) tagIdToSlug.set(t.id as string, t.slug as string);
+  const tagRules = (rules ?? []).filter((r) => r.reimbursement_tag_id);
+  const categoryRules = (rules ?? []).filter((r) => r.category_id);
+  // Collected independently of the category cascade below — a row can match
+  // a tag-only rule (no category_id) and still need AI/Pluggy to categorize it.
+  const tagsToApply: Array<{ transactionId: string; tagId: string }> = [];
+  const hiddenIds = new Set<string>();
 
   // patch-payload buckets: identical patch → single UPDATE ... WHERE id IN (...)
   type Patch = Record<string, string | number | boolean>;
@@ -348,6 +363,16 @@ async function categorizeFresh(
 
   const remaining: typeof rows = [];
   for (const row of rows) {
+    // Reimbursement-tag rule — independent of the category cascade below, so
+    // a tag-only rule (Kenlo/Laik/Plano) never skips real categorization.
+    const descLower = row.description.toLowerCase();
+    const tagHit = tagRules.find((r) => matchesRulePattern(r, descLower));
+    if (tagHit?.reimbursement_tag_id) {
+      tagsToApply.push({ transactionId: row.id, tagId: tagHit.reimbursement_tag_id });
+      const slug = tagIdToSlug.get(tagHit.reimbursement_tag_id);
+      if (slug && HIDE_ON_TAG_SLUGS.has(slug)) hiddenIds.add(row.id);
+    }
+
     // 0) Credit-card BILL PAYMENT → it's a transfer, not a real expense
     //    (the card purchases already arrive on the card account). Mark it so it
     //    doesn't double-count. Deterministic — runs before merchant rules / AI.
@@ -414,19 +439,13 @@ async function categorizeFresh(
     }
 
     // 1) Merchant rule (deterministic, no AI cost).
-    const desc = row.description.toLowerCase();
-    const hit = (rules ?? []).find((rule) => {
-      const pat = rule.pattern.toLowerCase();
-      if (rule.pattern_type === "exact") return desc === pat;
-      if (rule.pattern_type === "starts_with") return desc.startsWith(pat);
-      return desc.includes(pat);
-    });
+    const hit = categoryRules.find((rule) => matchesRulePattern(rule, descLower));
     if (hit) {
       // Pre-fill the suggested category but keep it staged (pending_review) —
       // the admin still accepts every row into the portal.
       bucketAdd(
         {
-          category_id: hit.category_id,
+          category_id: hit.category_id as string,
           confidence: Number(hit.confidence_default) || 0.95,
           ai_reasoning: "Regra de fornecedor aplicada",
           status: "auto_accepted"
@@ -483,6 +502,32 @@ async function categorizeFresh(
       }
     })
   );
+
+  // 4) Reimbursement tags learned from merchant rules (Kenlo/Laik/Plano) —
+  //    independent of the category buckets above, applied after so a
+  //    hide-on-tag can't be clobbered by a category patch's own shared_amount.
+  if (tagsToApply.length > 0) {
+    const rows = tagsToApply.map((t) => ({
+      transaction_id: t.transactionId,
+      tag_id: t.tagId,
+      status: "pending" as const
+    }));
+    for (let i = 0; i < rows.length; i += 500) {
+      const slice = rows.slice(i, i + 500);
+      const { error } = await sb
+        .from("transaction_reimbursements")
+        .upsert(slice, { onConflict: "transaction_id,tag_id", ignoreDuplicates: true });
+      if (error) errors.push(`transaction_reimbursements upsert failed (${slice.length} rows): ${error.message}`);
+    }
+  }
+  if (hiddenIds.size > 0) {
+    const ids = Array.from(hiddenIds);
+    for (let i = 0; i < ids.length; i += 500) {
+      const slice = ids.slice(i, i + 500);
+      const { error } = await sb.from("transactions").update({ shared_amount: 0 }).in("id", slice);
+      if (error) errors.push(`tag hide update failed (${slice.length} rows): ${error.message}`);
+    }
+  }
 
   return done;
 }

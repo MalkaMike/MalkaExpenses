@@ -5,6 +5,7 @@ import { serverClient } from "@/lib/supabase/server";
 import { householdSafeTransaction } from "@/lib/security/sanitize";
 import { safeJson } from "@/lib/http";
 import { toDb } from "@/lib/money";
+import { derivePattern, upsertMerchantRule } from "@/lib/merchants/merchant-rules";
 
 export const runtime = "nodejs";
 
@@ -129,27 +130,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
   // Admin-only: a household correction must never silently retrain the
   // categorization of the WHOLE ledger (including rows she can't see).
   if (role === "admin" && b.category_id && existing.category_id !== b.category_id && existing.description_raw) {
-    const pattern = String(existing.description_raw).split(/\s+/).slice(0, 3).join(" ");
-    if (pattern.length >= 3) {
-      const { data: existingRule } = await sb
-        .from("merchant_rules")
-        .select("id")
-        .eq("pattern", pattern)
-        .maybeSingle();
-      if (existingRule) {
-        await sb
-          .from("merchant_rules")
-          .update({ category_id: b.category_id, confidence_default: 0.95 })
-          .eq("id", existingRule.id);
-      } else {
-        await sb.from("merchant_rules").insert({
-          pattern,
-          pattern_type: "contains",
-          category_id: b.category_id,
-          confidence_default: 0.95,
-          created_from_transaction_id: id
-        });
-      }
+    const pattern = derivePattern(String(existing.description_raw));
+    if (pattern) {
+      await upsertMerchantRule(sb, pattern, { category_id: b.category_id, confidence_default: 0.95 }, id);
     }
   }
 

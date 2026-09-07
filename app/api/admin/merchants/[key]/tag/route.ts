@@ -5,13 +5,24 @@ import { serverClient } from "@/lib/supabase/server";
 import { safeJson } from "@/lib/http";
 import { rawDescriptionsForKeyDirect, preloadClusters } from "@/lib/merchants/clusters";
 import { ensureClusterRowsExist } from "@/lib/merchants/ensure-cluster";
+import { derivePattern, upsertMerchantRule, countOtherSuppliersMatchingPattern } from "@/lib/merchants/merchant-rules";
 import { log } from "@/lib/log";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+// 'stupid' (Gastos Idiotas, 0049) is informational like 'suspeito' — it gets
+// its own reporting bucket but is NOT hidden from the shared ledger, so it
+// appears in neither hideOnTag nor showOnTag below.
+// Two kinds of tag live here:
+//   BUCKETS  — move a charge out of Family: kenlo, laik, insurance, not_family
+//   LABELS   — group charges that STAY in Family: health_reimb, late_fees,
+//              suspeito
 const Body = z.object({
-  tag_slug: z.enum(["kenlo", "laik", "insurance", "suspeito"]),
+  tag_slug: z.enum([
+    "kenlo", "laik", "insurance", "suspeito",
+    "not_family", "health_reimb", "late_fees"
+  ]),
   action: z.enum(["add", "remove"])
 });
 
@@ -155,8 +166,39 @@ export async function POST(
     }
   }
 
+  // Learn (or unlearn) a merchant rule per raw description so a FUTURE sync
+  // tags new charges from this same supplier automatically — tagging used to
+  // only reach transactions that already existed at the moment of tagging.
+  const patterns = new Set<string>();
+  for (const raw of rawDescs) {
+    const pattern = derivePattern(raw);
+    if (pattern) patterns.add(pattern);
+  }
+  const skippedGenericPatterns: string[] = [];
+  for (const pattern of patterns) {
+    if (action === "add") {
+      // A pattern that also reaches OTHER suppliers is too generic to trust
+      // unattended — e.g. "Pagamento de boleto" (school, condo, ...) would
+      // auto-tag the next unrelated boleto as this merchant's tag. Tagging
+      // the current transactions above already happened; only the
+      // forward-looking rule is skipped, and reported back so it's visible.
+      const otherSuppliers = await countOtherSuppliersMatchingPattern(sb, pattern, merchantKey);
+      if (otherSuppliers > 0) {
+        skippedGenericPatterns.push(pattern);
+        continue;
+      }
+      await upsertMerchantRule(sb, pattern, { reimbursement_tag_id: tag.id as string });
+    } else {
+      await sb
+        .from("merchant_rules")
+        .update({ reimbursement_tag_id: null })
+        .eq("pattern", pattern)
+        .eq("reimbursement_tag_id", tag.id as string);
+    }
+  }
+
   await writeAudit("reimbursement.tag", {
-    newValue: { merchant_key: merchantKey, tag_slug, action, updated }
+    newValue: { merchant_key: merchantKey, tag_slug, action, updated, skippedGenericPatterns }
   });
-  return NextResponse.json({ ok: true, updated });
+  return NextResponse.json({ ok: true, updated, skippedGenericPatterns });
 }
