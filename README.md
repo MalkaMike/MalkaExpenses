@@ -15,9 +15,22 @@ Live: **https://malkafinance.vercel.app**
 
 ## Status
 
-Feature-complete and deployed. Open Finance is **live in sandbox**; connecting
-real banks needs Pluggy production access (commercial/KYB approval — then a
-1-env-var swap, no code). See `docs/adr/0001-pluggy-open-finance.md`.
+Feature-complete and deployed, with **real bank data flowing**.
+
+> ⚠️ **Superseded 2026-08-30.** This section used to say Open Finance was "live in
+> sandbox" and that real banks needed Pluggy production approval. That has not been
+> true for some time. Measured 2026-08-30:
+> `select count(*), min(date), max(date), count(distinct account_id) from transactions where source = 'pluggy'`
+> → **6,337 rows across 9 accounts, 2025-06-03 to 2027-06-28** (82% of the 7,706-row
+> ledger; the 2027 dates are future instalments Pluggy books in advance).
+
+Real banks are read through **MeuPluggy** (Pluggy connector 200), the personal
+aggregator where the accounts are actually connected — not through a direct
+per-bank item. The app's own Pluggy key sits in an expired trial workspace and can
+no longer refresh direct bank items, which is why the accounts were re-pointed at
+the MeuPluggy connection on 2026-08-19. Background and the mapping evidence:
+`db/migrations/0036_repoint_itau_to_meupluggy.sql`. Original design decision:
+`docs/adr/0001-pluggy-open-finance.md`.
 
 ## How it works (one paragraph)
 
