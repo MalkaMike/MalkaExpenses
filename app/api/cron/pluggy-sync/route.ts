@@ -35,6 +35,8 @@ export async function GET(req: NextRequest) {
   }
 
   let inserted = 0;
+  let relinked = 0;
+  let redated = 0;
   // syncPluggyItem collects non-fatal failures in `errors` instead of throwing.
   // This used to be discarded here, so a sync could fail every account and still
   // report ok:true — the error channel existed and nothing ever read it.
@@ -43,6 +45,8 @@ export async function GET(req: NextRequest) {
     try {
       const r = await syncPluggyItem(sb, id);
       inserted += r.inserted;
+      relinked += r.relinked;
+      redated += r.redated;
       errors.push(...r.errors);
     } catch (e) {
       errors.push(`item ${id} threw: ${e instanceof Error ? e.message : String(e)}`);
@@ -74,6 +78,8 @@ export async function GET(req: NextRequest) {
     ok: errors.length === 0,
     items: itemIds.length,
     inserted,
+    relinked,
+    redated,
     errors,
     freshness
   });

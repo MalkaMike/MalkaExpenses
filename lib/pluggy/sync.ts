@@ -16,12 +16,15 @@ import { isCcPaymentDescription, isInvestmentSweepDescription } from "@/lib/reco
 import { mapPluggyCategory } from "@/lib/pluggy/mappers";
 import { toDb, fromDb } from "@/lib/money";
 import { matchesRulePattern } from "@/lib/merchants/rule-pattern";
+import { pairReissued, supersededForecasts } from "@/lib/pluggy/reissued";
 
 type SB = ReturnType<typeof serverClient>;
 
 export type PluggySyncResult = {
   accounts: number;
   inserted: number;
+  relinked: number; // same bank row under a new Pluggy id — updated, not re-inserted
+  redated: number; // same id, Pluggy moved the date (instalment re-dated)
   categorized: number;
   reconciled: number;
   perAccount: Array<{ accountName: string; inserted: number }>;
@@ -46,10 +49,11 @@ function defaultFromDate(): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Incremental window with overlap: re-pull a few days before the last sync so
+// Incremental window with overlap: re-pull before the last sync so
 // late-posting transactions (dated before our last run but posted after) aren't
-// missed. The external_id dedup makes the overlap free of duplicates.
-function incrementalFromDate(lastSyncIso: string, overlapDays = 7): string {
+// missed. 7 days was too short: Bradesco rows of 10–14/07 arrived later and were
+// never pulled. The id dedup plus pairReissued() make the overlap duplicate-free.
+function incrementalFromDate(lastSyncIso: string, overlapDays = 45): string {
   const d = new Date(`${isoToDate(lastSyncIso)}T00:00:00Z`);
   if (Number.isNaN(d.getTime())) return defaultFromDate();
   d.setUTCDate(d.getUTCDate() - overlapDays);
@@ -73,6 +77,8 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
   const result: PluggySyncResult = {
     accounts: 0,
     inserted: 0,
+    relinked: 0,
+    redated: 0,
     categorized: 0,
     reconciled: 0,
     perAccount: [],
@@ -132,6 +138,10 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
       result.errors.push(`listTransactions failed (${pa.name || bankKey}): ${e instanceof Error ? e.message : String(e)}`);
       continue;
     }
+    // Drop stale PENDING instalment forecasts whose POSTED row already exists:
+    // an app row still holding a forecast id then re-links to the posted one.
+    const forecasts = supersededForecasts(pluggyTx);
+    pluggyTx = pluggyTx.filter((t) => !forecasts.has(t.id));
 
     // 3) Dedup against already-imported pluggy ids for this account.
     //    Scoped to the pull window AND paginated: the old unscoped read was
@@ -140,23 +150,28 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     //    re-inserts collided with ux_tx_pluggy and the WHOLE batch — new
     //    rows included — was dropped on every sync.
     const seen = new Set<string>();
+    const held: Array<{ id: string; external_id: string; date: string; description_raw: string; real_amount: number }> = [];
     let dedupFailed = false;
     {
       const PAGE = 1000;
       for (let fromIdx = 0; ; fromIdx += PAGE) {
         const { data: page, error: pageErr } = await sb
           .from("transactions")
-          .select("external_id")
+          .select("id, external_id, date, description_raw, real_amount")
           .eq("account_id", accountId)
           .eq("source", "pluggy")
           .gte("date", from)
+          .order("id")
           .range(fromIdx, fromIdx + PAGE - 1);
         if (pageErr) {
           result.errors.push(`dedup read failed (${pa.name || bankKey}): ${pageErr.message}`);
           dedupFailed = true;
           break;
         }
-        for (const r of page ?? []) seen.add(r.external_id as string);
+        for (const r of page ?? []) {
+          seen.add(r.external_id as string);
+          held.push(r as (typeof held)[number]);
+        }
         if (!page || page.length < PAGE) break;
       }
     }
@@ -166,7 +181,7 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
     const newTxById = new Map(
       pluggyTx.filter((t) => !seen.has(t.id)).map((t) => [t.id, t])
     );
-    const newRows = Array.from(newTxById.values()).map((t) => {
+    const builtRows = Array.from(newTxById.values()).map((t) => {
       const amt = signedAmount(t);
       const desc = t.description || t.descriptionRaw || "—";
       // Append installment label when Pluggy provides the metadata.
@@ -191,6 +206,36 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
         external_id: t.id
       };
     });
+
+    // 3b) Re-issued ids: an incoming row that is the same bank row as one we
+    //     already hold under an id Pluggy no longer returns gets RE-LINKED
+    //     (new id/date/text on the old row, which keeps its hand review)
+    //     instead of inserted a second time. Nothing is ever deleted here.
+    const liveById = new Map(pluggyTx.map((t) => [t.id, t]));
+    const orphans = held.filter((r) => !liveById.has(r.external_id));
+
+    // Same id, new date: Pluggy re-dates instalments when a bill closes
+    // (NICOM 07/08 kept 20/09 here while Pluggy says 14/08) — follow it so the
+    // row lands in the right month.
+    for (const r of held) {
+      const t = liveById.get(r.external_id);
+      if (!t || isoToDate(t.date) === r.date) continue;
+      const { error: dErr } = await sb.from("transactions").update({ date: isoToDate(t.date) }).eq("id", r.id);
+      if (dErr) result.errors.push(`redate failed (${pa.name || bankKey}): ${dErr.message}`);
+      else result.redated += 1;
+    }
+    const relinked = new Set<string>();
+    for (const { orphan, row } of pairReissued(builtRows, orphans)) {
+      const { error: relErr } = await sb
+        .from("transactions")
+        .update({ external_id: row.external_id, date: row.date, description_raw: row.description_raw })
+        .eq("id", orphan.id);
+      if (relErr) result.errors.push(`relink failed (${pa.name || bankKey}): ${relErr.message}`);
+      else relinked.add(row.external_id);
+    }
+    result.relinked += relinked.size;
+    for (const id of relinked) newTxById.delete(id);
+    const newRows = builtRows.filter((r) => !relinked.has(r.external_id));
 
     // Pluggy's own category per transaction id — used as a categorization prior.
     const pluggyCatById = new Map<string, string | null>();
