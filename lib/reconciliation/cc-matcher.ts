@@ -45,6 +45,17 @@ export function isCcPaymentDescription(desc: string): boolean {
   return PAYMENT_RE.test(desc);
 }
 
+// Itaú's automatic investment sweep: money moving between the current account
+// and its own "Aplic Aut Mais" fund. Both directions are transfers, not
+// spending or income. Old wording "Apl/Res Aplic Aut Mais"; since ~2026-09-22
+// Pluggy sends "Saída APL APLIC AUT MAIS AP" / "Resgate RES APLIC AUT MAIS".
+// The interest line ("REND PAGO APLIC AUT") is real income and must NOT match.
+const INVESTMENT_SWEEP_RE = /\b(apl|res)\s+aplic\s+aut\b/i;
+
+export function isInvestmentSweepDescription(desc: string): boolean {
+  return INVESTMENT_SWEEP_RE.test(desc);
+}
+
 // Whole-day distance between two YYYY-MM-DD dates (UTC, sign-agnostic).
 export function daysBetween(a: string, b: string): number {
   const da = Date.parse(`${a}T00:00:00Z`);

@@ -12,7 +12,7 @@ import {
   type PluggyEnrichedTransaction
 } from "@/lib/pluggy/client";
 import { categorizeAll, type CategorizeInput } from "@/lib/ai/categorize";
-import { isCcPaymentDescription } from "@/lib/reconciliation/cc-matcher";
+import { isCcPaymentDescription, isInvestmentSweepDescription } from "@/lib/reconciliation/cc-matcher";
 import { mapPluggyCategory } from "@/lib/pluggy/mappers";
 import { toDb, fromDb } from "@/lib/money";
 import { matchesRulePattern } from "@/lib/merchants/rule-pattern";
@@ -342,6 +342,7 @@ async function categorizeFresh(
   const slugToId = new Map<string, string>();
   for (const c of catsRes.data ?? []) slugToId.set(c.slug as string, c.id as string);
   const ccPayId = slugToId.get("cartao_pagamento");
+  const transferId = slugToId.get("transferencias");
   const tagIdToSlug = new Map<string, string>();
   for (const t of tagsRes.data ?? []) tagIdToSlug.set(t.id as string, t.slug as string);
   const tagRules = (rules ?? []).filter((r) => r.reimbursement_tag_id);
@@ -384,6 +385,22 @@ async function categorizeFresh(
           shared_amount: 0,
           confidence: 0.99,
           ai_reasoning: "Pagamento de cartão — marcado como transferência",
+          status: "auto_accepted"
+        },
+        row.id
+      );
+      continue;
+    }
+
+    // 0.1) Automatic investment sweep (own account ↔ own fund) → transfer.
+    if (transferId && isInvestmentSweepDescription(row.description)) {
+      bucketAdd(
+        {
+          category_id: transferId,
+          is_transfer: true,
+          shared_amount: 0,
+          confidence: 0.99,
+          ai_reasoning: "Aplicação/resgate automático — marcado como transferência",
           status: "auto_accepted"
         },
         row.id

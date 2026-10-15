@@ -3,6 +3,7 @@ import {
   matchCcPayment,
   shouldAutoLink,
   isCcPaymentDescription,
+  isInvestmentSweepDescription,
   daysBetween,
   type CcStatementInput
 } from "../cc-matcher";
@@ -38,6 +39,26 @@ describe("isCcPaymentDescription", () => {
   it("ignores ordinary purchases", () => {
     expect(isCcPaymentDescription("IFD*KAISEKI")).toBe(false);
     expect(isCcPaymentDescription("AUTO POSTO RAMAL")).toBe(false);
+  });
+});
+
+describe("isInvestmentSweepDescription", () => {
+  // Exact strings from the ledger (old 2025 wording and Pluggy's since 2026-09-22).
+  it("recognizes both directions of the Itaú automatic sweep", () => {
+    for (const d of [
+      "Saída APL APLIC AUT MAIS AP",
+      "Resgate RES APLIC AUT MAIS",
+      "Entrada RES APLIC AUT MAIS AP",
+      "Apl Aplic Aut Mais",
+      "Res Aplic Aut Mais"
+    ]) expect(isInvestmentSweepDescription(d)).toBe(true);
+  });
+  it("keeps the interest line as income", () => {
+    for (const d of [
+      "Rendimentos REND PAGO APLIC AUT MAIS",
+      "Entrada REND PAGO APLIC AUT APR",
+      "Rend Pago Aplic Aut Mais"
+    ]) expect(isInvestmentSweepDescription(d)).toBe(false);
   });
 });
 
