@@ -352,8 +352,9 @@ export async function syncPluggyItem(sb: SB, itemId: string): Promise<PluggySync
   return result;
 }
 
-// Categorize freshly-synced rows: CC-payment → enriched category → Pluggy's own
-// category → merchant rules → Gemini batch (only the leftovers reach the LLM).
+// Categorize freshly-synced rows: CC-payment → investment sweep → merchant rules
+// → enriched category → Pluggy's own category → Gemini batch (only the
+// leftovers reach the LLM).
 //
 // Updates are BUCKETED by identical patch payload and applied with one
 // `.update().in("id", ids)` per bucket. The old version issued one UPDATE per
@@ -453,6 +454,24 @@ async function categorizeFresh(
       continue;
     }
 
+    // 0.2) Merchant rule — Mickael's explicit decision, so it beats Pluggy's
+    //      guess. Measured 2026-10-15: Pluggy files the São Paulo property tax
+    //      ("IMPOSTO MUNICIPAL - PMSP") as "Gas stations" and Ubersuggest as
+    //      "Taxi and ride-hailing"; with the rule after Pluggy, no rule could fix it.
+    const hit = categoryRules.find((rule) => matchesRulePattern(rule, descLower));
+    if (hit) {
+      bucketAdd(
+        {
+          category_id: hit.category_id as string,
+          confidence: Number(hit.confidence_default) || 0.95,
+          ai_reasoning: "Regra de fornecedor aplicada",
+          status: "auto_accepted"
+        },
+        row.id
+      );
+      continue;
+    }
+
     // 0.5) Pluggy Enrichment API category — highest-quality signal, skip LLM.
     //      Enrichment model has merchant-level training, better than the raw
     //      transaction category that comes with the Pluggy sync.
@@ -500,23 +519,7 @@ async function categorizeFresh(
       }
     }
 
-    // 1) Merchant rule (deterministic, no AI cost).
-    const hit = categoryRules.find((rule) => matchesRulePattern(rule, descLower));
-    if (hit) {
-      // Pre-fill the suggested category but keep it staged (pending_review) —
-      // the admin still accepts every row into the portal.
-      bucketAdd(
-        {
-          category_id: hit.category_id as string,
-          confidence: Number(hit.confidence_default) || 0.95,
-          ai_reasoning: "Regra de fornecedor aplicada",
-          status: "auto_accepted"
-        },
-        row.id
-      );
-    } else {
-      remaining.push(row);
-    }
+    remaining.push(row);
   }
 
   // 2) AI batch for the rest. Each result carries a per-row reasoning string,
