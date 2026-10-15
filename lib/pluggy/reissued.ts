@@ -22,15 +22,30 @@ function sameInstalment(a: string, b: string): boolean {
 // Pluggy keeps the PENDING forecast of a card instalment after the POSTED one
 // lands on a closed bill (measured 15/10: "NICOM 08/08" POSTED 14/09 on a bill
 // AND PENDING 20/10 with no bill). Returns the ids of those stale forecasts so
-// the sync treats them like ids Pluggy no longer returns.
-export function supersededForecasts(
-  txs: Array<{ id: string; status?: string | null; description: string; amount: number }>
-): Set<string> {
+// the sync treats them like ids Pluggy no longer returns. Same purchase date
+// is required when Pluggy sends it: "BLANCHE JARDIM COM" has two genuine
+// R$107,80 × 5 purchases (09/08 and 07/09) whose "02/05" lines are NOT copies.
+type ForecastTx = {
+  id: string;
+  status?: string | null;
+  description: string;
+  amount: number;
+  creditCardMetadata?: { purchaseDate?: string | null } | null;
+};
+
+export function supersededForecasts(txs: ForecastTx[]): Set<string> {
   const posted = txs.filter((t) => t.status === "POSTED" && INSTALMENT_RE.test(t.description));
+  const purchase = (t: ForecastTx) => t.creditCardMetadata?.purchaseDate ?? null;
   const out = new Set<string>();
   for (const t of txs) {
     if (t.status !== "PENDING" || !INSTALMENT_RE.test(t.description)) continue;
-    if (posted.some((p) => p.amount === t.amount && sameInstalment(p.description, t.description))) out.add(t.id);
+    const twin = posted.some(
+      (p) =>
+        p.amount === t.amount &&
+        sameInstalment(p.description, t.description) &&
+        (purchase(p) === null || purchase(t) === null || purchase(p) === purchase(t))
+    );
+    if (twin) out.add(t.id);
   }
   return out;
 }

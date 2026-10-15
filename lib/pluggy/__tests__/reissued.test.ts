@@ -10,6 +10,17 @@ describe("supersededForecasts", () => {
     ]);
     expect([...s]).toEqual(["forecast"]);
   });
+
+  it("keeps a second genuine purchase with the same price and instalment", () => {
+    const meta = (purchaseDate: string) => ({ purchaseDate });
+    const s = supersededForecasts([
+      { id: "aug-02", status: "POSTED", description: "BLANCHE JARDIM COM02/05", amount: 107.8, creditCardMetadata: meta("2026-08-09T17:19:22Z") },
+      { id: "sep-02", status: "PENDING", description: "BLANCHE JARDIM COM02/05", amount: 107.8, creditCardMetadata: meta("2026-09-07T18:11:45Z") },
+      { id: "nicom-posted", status: "POSTED", description: "NICOM             08/08", amount: 602.51, creditCardMetadata: meta("2026-03-05T14:09:26Z") },
+      { id: "nicom-forecast", status: "PENDING", description: "NICOM             08/08", amount: 602.51, creditCardMetadata: meta("2026-03-05T14:09:26Z") }
+    ]);
+    expect([...s]).toEqual(["nicom-forecast"]);
+  });
 });
 
 // Shapes and values from the real ledger (2026-10-15).

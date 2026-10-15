@@ -17,14 +17,15 @@
 CREATE TABLE IF NOT EXISTS snapshot_0059_bradesco_last_sync AS
 SELECT id, pluggy_last_sync, now() AS taken_at
 FROM accounts
-WHERE name = 'Banco Bradesco' AND is_archived = false AND pluggy_item_id IS NOT NULL;
+-- The current account (there is also a Bradesco savings account, untouched).
+WHERE pluggy_account_id = 'b4af0443-0c26-4148-a3fc-83887f9bb481' AND is_archived = false;
 
 ALTER TABLE snapshot_0059_bradesco_last_sync ENABLE ROW LEVEL SECURITY;
 
 DO $$
 BEGIN
   IF (SELECT count(*) FROM snapshot_0059_bradesco_last_sync) <> 1 THEN
-    RAISE EXCEPTION '0059: expected exactly one live Bradesco account';
+    RAISE EXCEPTION '0059: expected exactly one live Bradesco current account';
   END IF;
 END $$;
 

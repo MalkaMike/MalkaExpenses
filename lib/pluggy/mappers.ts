@@ -33,6 +33,7 @@ export type PluggyCreditCardMetadata = {
   totalAmount?: number | null;
   billId?: string | null;
   payeeMCC?: string | null;
+  purchaseDate?: string | null;
 };
 
 export type PluggyTransaction = {
